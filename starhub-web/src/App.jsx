@@ -5,12 +5,13 @@ import Artist from './pages/Artist'
 import Generate from './pages/Generate'
 import ShowDetail from './pages/ShowDetail'
 import Sidebar from './components/Sidebar'
+import BottomNav from './components/BottomNav'
 
 export default function App(){
   const [role, setRole] = useState('C') // C: 观众, B: 主办方, Brand: 品牌, G: 政府
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen pb-24">{/* pb for bottom nav space */}
       <div className="container">
         <header className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-bold">🎵 锐音场 StarHub</h1>
@@ -44,6 +45,8 @@ export default function App(){
           </div>
         </div>
       </div>
+
+      <BottomNav role={role} />
     </div>
   )
 }
