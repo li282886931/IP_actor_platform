@@ -30,12 +30,61 @@
 
 ---
 
+## 环境要求
+
+- Python：3.11.x（已验证可用）
+- Node.js：18.x / 20.x / 24.x（本项目已在 Node.js 24.15.0 + npm 11.12.1 环境下验证可用）
+- npm：建议使用 10.x 及以上版本
+
 ## 技术栈
 
 - 后端：FastAPI + SQLAlchemy + SQLite
 - 前端：React + Vite + Axios
 - 语言：Python / JavaScript
 - AI 能力：可选接入 DashScope（Qwen）文本生成接口
+
+---
+
+## 快速启动（Windows / PowerShell）
+
+### 1）创建并激活 Python 虚拟环境
+
+```powershell
+cd D:\code\IP_actor_platform
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+```
+
+### 2）启动后端
+
+```powershell
+cd D:\code\IP_actor_platform
+.\.venv\Scripts\Activate.ps1
+python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+后端地址：
+
+```text
+http://localhost:8000
+```
+
+### 3）安装并启动前端
+
+```powershell
+cd D:\code\IP_actor_platform\starhub-web
+npm install
+npm run dev
+```
+
+前端地址：
+
+```text
+http://localhost:5173
+```
+
+> 若你已经使用过项目并创建了 `.venv`，直接执行 `./.venv/Scripts/Activate.ps1` 即可，无需重复创建。
 
 ---
 
@@ -204,5 +253,3 @@ export DASHSCOPE_API_TOKEN=your_token
 - 接入真实的艺人库与演出库
 - 提升 AI 文案质量，支持更多宣传场景
 - 增加订单详情、支付、退款等流程
-
-如果你需要，我也可以继续为这个项目补一份更详细的“接口文档版 README”或者生成中文/英文双语说明。

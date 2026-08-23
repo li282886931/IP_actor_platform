@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import List, Optional
 from sqlalchemy import create_engine, Column, Integer, String, Float, Text, MetaData, ForeignKey, DateTime, func
 from sqlalchemy.orm import declarative_base, sessionmaker, Session, relationship
@@ -62,8 +62,7 @@ class ArtistOut(BaseModel):
     fan_count: Optional[str]
     risk_level: int
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 class ShowOut(BaseModel):
     id: int
@@ -77,8 +76,7 @@ class ShowOut(BaseModel):
     status: Optional[str]
     description: Optional[str]
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 class AIGenerateIn(BaseModel):
     type: str
@@ -246,3 +244,8 @@ def order_show(show_id: int, payload: OrderIn, db: Session = Depends(get_db)):
 @app.get('/ping')
 def ping():
     return {'ok': True}
+
+
+if __name__ == '__main__':
+    import uvicorn
+    uvicorn.run('main:app', host='0.0.0.0', port=8000, reload=False)

@@ -3,3 +3,5 @@
 demo.db
 node_modules/
 .DS_Store
+.venv*
+starhub-web/dist
