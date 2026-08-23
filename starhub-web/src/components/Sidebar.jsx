@@ -1,6 +1,9 @@
-import { Link } from 'react-router-dom'
+import { NavLink } from 'react-router-dom'
 
 export default function Sidebar({role}){
+  // Hide vertical sidebar for C (观众) role — keep only top horizontal nav for C
+  if(role === 'C') return null
+
   const items = {
     C: [
       {to:'/', label:'🏠 首页'},
@@ -29,12 +32,14 @@ export default function Sidebar({role}){
   const list = items[role] || items.C
 
   return (
-    <div className="bg-white rounded-xl shadow p-6 text-black">
-      <ul className="space-y-3">
+    <aside className="sidebar">
+      <ul className="space-y-2">
         {list.map(i=> (
-          <li key={i.to}><Link to={i.to} className="block">{i.label}</Link></li>
+          <li key={i.to}>
+            <NavLink to={i.to} className={({isActive}) => 'sidebar-link' + (isActive? ' active': '')}>{i.label}</NavLink>
+          </li>
         ))}
       </ul>
-    </div>
+    </aside>
   )
 }

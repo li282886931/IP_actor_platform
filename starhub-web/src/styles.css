@@ -12,31 +12,50 @@
 }
 
 html,body,#root{height:100%;}
-body{background:linear-gradient(180deg,#0f172a 0%, #071029 100%);color:#e6eef8;font-family:PingFang SC, "Noto Sans CJK SC", Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial}
+body{background:linear-gradient(180deg,#071029 0%, #05060a 100%);color:#e6eef8;font-family:PingFang SC, "Noto Sans CJK SC", Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial}
 .container{max-width:1200px;margin:0 auto;padding:24px}
 
+/* Header / logo */
+.header{display:flex;align-items:center;gap:12px}
+.logo-badge{width:44px;height:44px;border-radius:10px;background:linear-gradient(135deg,var(--color-primary),#7c3aed);display:flex;align-items:center;justify-content:center;font-weight:800;color:white;box-shadow:0 8px 24px rgba(91,33,182,0.16)}
+.header-title{font-size:20px;font-weight:800}
+.header-sub{font-size:12px;color:rgba(255,255,255,0.7)}
+
 /* Card style used across pages */
-.card{background:rgba(255,255,255,0.03);backdrop-filter:blur(6px);border-radius:12px;padding:16px;box-shadow:0 6px 18px rgba(10,8,20,0.6);color:var(--neutral-light)}
+.card{background:linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0.01));backdrop-filter:blur(6px);border-radius:12px;padding:16px;box-shadow:0 6px 30px rgba(2,6,23,0.6);color:var(--neutral-light);transition:transform .18s ease,box-shadow .18s ease}
+.card:hover{transform:translateY(-6px);box-shadow:0 18px 40px rgba(2,6,23,0.7)}
 .card-white{background:#ffffff;color:#000}
 
+/* Show card */
+.show-card{overflow:hidden;border-radius:12px;background:linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0.02));transition:transform .18s ease,box-shadow .18s ease}
+.show-card:hover{transform:translateY(-6px);box-shadow:0 18px 40px rgba(2,6,23,0.6)}
+.show-poster{height:180px;background:linear-gradient(135deg,#262042,#3b2a6f);display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.9);font-weight:700}
+.price-badge{display:inline-block;padding:6px 10px;border-radius:999px;background:var(--color-accent);color:#000;font-weight:700}
+
+/* Sidebar */
+.sidebar-link{display:block;padding:10px 12px;border-radius:8px;color:rgba(255,255,255,0.9);text-decoration:none}
+.sidebar-link.active{background:linear-gradient(90deg,rgba(91,33,182,0.18),rgba(234,179,8,0.06));color:var(--color-accent);font-weight:700}
+.sidebar{background:linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0.01));padding:16px;border-radius:12px}
+
 /* AI 魔法按钮 */
-.ai-btn{display:inline-flex;align-items:center;gap:8px;background:linear-gradient(90deg,var(--color-primary),#8b5cf6);color:white;padding:10px 14px;border-radius:8px;font-weight:600}
+.ai-btn{display:inline-flex;align-items:center;gap:8px;background:linear-gradient(90deg,var(--color-primary),#8b5cf6);color:white;padding:10px 14px;border-radius:10px;font-weight:700;box-shadow:0 10px 30px rgba(91,33,182,0.16)}
 .ai-btn .spark{color:var(--color-accent);font-weight:800}
 
 /* Alert */
 .alert-danger{border:1px solid var(--color-danger);background:linear-gradient(90deg,rgba(220,38,38,0.06),rgba(220,38,38,0.02));padding:12px;border-radius:8px;color:var(--color-danger)}
 
 /* Tag */
-.tag{display:inline-block;padding:4px 8px;border-radius:999px;background:rgba(255,255,255,0.06);font-size:12px}
+.tag{display:inline-block;padding:4px 8px;border-radius:999px;background:rgba(255,255,255,0.03);font-size:12px}
 .tag.gold{background:var(--color-accent);color:#000}
 
-/* Fixed purchase bar for detail page on mobile */
+/* Purchase bar */
 .purchase-bar{position:fixed;right:20px;left:20px;bottom:24px;background:linear-gradient(90deg,#ffffff, #f8f8f8);border-radius:12px;padding:12px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 8px 24px rgba(2,6,23,0.6)}
 
-/* Bottom navigation (horizontal) */
-.bottom-nav{position:fixed;bottom:12px;left:50%;transform:translateX(-50%);background:rgba(255,255,255,0.04);backdrop-filter:blur(6px);padding:8px 12px;border-radius:999px;display:flex;gap:18px;align-items:center;box-shadow:0 8px 24px rgba(2,6,23,0.6)}
-.bottom-nav-item{color:var(--neutral-light);padding:8px 10px;border-radius:8px;text-decoration:none;font-weight:600}
+/* Top horizontal navigation (inline, not fixed) */
+.bottom-nav{margin:10px 0 18px 0;display:flex;gap:18px;align-items:center;justify-content:center;background:linear-gradient(90deg,rgba(255,255,255,0.02),rgba(91,33,182,0.02));padding:6px 10px;border-radius:999px}
+.bottom-nav-item{color:var(--neutral-light);padding:8px 12px;border-radius:8px;text-decoration:none;font-weight:600}
 .bottom-nav-item:hover{background:rgba(255,255,255,0.03)}
+.bottom-nav-item.active{background:linear-gradient(90deg,rgba(91,33,182,0.22),rgba(234,179,8,0.06));color:var(--color-accent);font-weight:800}
 
 /* Simple loader used for AI simulation */
 .loader{width:28px;height:28px;border-radius:999px;border:3px solid rgba(255,255,255,0.12);border-top-color:var(--color-accent);animation:spin 1s linear infinite}
@@ -46,6 +65,8 @@ body{background:linear-gradient(180deg,#0f172a 0%, #071029 100%);color:#e6eef8;f
 @media (max-width:768px){
   .container{padding:12px}
   .purchase-bar{left:12px;right:12px}
-  .bottom-nav{left:12px;right:12px;transform:none;padding:10px;border-radius:12px;justify-content:space-between}
+  .bottom-nav{flex-wrap:wrap;justify-content:center;padding:8px}
+  .logo-badge{width:36px;height:36px}
 }
+
 
