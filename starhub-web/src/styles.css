@@ -2,6 +2,44 @@
 @tailwind components;
 @tailwind utilities;
 
+:root{
+  --color-primary: #5B21B6; /* 锐音紫 */
+  --color-accent: #EAB308;  /* 星光金 */
+  --color-tech: #2563EB;    /* 科技蓝 */
+  --color-danger: #DC2626;  /* 告警红 */
+  --neutral-dark: #1F2937;
+  --neutral-light: #F3F4F6;
+}
+
 html,body,#root{height:100%;}
-body{background:linear-gradient(180deg,#0f172a 0%, #071029 100%);color:#e6eef8;font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial}
+body{background:linear-gradient(180deg,#0f172a 0%, #071029 100%);color:#e6eef8;font-family:PingFang SC, "Noto Sans CJK SC", Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial}
 .container{max-width:1200px;margin:0 auto;padding:24px}
+
+/* Card style used across pages */
+.card{background:rgba(255,255,255,0.03);backdrop-filter:blur(6px);border-radius:12px;padding:16px;box-shadow:0 6px 18px rgba(10,8,20,0.6);color:var(--neutral-light)}
+.card-white{background:#ffffff;color:#000}
+
+/* AI 魔法按钮 */
+.ai-btn{display:inline-flex;align-items:center;gap:8px;background:linear-gradient(90deg,var(--color-primary),#8b5cf6);color:white;padding:10px 14px;border-radius:8px;font-weight:600}
+.ai-btn .spark{color:var(--color-accent);font-weight:800}
+
+/* Alert */
+.alert-danger{border:1px solid var(--color-danger);background:linear-gradient(90deg,rgba(220,38,38,0.06),rgba(220,38,38,0.02));padding:12px;border-radius:8px;color:var(--color-danger)}
+
+/* Tag */
+.tag{display:inline-block;padding:4px 8px;border-radius:999px;background:rgba(255,255,255,0.06);font-size:12px}
+.tag.gold{background:var(--color-accent);color:#000}
+
+/* Fixed purchase bar for detail page on mobile */
+.purchase-bar{position:fixed;right:20px;left:20px;bottom:24px;background:linear-gradient(90deg,#ffffff, #f8f8f8);border-radius:12px;padding:12px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 8px 24px rgba(2,6,23,0.6)}
+
+/* Simple loader used for AI simulation */
+.loader{width:28px;height:28px;border-radius:999px;border:3px solid rgba(255,255,255,0.12);border-top-color:var(--color-accent);animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Responsive tweaks */
+@media (max-width:768px){
+  .container{padding:12px}
+  .purchase-bar{left:12px;right:12px}
+}
+

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { searchArtist } from '../api'
 
-export default function Artist() {
+export default function Artist({role='B'}) {
   const [query, setQuery] = useState('')
   const [artist, setArtist] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -21,7 +21,7 @@ export default function Artist() {
 
   return (
     <div className="flex gap-8 h-[70vh]">
-      <div className="w-1/3 bg-white rounded-xl shadow p-6 text-black">
+      <div className="w-1/3 card card-white">
         <h2 className="text-xl font-bold mb-4">🔍 艺人热度查询</h2>
         <input
           className="w-full border rounded-lg px-4 py-2 mb-4"
@@ -31,16 +31,20 @@ export default function Artist() {
           onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
         />
         <button
-          className="w-full bg-blue-600 text-white rounded-lg py-2 hover:bg-blue-700"
+          className="w-full ai-btn"
           onClick={handleSearch}
         >
-          {loading ? '查询中...' : '查询热度'}
+          {loading ? '查询中...' : (<><span className="spark">✨</span> 查询热度</>)}
         </button>
+
+        {role === 'B' && (
+          <div className="mt-4 text-sm text-gray-600">在此可进行项目立项与快速导出艺人报告。</div>
+        )}
       </div>
 
       <div className="w-2/3">
         {artist ? (
-          <div className="bg-white rounded-xl shadow p-8 text-black">
+          <div className="card card-white">
             <div className="flex items-center gap-6 mb-6">
               <div className="w-20 h-20 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center text-white text-2xl font-bold">
                 {artist.name && artist.name[0]}
