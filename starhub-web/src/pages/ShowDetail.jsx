@@ -1,4 +1,4 @@
-import { useParams } from 'react-router-dom'
+﻿import { useParams } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { getShow, mockOrder } from '../api'
 
@@ -20,48 +20,47 @@ export default function ShowDetail({role='C'}){
     }catch(e){ console.error(e); setMsg('预约失败') }
   }
 
-  if(loading) return <div className="text-gray-400">加载中…</div>
-  if(!show) return <div className="text-gray-400">未找到演出（请启动后端并有数据）</div>
+  if(loading) return <div style={{color:'var(--text-gray)'}}>加载中…</div>
+  if(!show) return <div style={{color:'var(--text-gray)'}}>未找到演出（请启动后端并有数据）</div>
 
   return (
-    <div className="relative">
-      <div className="flex gap-6">
-        <div className="flex-1 card card-white">
-          <div className="h-64 bg-gray-200 rounded mb-4 flex items-center justify-center">海报预览</div>
-          <h2 className="text-2xl font-bold">{show.title}</h2>
-          <p className="text-gray-600">{show.venue} · {show.city}</p>
-          <div className="mt-4 text-lg">票价：{show.price} 起</div>
+    <div>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 320px',gap:16}}>
+        <div className="card" style={{padding:16}}>
+          <div style={{height:220,borderRadius:8,overflow:'hidden',background:'linear-gradient(135deg,#2D1B69,#6D28D9)',display:'flex',alignItems:'center',justifyContent:'center',color:'rgba(255,255,255,0.2)',fontSize:32}}>海报预览</div>
+          <h2 style={{marginTop:12,fontSize:20,fontWeight:700}}>{show.title}</h2>
+          <div className="meta">{show.venue} · {show.city}</div>
+          <div style={{marginTop:12,fontSize:18,fontWeight:700,color:'var(--gold)'}}>票价：{show.price} 起</div>
 
-          <div className="mt-6">
-            <h3 className="font-bold mb-2">艺人介绍</h3>
-            <p className="text-gray-700">示例艺人介绍内容，支持 AI 自动生成看点摘要</p>
+          <div style={{marginTop:16}}>
+            <h3 style={{fontWeight:700}}>艺人介绍</h3>
+            <p style={{color:'var(--text-gray)'}}>示例艺人介绍内容，支持 AI 自动生成看点摘要</p>
           </div>
 
-          <div className="mt-6">
-            <h3 className="font-bold mb-2">观众讨论</h3>
-            <div className="text-gray-600">暂无评论（演示数据）</div>
+          <div style={{marginTop:16}}>
+            <h3 style={{fontWeight:700}}>观众讨论</h3>
+            <div style={{color:'var(--text-gray)'}}>暂无评论（演示数据）</div>
           </div>
         </div>
 
         {role !== 'C' ? (
-          <div className="w-80 card">B端/其他侧边栏示例：营销投放、数据报表入口</div>
+          <div className="card" style={{padding:16}}>B端/其他侧边栏示例：营销投放、数据报表入口</div>
         ) : (
-          <div className="w-80 card card-white">
-            <h3 className="font-bold mb-3">立即预约</h3>
-            <input className="w-full border rounded px-3 py-2 mb-2" placeholder="姓名" value={name} onChange={e=>setName(e.target.value)} />
-            <input className="w-full border rounded px-3 py-2 mb-2" placeholder="手机号" value={phone} onChange={e=>setPhone(e.target.value)} />
-            <button className="w-full ai-btn" onClick={handleOrder}>立即预约</button>
-            {msg && <div className="mt-3 text-sm text-green-600">{msg}</div>}
+          <div className="card" style={{padding:16}}>
+            <h3 style={{fontWeight:700,marginBottom:8}}>立即预约</h3>
+            <input placeholder="姓名" value={name} onChange={e=>setName(e.target.value)} style={{width:'100%',padding:10,borderRadius:8,border:'1px solid var(--border-glass)',marginBottom:8,background:'transparent',color:'var(--text-white)'}} />
+            <input placeholder="手机号" value={phone} onChange={e=>setPhone(e.target.value)} style={{width:'100%',padding:10,borderRadius:8,border:'1px solid var(--border-glass)',marginBottom:8,background:'transparent',color:'var(--text-white)'}} />
+            <button className="ai-btn" style={{width:'100%'}} onClick={handleOrder}>立即预约</button>
+            {msg && <div style={{marginTop:12,color: msg.includes('成功') ? '#34D399' : '#FCA5A5' }}>{msg}</div>}
           </div>
         )}
       </div>
 
-      {/* 移动/小屏下的固定购票栏（仅 C 端显示） */}
       {role === 'C' && (
         <div className="purchase-bar">
           <div>
-            <div className="text-sm text-gray-500">{show.title}</div>
-            <div className="text-xl font-bold">¥{show.price} 起</div>
+            <div style={{fontSize:12,color:'var(--text-gray)'}}>{show.title}</div>
+            <div style={{fontSize:18,fontWeight:700}}>¥{show.price} 起</div>
           </div>
           <div>
             <button className="ai-btn" onClick={handleOrder}>立即购票</button>
