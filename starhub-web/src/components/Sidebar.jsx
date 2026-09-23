@@ -1,45 +1,63 @@
 import { NavLink } from 'react-router-dom'
 
-export default function Sidebar({role}){
-  // Hide vertical sidebar for C (观众) role — keep only top horizontal nav for C
-  if(role === 'C') return null
+const navigationByRole = {
+  C: [
+    { to: '/', label: '演出发现', mark: '01' },
+    { to: '/artist', label: '艺人查询', mark: '02' },
+    { to: '/generate', label: 'AI 推荐', mark: '03' },
+  ],
+  B: [
+    { to: '/', label: '工作台', mark: '01' },
+    { to: '/artist', label: '艺人智策', mark: '02' },
+    { to: '/generate', label: 'AI 宣发', mark: '03' },
+  ],
+  Brand: [
+    { to: '/', label: '品牌概览', mark: '01' },
+    { to: '/artist', label: '受众洞察', mark: '02' },
+    { to: '/generate', label: 'AI 品宣', mark: '03' },
+  ],
+  G: [
+    { to: '/', label: '城市概览', mark: '01' },
+    { to: '/artist', label: '艺人洞察', mark: '02' },
+    { to: '/generate', label: 'AI 宣发', mark: '03' },
+  ],
+}
 
-  const items = {
-    C: [
-      {to:'/', label:'🏠 首页'},
-      {to:'/generate', label:'✨ 为你推荐'},
-      {to:'/mytickets', label:'🎫 我的票夹'},
-      {to:'/community', label:'💬 社群'}
-    ],
-    B: [
-      {to:'/', label:'🏠 工作台首页'},
-      {to:'/artist', label:'🧾 艺人智策'},
-      {to:'/generate', label:'📣 AI宣发'},
-      {to:'/tickets', label:'🎟 智慧票务'}
-    ],
-    Brand: [
-      {to:'/', label:'🏠 品牌首页'},
-      {to:'/audience', label:'👥 受众画像'},
-      {to:'/campaigns', label:'📈 品宣方案'}
-    ],
-    G: [
-      {to:'/', label:'🏛️ 城市看板'},
-      {to:'/reports', label:'📊 消费拉动'},
-      {to:'/heatmap', label:'🗺 热力图'}
-    ]
-  }
-
-  const list = items[role] || items.C
+export default function Sidebar({ role }) {
+  const items = navigationByRole[role] || navigationByRole.C
 
   return (
-    <aside className="sidebar">
-      <ul className="space-y-2">
-        {list.map(i=> (
-          <li key={i.to}>
-            <NavLink to={i.to} className={({isActive}) => 'sidebar-link' + (isActive? ' active': '')}>{i.label}</NavLink>
-          </li>
+    <aside className="app-sidebar">
+      <div className="sidebar-brand">
+        <span className="brand-mark" aria-hidden="true">✦</span>
+        <span>
+          <strong>锐音场</strong>
+          <small>StarHub</small>
+        </span>
+      </div>
+
+      <div className="sidebar-section-label">工作空间</div>
+      <nav className="sidebar-nav" aria-label="主导航">
+        {items.map((item) => (
+          <NavLink
+            key={item.to}
+            to={item.to}
+            end={item.to === '/'}
+            className={({ isActive }) => `sidebar-link${isActive ? ' active' : ''}`}
+          >
+            <span className="sidebar-link-mark" aria-hidden="true">{item.mark}</span>
+            <span>{item.label}</span>
+          </NavLink>
         ))}
-      </ul>
+      </nav>
+
+      <div className="sidebar-status">
+        <span className="status-dot" aria-hidden="true" />
+        <span>
+          <strong>系统运行正常</strong>
+          <small>API 与数据服务在线</small>
+        </span>
+      </div>
     </aside>
   )
 }

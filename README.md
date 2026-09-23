@@ -1,6 +1,6 @@
-# StarHub 演出平台 Demo
+# StarHub 演出平台
 
-这是一个以“演出/艺人/AI 宣发”为核心的全栈 Demo，包含 Python FastAPI 后端和 React + Vite 前端。项目用于演示艺人热度查询、演出列表展示、AI 文案生成以及预约流程。
+这是一个以“演出/艺人/AI 宣发”为核心的全栈应用，包含 Python FastAPI 后端和 React + Vite 前端。项目支持艺人热度查询、演出列表展示、AI 文案生成以及预约流程。
 
 ## 功能概览
 
@@ -223,14 +223,14 @@ export DASHSCOPE_API_KEY=your_key
 export DASHSCOPE_API_TOKEN=your_token
 ```
 
-如果未配置，则会自动使用本地 mock 文案，保证前端可正常演示。
+如果未配置，则会自动使用本地兜底文案，保证前端可正常使用。
 
 ---
 
 ## 业务场景
 
 该项目适合以下场景：
-- 演出平台的前端 Demo
+- 演出平台的前端工作台
 - 艺人数据展示与热度分析
 - 一站式 AI 宣发内容生成
 - 预约和报名测试流程
@@ -241,7 +241,7 @@ export DASHSCOPE_API_TOKEN=your_token
 
 1. 前端默认请求地址为 `http://localhost:8000`，如果后端运行在其他机器或端口，请修改 `starhub-web/src/api.js` 中的 `baseURL`。
 2. 数据库首次启动时会自动初始化示例数据，若需要重置数据库，可删除 `demo.db` 后重新启动。
-3. 本项目为 Demo，适合演示与二次开发，不建议直接作为生产环境系统使用。
+3. 本项目当前仍使用本地 SQLite 与初始化数据，生产部署前需补充权限、审计、监控与数据治理能力。
 
 ---
 

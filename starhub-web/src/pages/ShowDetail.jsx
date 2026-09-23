@@ -1,72 +1,143 @@
-﻿import { useParams } from 'react-router-dom'
 import { useEffect, useState } from 'react'
+import { Link, useParams } from 'react-router-dom'
+
 import { getShow, mockOrder } from '../api'
 
-export default function ShowDetail({role='C'}){
+export default function ShowDetail({ role = 'C' }) {
   const { id } = useParams()
   const [show, setShow] = useState(null)
-  const [loading, setLoading] = useState(false)
+  const [status, setStatus] = useState('loading')
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
-  const [msg, setMsg] = useState('')
+  const [orderStatus, setOrderStatus] = useState('idle')
+  const [message, setMessage] = useState('')
 
-  useEffect(()=>{ async function load(){ setLoading(true); try{ const res = await getShow(id); setShow(res.data.data) }catch(e){console.error(e)} setLoading(false)} load() },[id])
+  useEffect(() => {
+    let active = true
+    setStatus('loading')
 
-  const handleOrder = async ()=>{
-    if(!name||!phone) return setMsg('请填写姓名与手机号')
-    try{
-      const res = await mockOrder(id,{name,phone})
-      setMsg('预约成功！')
-    }catch(e){ console.error(e); setMsg('预约失败') }
+    getShow(id)
+      .then((response) => {
+        if (!active) return
+        setShow(response.data.data)
+        setStatus('success')
+      })
+      .catch(() => {
+        if (active) setStatus('error')
+      })
+
+    return () => {
+      active = false
+    }
+  }, [id])
+
+  const handleOrder = async (event) => {
+    event.preventDefault()
+    if (!name.trim() || !phone.trim()) {
+      setMessage('请填写姓名与手机号')
+      return
+    }
+
+    setOrderStatus('loading')
+    setMessage('')
+    try {
+      await mockOrder(id, { name: name.trim(), phone: phone.trim() })
+      setOrderStatus('success')
+      setMessage('预约成功，我们将通过手机号同步后续信息。')
+    } catch {
+      setOrderStatus('error')
+      setMessage('预约失败，请稍后重试。')
+    }
   }
 
-  if(loading) return <div style={{color:'var(--text-gray)'}}>加载中…</div>
-  if(!show) return <div style={{color:'var(--text-gray)'}}>未找到演出（请启动后端并有数据）</div>
+  if (status === 'loading') {
+    return <div className="state-panel">正在加载演出详情...</div>
+  }
+
+  if (status === 'error' || !show) {
+    return (
+      <div className="state-panel error">
+        <strong>未能加载演出详情</strong>
+        <span>请返回演出列表后重试。</span>
+        <Link className="button button-secondary" to="/">返回工作台</Link>
+      </div>
+    )
+  }
+
+  const imagePrompt = encodeURIComponent(
+    `Realistic live concert photography for ${show.artist_name || show.title}, full stage and audience, premium editorial event photography, no text`,
+  )
+  const imageUrl = `https://copilot-cn.bytedance.net/api/ide/v1/text_to_image?prompt=${imagePrompt}&image_size=landscape_16_9`
 
   return (
-    <div>
-      <div style={{display:'grid',gridTemplateColumns:'1fr 320px',gap:16}}>
-        <div className="card" style={{padding:16}}>
-          <div style={{height:220,borderRadius:8,overflow:'hidden',background:'linear-gradient(135deg,#2D1B69,#6D28D9)',display:'flex',alignItems:'center',justifyContent:'center',color:'rgba(255,255,255,0.2)',fontSize:32}}>海报预览</div>
-          <h2 style={{marginTop:12,fontSize:20,fontWeight:700}}>{show.title}</h2>
-          <div className="meta">{show.venue} · {show.city}</div>
-          <div style={{marginTop:12,fontSize:18,fontWeight:700,color:'var(--gold)'}}>票价：{show.price} 起</div>
+    <div className="page-stack">
+      <Link className="back-link" to="/">← 返回演出列表</Link>
 
-          <div style={{marginTop:16}}>
-            <h3 style={{fontWeight:700}}>艺人介绍</h3>
-            <p style={{color:'var(--text-gray)'}}>示例艺人介绍内容，支持 AI 自动生成看点摘要</p>
+      <section className="show-detail-grid">
+        <article className="panel show-detail-main">
+          <div className="detail-image-wrap">
+            <img className="detail-image" src={imageUrl} alt={`${show.title}演出现场`} />
+            <span className="show-status">{show.status === 'on_sale' ? '售票中' : '即将开售'}</span>
           </div>
 
-          <div style={{marginTop:16}}>
-            <h3 style={{fontWeight:700}}>观众讨论</h3>
-            <div style={{color:'var(--text-gray)'}}>暂无评论（演示数据）</div>
+          <div className="detail-heading">
+            <div>
+              <span className="eyebrow">{show.artist_name || 'LIVE EVENT'}</span>
+              <h2>{show.title}</h2>
+              <p>{show.description || '演出详情持续更新中。'}</p>
+            </div>
+            <strong className="detail-price">¥{show.price}<small> 起</small></strong>
           </div>
-        </div>
 
-        {role !== 'C' ? (
-          <div className="card" style={{padding:16}}>B端/其他侧边栏示例：营销投放、数据报表入口</div>
+          <dl className="detail-facts">
+            <div><dt>演出日期</dt><dd>{show.date || '待公布'}</dd></div>
+            <div><dt>举办城市</dt><dd>{show.city || '待公布'}</dd></div>
+            <div><dt>演出场馆</dt><dd>{show.venue || '待公布'}</dd></div>
+            <div><dt>当前状态</dt><dd>{show.status === 'on_sale' ? '公开售票' : show.status}</dd></div>
+          </dl>
+        </article>
+
+        {role === 'C' ? (
+          <aside className="panel booking-panel">
+            <div className="panel-heading">
+              <div>
+                <span className="eyebrow">RESERVATION</span>
+                <h3>预约演出</h3>
+              </div>
+            </div>
+            <p>提交预约后，我们会通过手机号同步开票与场次信息。</p>
+            <form className="booking-form" onSubmit={handleOrder}>
+              <label className="field">
+                <span>姓名</span>
+                <input value={name} onChange={(event) => setName(event.target.value)} placeholder="请输入姓名" />
+              </label>
+              <label className="field">
+                <span>手机号</span>
+                <input value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="请输入手机号" />
+              </label>
+              <button className="button button-primary button-block" disabled={orderStatus === 'loading'} type="submit">
+                {orderStatus === 'loading' ? '提交中...' : '立即预约'}
+              </button>
+            </form>
+            {message && <div className={`inline-message ${orderStatus === 'success' ? 'success' : 'error'}`}>{message}</div>}
+          </aside>
         ) : (
-          <div className="card" style={{padding:16}}>
-            <h3 style={{fontWeight:700,marginBottom:8}}>立即预约</h3>
-            <input placeholder="姓名" value={name} onChange={e=>setName(e.target.value)} style={{width:'100%',padding:10,borderRadius:8,border:'1px solid var(--border-glass)',marginBottom:8,background:'transparent',color:'var(--text-white)'}} />
-            <input placeholder="手机号" value={phone} onChange={e=>setPhone(e.target.value)} style={{width:'100%',padding:10,borderRadius:8,border:'1px solid var(--border-glass)',marginBottom:8,background:'transparent',color:'var(--text-white)'}} />
-            <button className="ai-btn" style={{width:'100%'}} onClick={handleOrder}>立即预约</button>
-            {msg && <div style={{marginTop:12,color: msg.includes('成功') ? '#34D399' : '#FCA5A5' }}>{msg}</div>}
-          </div>
+          <aside className="panel booking-panel">
+            <div className="panel-heading">
+              <div>
+                <span className="eyebrow">PROJECT STATUS</span>
+                <h3>项目概况</h3>
+              </div>
+            </div>
+            <div className="summary-list">
+              <span>售票状态<strong>正常</strong></span>
+              <span>宣发素材<strong>6 项</strong></span>
+              <span>风险等级<strong>低</strong></span>
+            </div>
+            <Link className="button button-primary button-block" to="/generate">生成宣发内容</Link>
+          </aside>
         )}
-      </div>
-
-      {role === 'C' && (
-        <div className="purchase-bar">
-          <div>
-            <div style={{fontSize:12,color:'var(--text-gray)'}}>{show.title}</div>
-            <div style={{fontSize:18,fontWeight:700}}>¥{show.price} 起</div>
-          </div>
-          <div>
-            <button className="ai-btn" onClick={handleOrder}>立即购票</button>
-          </div>
-        </div>
-      )}
+      </section>
     </div>
   )
 }

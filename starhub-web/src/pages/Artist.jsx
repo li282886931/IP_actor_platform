@@ -1,81 +1,115 @@
 import { useState } from 'react'
+
 import { searchArtist } from '../api'
 
-export default function Artist({role='B'}) {
+export default function Artist({ role = 'B' }) {
   const [query, setQuery] = useState('')
   const [artist, setArtist] = useState(null)
-  const [loading, setLoading] = useState(false)
+  const [status, setStatus] = useState('idle')
 
-  const handleSearch = async () => {
-    if(!query) return
-    setLoading(true)
-    try{
-      const res = await searchArtist(query)
-      setArtist(res.data.data && res.data.data[0] ? res.data.data[0] : null)
-    }catch(e){
-      console.error(e)
+  const handleSearch = async (event) => {
+    event?.preventDefault()
+    if (!query.trim()) return
+
+    setStatus('loading')
+    try {
+      const response = await searchArtist(query.trim())
+      const result = response.data.data?.[0] || null
+      setArtist(result)
+      setStatus(result ? 'success' : 'empty')
+    } catch {
       setArtist(null)
+      setStatus('error')
     }
-    setLoading(false)
   }
 
   return (
-    <div>
-      <div className="card card-white" style={{padding:16}}>
-        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-          <h2 style={{margin:0,fontSize:18,fontWeight:700}}>🔍 艺人热度查询</h2>
-          <div style={{fontSize:13,color:'var(--text-gray)'}}>在此可进行项目立项与快速导出艺人报告</div>
+    <div className="page-stack">
+      <section className="page-lead">
+        <div>
+          <span className="eyebrow">ARTIST INTELLIGENCE</span>
+          <h2>{role === 'C' ? '查找你关注的艺人' : '艺人热度与风险洞察'}</h2>
+          <p>通过公开热度、粉丝规模和风险等级辅助演出与合作决策。</p>
         </div>
+      </section>
 
-        <div style={{display:'flex',gap:12,marginTop:12}}>
-          <input
-            className=""
-            placeholder="输入艺人名字，如：周杰伦"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-            style={{flex:1,padding:'10px 12px',borderRadius:8,border:'1px solid var(--border-glass)',background:'transparent',color:'var(--text-white)'}}
-          />
-          <button className="ai-btn" onClick={handleSearch}>{loading ? '查询中...' : (<><span className="spark">✨</span> 查询热度</>)}</button>
+      <section className="panel">
+        <div className="panel-heading">
+          <div>
+            <span className="eyebrow">QUICK SEARCH</span>
+            <h3>艺人查询</h3>
+          </div>
+          <span className="panel-note">支持艺人名称模糊搜索</span>
         </div>
-      </div>
+        <form className="search-form" onSubmit={handleSearch}>
+          <label className="field grow">
+            <span>艺人名称</span>
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="输入艺人名字，如：周杰伦"
+            />
+          </label>
+          <button className="button button-primary" disabled={status === 'loading'} type="submit">
+            {status === 'loading' ? '查询中...' : '查询热度'}
+          </button>
+        </form>
+      </section>
 
-      {artist ? (
-        <div className="card" style={{marginTop:12}}>
-          <div className="artist-card">
-            <div className="avatar">{artist.name && artist.name[0]}</div>
-            <div>
-              <div style={{fontSize:20,fontWeight:700}}>{artist.name}</div>
-              <div style={{color:'var(--text-gray)'}}>{artist.tags}</div>
-            </div>
-            <div style={{marginLeft:'auto',textAlign:'right'}}>
-              <div style={{fontSize:12,color:'var(--text-gray)'}}>评分</div>
-              <div style={{fontSize:18,fontWeight:700,color:'var(--primary-light)'}}>{artist.heat_score}</div>
-            </div>
-          </div>
-
-          <div className="metrics-grid">
-            <div className="metric">
-              <div style={{fontSize:18,fontWeight:700,color:'var(--primary-light)'}}>{artist.heat_score}</div>
-              <div style={{color:'var(--text-gray)'}}>综合热度</div>
-            </div>
-            <div className="metric">
-              <div style={{fontSize:18,fontWeight:700,color:'#34D399'}}>{artist.fan_count}</div>
-              <div style={{color:'var(--text-gray)'}}>全网粉丝</div>
-            </div>
-            <div className="metric">
-              <div style={{fontSize:18,fontWeight:700,color:'#F59E0B'}}>{artist.risk_level}</div>
-              <div style={{color:'var(--text-gray)'}}>风险等级</div>
-            </div>
-          </div>
-
-          <div style={{marginTop:12,background:'rgba(124,58,237,0.06)',padding:12,borderRadius:8}}>
-            <div style={{fontWeight:700}}>🤖 AI 演出建议</div>
-            <p style={{marginTop:8,color:'var(--text-light)'}}>该艺人当前热度极高，建议在一线城市举办大型场馆演出，预估单场票房可观。最佳档期：暑期/国庆。</p>
-          </div>
+      {status === 'error' && (
+        <div className="state-panel error">
+          <strong>艺人数据查询失败</strong>
+          <span>请确认后端服务状态后重试。</span>
         </div>
-      ) : (
-        <div className="card" style={{marginTop:12,textAlign:'center',padding:32,color:'var(--text-gray)'}}>在上方输入艺人名字并点击“查询热度”以查看结果</div>
+      )}
+
+      {status === 'empty' && (
+        <div className="state-panel">
+          <strong>未找到匹配艺人</strong>
+          <span>请尝试输入更完整的艺人名称。</span>
+        </div>
+      )}
+
+      {artist && (
+        <section className="artist-overview">
+          <article className="panel artist-profile">
+            <div className="artist-identity">
+              <div className="artist-avatar" aria-hidden="true">{artist.name?.[0]}</div>
+              <div>
+                <span className="status-badge positive">数据已更新</span>
+                <h3>{artist.name}</h3>
+                <p>{artist.tags || '暂无标签'}</p>
+              </div>
+            </div>
+            <dl className="artist-facts">
+              <div><dt>综合热度</dt><dd>{artist.heat_score}</dd></div>
+              <div><dt>全网粉丝</dt><dd>{artist.fan_count}</dd></div>
+              <div><dt>风险等级</dt><dd className={artist.risk_level > 2 ? 'text-danger' : ''}>{artist.risk_level} / 5</dd></div>
+            </dl>
+          </article>
+
+          <article className="panel insight-panel">
+            <div className="panel-heading">
+              <div>
+                <span className="eyebrow">AI INSIGHT</span>
+                <h3>演出建议</h3>
+              </div>
+            </div>
+            <p>该艺人当前关注度较高，建议优先评估一线及新一线城市的大型场馆档期。</p>
+            <div className="recommendation-list">
+              <span>推荐档期<strong>暑期 / 国庆</strong></span>
+              <span>建议场馆<strong>大型体育场</strong></span>
+              <span>传播重点<strong>经典作品与现场感</strong></span>
+            </div>
+          </article>
+        </section>
+      )}
+
+      {status === 'idle' && (
+        <div className="state-panel">
+          <strong>开始一次艺人分析</strong>
+          <span>输入艺人名称后即可查看热度、粉丝量和风险信息。</span>
+        </div>
       )}
     </div>
   )

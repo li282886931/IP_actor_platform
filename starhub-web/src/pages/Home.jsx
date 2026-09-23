@@ -1,115 +1,223 @@
-﻿import { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
+
 import { listShows } from '../api'
 import ShowCard from '../components/ShowCard'
 
+const dashboardByRole = {
+  B: {
+    eyebrow: 'BUSINESS OPERATIONS',
+    title: '项目经营总览',
+    description: '集中查看票房、销售与宣发效率，优先处理异常项目。',
+    action: '新建项目',
+    metrics: [
+      { label: '预估票房', value: '¥12.5M', delta: '较上周 +8.4%' },
+      { label: '已售票数', value: '18,342', delta: '整体售票率 73.8%' },
+      { label: '宣发消耗', value: '¥432K', delta: '预算执行 62%' },
+      { label: '风险告警', value: '2', delta: '1 项需今日处理', tone: 'danger' },
+    ],
+    modules: [
+      { title: '艺人智策', copy: '热度、风险与城市匹配建议', to: '/artist' },
+      { title: 'AI 宣发', copy: '快速生成海报文案与短视频脚本', to: '/generate' },
+      { title: '项目进度', copy: '8 个项目进行中，3 个临近开售' },
+    ],
+  },
+  Brand: {
+    eyebrow: 'BRAND PARTNERSHIP',
+    title: '品牌合作概览',
+    description: '评估合作人群质量、活动转化与品牌曝光表现。',
+    action: '创建合作方案',
+    metrics: [
+      { label: '覆盖用户', value: '12.3K', delta: '核心人群占比 68%' },
+      { label: '合作收入', value: '¥1.2M', delta: '较上月 +12.6%' },
+      { label: '平均 ROI', value: '3.8', delta: '高于行业均值 0.7' },
+      { label: '进行中合作', value: '8', delta: '本周新增 2 个' },
+    ],
+    modules: [
+      { title: '受众洞察', copy: '查看兴趣、地域与消费能力分布', to: '/artist' },
+      { title: 'AI 品宣', copy: '根据艺人与城市生成合作文案', to: '/generate' },
+      { title: '投放表现', copy: '短视频渠道贡献 46% 的新增触达' },
+    ],
+  },
+  G: {
+    eyebrow: 'CITY CULTURE & TOURISM',
+    title: '城市文旅概览',
+    description: '洞察大型演出对跨城客流和本地消费的带动效果。',
+    action: '导出城市报告',
+    metrics: [
+      { label: '跨城观演', value: '28.6K', delta: '外地观众占比 41%' },
+      { label: '消费拉动', value: '¥86M', delta: '餐饮住宿贡献 57%' },
+      { label: '城市热度', value: '92', delta: '全国排名第 4' },
+      { label: '舆情风险', value: '低', delta: '暂无高风险事件' },
+    ],
+    modules: [
+      { title: '艺人洞察', copy: '评估艺人与城市客群的匹配度', to: '/artist' },
+      { title: 'AI 宣发', copy: '生成城市文旅联合传播内容', to: '/generate' },
+      { title: '客流分析', copy: '核心商圈演出日客流提升 23%' },
+    ],
+  },
+}
+
+function MetricGrid({ metrics }) {
+  return (
+    <section className="metric-grid" aria-label="关键指标">
+      {metrics.map((metric) => (
+        <article className={`metric-card${metric.tone ? ` ${metric.tone}` : ''}`} key={metric.label}>
+          <span>{metric.label}</span>
+          <strong>{metric.value}</strong>
+          <small>{metric.delta}</small>
+        </article>
+      ))}
+    </section>
+  )
+}
+
+function RoleDashboard({ role }) {
+  const dashboard = dashboardByRole[role]
+
+  return (
+    <div className="page-stack">
+      <section className="page-lead">
+        <div>
+          <span className="eyebrow">{dashboard.eyebrow}</span>
+          <h2>{dashboard.title}</h2>
+          <p>{dashboard.description}</p>
+        </div>
+        <button className="button button-primary" type="button">{dashboard.action}</button>
+      </section>
+
+      <MetricGrid metrics={dashboard.metrics} />
+
+      <section className="content-grid content-grid-wide">
+        <article className="panel chart-panel">
+          <div className="panel-heading">
+            <div>
+              <span className="eyebrow">PERFORMANCE</span>
+              <h3>近 7 日业务趋势</h3>
+            </div>
+            <span className="status-badge positive">稳定增长</span>
+          </div>
+          <div className="trend-chart" aria-label="业务趋势示意图">
+            {[34, 48, 41, 63, 58, 76, 84].map((height, index) => (
+              <span key={index} style={{ '--bar-height': `${height}%` }} />
+            ))}
+          </div>
+          <div className="chart-axis"><span>周一</span><span>周三</span><span>周五</span><span>今日</span></div>
+        </article>
+
+        <article className="panel activity-panel">
+          <div className="panel-heading">
+            <div>
+              <span className="eyebrow">PRIORITIES</span>
+              <h3>今日重点</h3>
+            </div>
+          </div>
+          <div className="activity-list">
+            <div><span className="activity-mark danger" /><p><strong>风险事件待确认</strong><small>艺人舆情异常需复核</small></p></div>
+            <div><span className="activity-mark warning" /><p><strong>项目即将开售</strong><small>上海站距开售还有 2 天</small></p></div>
+            <div><span className="activity-mark success" /><p><strong>宣发任务已完成</strong><small>北京站素材已进入投放</small></p></div>
+          </div>
+        </article>
+      </section>
+
+      <section className="module-grid">
+        {dashboard.modules.map((module) => {
+          const content = (
+            <>
+              <span className="module-index" aria-hidden="true">0{dashboard.modules.indexOf(module) + 1}</span>
+              <h3>{module.title}</h3>
+              <p>{module.copy}</p>
+              {module.to && <span className="module-link">进入模块 →</span>}
+            </>
+          )
+          return module.to
+            ? <Link className="module-card" key={module.title} to={module.to}>{content}</Link>
+            : <article className="module-card" key={module.title}>{content}</article>
+        })}
+      </section>
+    </div>
+  )
+}
+
 export default function Home({ role = 'C' }) {
   const [shows, setShows] = useState([])
-  const [loading, setLoading] = useState(false)
+  const [status, setStatus] = useState('loading')
 
   useEffect(() => {
-    async function load() {
-      setLoading(true)
-      try {
-        const res = await listShows()
-        setShows(res.data.data || [])
-      } catch (e) {
-        console.error(e)
-      }
-      setLoading(false)
+    if (role !== 'C') {
+      setStatus('idle')
+      return
     }
-    load()
-  }, [])
 
-  const kpis = [
-    { label: '预估票房', value: '¥12.5M' },
-    { label: '已售票数', value: '18,342' },
-    { label: '宣发消耗', value: '¥432,000' },
-    { label: '风险告警', value: 2 }
-  ]
+    let active = true
+    setStatus('loading')
 
-  if (role === 'B') {
-    return (
-      <div className="space-y-6">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700 }}>工作台首页</h2>
-          <button className="ai-btn"><span className="spark">✨</span> 新建项目</button>
-        </div>
+    listShows()
+      .then((response) => {
+        if (!active) return
+        setShows(response.data.data || [])
+        setStatus('success')
+      })
+      .catch(() => {
+        if (active) setStatus('error')
+      })
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginTop: 12 }}>
-          {kpis.map(k => (
-            <div key={k.label} className="card" style={{ padding: 16 }}>
-              <div style={{ fontSize: 12, color: 'var(--text-gray)' }}>{k.label}</div>
-              <div style={{ fontSize: 20, fontWeight: 700, marginTop: 8, color: 'var(--primary-light)' }}>{k.value}</div>
-            </div>
-          ))}
-        </div>
+    return () => {
+      active = false
+    }
+  }, [role])
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12, marginTop: 12 }}>
-          <div className="card">🧠 艺人智策</div>
-          <div className="card">📣 AI宣发</div>
-          <div className="card">🎟 智慧票务</div>
-        </div>
-
-        <div className="card alert-danger" style={{ marginTop: 12 }}>高风险告警：艺人舆情异常，建议立即查看并处理。</div>
-      </div>
-    )
-  }
-
-  if (role === 'Brand') {
-    return (
-      <div className="space-y-6">
-        <h2 style={{ fontSize: 20, fontWeight: 700 }}>品牌工作台</h2>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 12, marginTop: 12 }}>
-          <div className="card">受众画像（示例）</div>
-          <div className="card">ROI 报表（示例）</div>
-        </div>
-        <div className="card" style={{ marginTop: 12 }}>✨ AI 生成定制品宣方案</div>
-      </div>
-    )
-  }
-
-  if (role === 'G') {
-    return (
-      <div className="space-y-6">
-        <h2 style={{ fontSize: 20, fontWeight: 700 }}>城市文旅看板</h2>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12, marginTop: 12 }}>
-          <div className="card">跨城观演人数</div>
-          <div className="card">预估餐饮住宿消费拉动</div>
-          <div className="card">热力地图（占位）</div>
-        </div>
-      </div>
-    )
+  if (role !== 'C') {
+    return <RoleDashboard role={role} />
   }
 
   return (
-    <div>
-      <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
-        <div style={{ flex: 1 }}>
-          <div className="search-bar">
-            <i className="fas fa-search muted"></i>
-            <input placeholder="搜索演出 / 艺人" />
-          </div>
-        </div>
+    <div className="page-stack">
+      <section className="page-lead">
         <div>
-          <button className="ai-btn"><span className="spark">✨</span> 为你推荐</button>
+          <span className="eyebrow">LIVE DISCOVERY</span>
+          <h2>发现值得到场的演出</h2>
+          <p>根据热度、城市与偏好，快速找到下一场现场体验。</p>
         </div>
-      </div>
+        <Link className="button button-primary" to="/generate">生成专属推荐</Link>
+      </section>
 
-      <div className="card" style={{ padding: 16, marginBottom: 16 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <section className="discovery-toolbar">
+        <label className="search-field">
+          <span className="sr-only">搜索演出或艺人</span>
+          <input placeholder="搜索演出、艺人或城市" />
+        </label>
+        <div className="filter-group" aria-label="演出分类">
+          <button className="filter-chip active" type="button">全部</button>
+          <button className="filter-chip" type="button">演唱会</button>
+          <button className="filter-chip" type="button">音乐节</button>
+          <button className="filter-chip" type="button">近期</button>
+        </div>
+      </section>
+
+      <section>
+        <div className="section-heading">
           <div>
-            <div style={{ fontSize: 16, fontWeight: 700 }}>发现精彩演出</div>
-            <div className="muted">AI 推荐 · 智能匹配你的口味</div>
+            <span className="eyebrow">RECOMMENDED</span>
+            <h3>热门演出</h3>
           </div>
-          <div className="tag">New</div>
+          <span className="section-count">{shows.length} 场可选</span>
         </div>
-      </div>
 
-      <div className="grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 16 }}>
-        {loading && <div style={{ color: 'var(--text-gray)' }}>加载中…</div>}
-        {shows.length === 0 && !loading && <div className="card" style={{ gridColumn: '1 / -1', color: 'var(--text-gray)' }}>暂无演出，后端启动并有 demo 数据时显示</div>}
-        {shows.map(s => <ShowCard key={s.id} show={s} />)}
-      </div>
+        {status === 'loading' && <div className="state-panel">正在加载演出数据...</div>}
+        {status === 'error' && (
+          <div className="state-panel error">
+            <strong>演出数据暂时不可用</strong>
+            <span>请确认后端服务已启动后刷新页面。</span>
+          </div>
+        )}
+        {status === 'success' && shows.length === 0 && <div className="state-panel">暂无可展示的演出</div>}
+        {status === 'success' && shows.length > 0 && (
+          <div className="show-grid">
+            {shows.map((show) => <ShowCard key={show.id} show={show} />)}
+          </div>
+        )}
+      </section>
     </div>
   )
 }
