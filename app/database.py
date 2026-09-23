@@ -3,17 +3,12 @@ import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
-from .config import DATABASE_URL_ENV, DATABASE_URL_EXAMPLE
+from .config import DATABASE_URL, DATABASE_URL_ENV
 
 
 def resolve_database_url(environ=None):
     environ = environ if environ is not None else os.environ
-    database_url = environ.get(DATABASE_URL_ENV)
-    if not database_url:
-        raise RuntimeError(
-            f"{DATABASE_URL_ENV} is required. Example: {DATABASE_URL_EXAMPLE}"
-        )
-    return database_url
+    return environ.get(DATABASE_URL_ENV) or DATABASE_URL
 
 
 SQLALCHEMY_DATABASE_URL = resolve_database_url()

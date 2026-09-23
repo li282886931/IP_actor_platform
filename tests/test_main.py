@@ -1,6 +1,5 @@
 import os
 
-import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -10,9 +9,11 @@ os.environ.setdefault("DATABASE_URL", "sqlite://")
 import main as app_module
 import app.config as config_module
 import app.database as db_module
+import app.routes as routes_module
 
 
 def test_database_url_example_lives_in_config_file():
+    assert config_module.DATABASE_URL == config_module.DATABASE_URL_EXAMPLE
     assert config_module.DATABASE_URL_EXAMPLE.endswith("/ip_actor_platform?charset=utf8mb4")
     with open(db_module.__file__, encoding="utf-8") as database_file:
         assert "mysql+pymysql://root:123456789@127.0.0.1:3306/ip_actor_platform?charset=utf8mb4" not in database_file.read()
@@ -26,9 +27,8 @@ def test_database_engine_options_match_database_driver():
     assert app_module.create_engine_kwargs("mysql+pymysql://root:pw@127.0.0.1:3306/ip_actor_platform") == {}
 
 
-def test_database_url_is_required_for_runtime(monkeypatch):
-    with pytest.raises(RuntimeError, match="DATABASE_URL"):
-        app_module.resolve_database_url({})
+def test_database_url_uses_config_when_env_is_missing(monkeypatch):
+    assert app_module.resolve_database_url({}) == config_module.DATABASE_URL
     monkeypatch.setenv("DATABASE_URL", "mysql+pymysql://root:pw@127.0.0.1:3306/ip_actor_platform")
     assert app_module.resolve_database_url() == "mysql+pymysql://root:pw@127.0.0.1:3306/ip_actor_platform"
 
@@ -67,6 +67,7 @@ def test_ai_generate_returns_nested_result_and_records_generation(monkeypatch):
     app_module.init_db()
     monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
     monkeypatch.delenv("DASHSCOPE_API_TOKEN", raising=False)
+    monkeypatch.setenv("LLAMA_SERVER_URL", "")
 
     def override_db():
         db = session_factory()
@@ -98,6 +99,70 @@ def test_ai_generate_returns_nested_result_and_records_generation(monkeypatch):
     db = session_factory()
     try:
         assert db.query(app_module.AIGeneration).count() == 1
+    finally:
+        db.close()
+
+
+def test_ai_generate_prefers_local_llama_server(monkeypatch):
+    session_factory = make_temp_session(monkeypatch)
+    app_module.init_db()
+    monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
+    monkeypatch.delenv("DASHSCOPE_API_TOKEN", raising=False)
+    monkeypatch.setenv("LLAMA_SERVER_URL", "http://127.0.0.1:18080/v1/chat/completions")
+    monkeypatch.setenv("LLAMA_SERVER_MODEL", "qwen-local")
+
+    calls = []
+
+    class FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "choices": [
+                    {"message": {"content": "Local llama copy"}}
+                ]
+            }
+
+    def fake_post(url, **kwargs):
+        calls.append({"url": url, **kwargs})
+        return FakeResponse()
+
+    monkeypatch.setattr(routes_module.requests, "post", fake_post)
+
+    def override_db():
+        db = session_factory()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    app_module.app.dependency_overrides[app_module.get_db] = override_db
+    try:
+        client = TestClient(app_module.app)
+        response = client.post(
+            "/ai/generate",
+            json={
+                "type": "poster",
+                "show_name": "Test Show",
+                "artist": "Test Artist",
+                "city": "Shanghai",
+            },
+        )
+    finally:
+        app_module.app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["data"]["result"] == "Local llama copy"
+    assert calls[0]["url"] == "http://127.0.0.1:18080/v1/chat/completions"
+    assert calls[0]["json"]["model"] == "qwen-local"
+    assert calls[0]["timeout"] == config_module.LLAMA_SERVER_TIMEOUT_SECONDS
+
+    db = session_factory()
+    try:
+        generation = db.query(app_module.AIGeneration).one()
+        assert generation.result == "Local llama copy"
     finally:
         db.close()
 

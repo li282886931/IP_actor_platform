@@ -5,6 +5,7 @@ import requests
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from .config import LLAMA_SERVER_MODEL, LLAMA_SERVER_TIMEOUT_SECONDS, LLAMA_SERVER_URL
 from .database import get_db
 from .models import AIGeneration, Artist, Decision, Order, Project, ProjectVersion, Show, Task, Tenant
 from .responses import json_ok
@@ -22,6 +23,25 @@ from .services import (
 
 
 router = APIRouter()
+
+
+def extract_llama_server_text(data):
+    if not isinstance(data, dict):
+        return None
+
+    choices = data.get('choices')
+    if isinstance(choices, list) and choices:
+        first_choice = choices[0] or {}
+        message = first_choice.get('message') or {}
+        content = message.get('content') or first_choice.get('text')
+        if content:
+            return content
+
+    content = data.get('content')
+    if content:
+        return content
+
+    return data.get('response')
 
 
 @router.post('/auth/web-login')
@@ -288,10 +308,30 @@ def ai_generate(payload: AIGenerateIn, db: Session = Depends(get_db)):
     要求：年轻化、有传播力、带emoji、不超过150字。
     """.strip()
 
-    api_key = os.getenv('DASHSCOPE_API_KEY') or os.getenv('DASHSCOPE_API_TOKEN')
     result_text = None
+    llama_server_url = os.environ.get('LLAMA_SERVER_URL', LLAMA_SERVER_URL)
+    llama_server_model = os.environ.get('LLAMA_SERVER_MODEL', LLAMA_SERVER_MODEL)
 
-    if api_key:
+    if llama_server_url:
+        try:
+            resp = requests.post(
+                llama_server_url,
+                headers={"Content-Type": "application/json"},
+                json={
+                    "model": llama_server_model,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "temperature": 0.7,
+                },
+                timeout=LLAMA_SERVER_TIMEOUT_SECONDS,
+            )
+            resp.raise_for_status()
+            result_text = extract_llama_server_text(resp.json())
+        except Exception as exc:
+            print('Local llama_server error:', exc)
+
+    api_key = os.getenv('DASHSCOPE_API_KEY') or os.getenv('DASHSCOPE_API_TOKEN')
+
+    if not result_text and api_key:
         try:
             resp = requests.post(
                 "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation",

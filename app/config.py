@@ -1,2 +1,7 @@
 DATABASE_URL_ENV = 'DATABASE_URL'
 DATABASE_URL_EXAMPLE = 'mysql+pymysql://root:123456789@127.0.0.1:3306/ip_actor_platform?charset=utf8mb4'
+DATABASE_URL = DATABASE_URL_EXAMPLE
+
+LLAMA_SERVER_URL = 'http://127.0.0.1:8080/v1/chat/completions'
+LLAMA_SERVER_MODEL = 'local-model'
+LLAMA_SERVER_TIMEOUT_SECONDS = 20

@@ -30,7 +30,7 @@
 
 ### 6. 数据库
 - 主库使用 MySQL 8.0，默认库名为 `ip_actor_platform`
-- 后端必须通过 `DATABASE_URL` 连接数据库，未配置时会拒绝启动
+- 默认连接配置写在 `app/config.py`，也可以通过 `DATABASE_URL` 环境变量覆盖
 - 核心表包含 `tenants`、`users`、`projects`、`project_versions`、`decisions`、`tasks` 等
 
 ---
@@ -69,6 +69,8 @@ cd D:\code\IP_actor_platform
 $env:DATABASE_URL="mysql+pymysql://root:123456789@127.0.0.1:3306/ip_actor_platform?charset=utf8mb4"
 python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
+
+如果使用 `app/config.py` 中的默认连接配置，可以省略 `$env:DATABASE_URL=...`。
 
 后端地址：
 
@@ -208,6 +210,8 @@ export DATABASE_URL='mysql+pymysql://root:123456789@127.0.0.1:3306/ip_actor_plat
 uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
+如果使用 `app/config.py` 中的默认连接配置，可以省略 `export DATABASE_URL=...`。
+
 后端默认地址：
 
 ```text
@@ -249,7 +253,35 @@ python main.py
 
 ## AI 功能说明
 
-AI 文案生成功能会读取环境变量：
+AI 文案生成优先调用本地 `llama_server`，然后再尝试 DashScope，最后使用本地兜底文案。
+
+### 1）本地 llama_server
+
+默认配置写在 `app/config.py`：
+
+```python
+LLAMA_SERVER_URL = 'http://127.0.0.1:8080/v1/chat/completions'
+LLAMA_SERVER_MODEL = 'local-model'
+```
+
+如果你的本地服务端口或模型名不同，可以用环境变量覆盖：
+
+```bash
+export LLAMA_SERVER_URL='http://127.0.0.1:8080/v1/chat/completions'
+export LLAMA_SERVER_MODEL='qwen-local'
+```
+
+接口按 llama.cpp server 的 OpenAI-compatible `/v1/chat/completions` 格式调用。
+
+如果暂时不想调用本地大模型，可以显式关闭：
+
+```bash
+export LLAMA_SERVER_URL=''
+```
+
+### 2）DashScope 兜底
+
+如果本地 `llama_server` 不可用，且配置了 DashScope Key，会继续调用 DashScope：
 
 ```bash
 export DASHSCOPE_API_KEY=your_key
@@ -261,7 +293,7 @@ export DASHSCOPE_API_KEY=your_key
 export DASHSCOPE_API_TOKEN=your_token
 ```
 
-如果未配置，则会自动使用本地兜底文案，保证前端可正常使用。
+如果两类大模型都不可用，则会自动使用本地兜底文案，保证前端可正常使用。
 
 ---
 
