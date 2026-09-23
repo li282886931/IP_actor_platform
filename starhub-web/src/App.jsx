@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 
 import Sidebar from './components/Sidebar'
+import { webLogin } from './api'
 import Artist from './pages/Artist'
 import Generate from './pages/Generate'
 import Home from './pages/Home'
@@ -19,7 +20,7 @@ const routeTitles = {
   '/generate': 'AI 宣发',
 }
 
-function LoginView({ account, onAccountChange, role, onRoleChange, onLogin }) {
+function LoginView({ account, onAccountChange, role, onRoleChange, onLogin, loginStatus, loginError }) {
   return (
     <main className="login-page">
       <section className="login-intro">
@@ -80,9 +81,10 @@ function LoginView({ account, onAccountChange, role, onRoleChange, onLogin }) {
             <input type="password" placeholder="输入登录密码" />
           </label>
           <button className="button button-primary button-block" type="submit">
-            登录 {roleMeta[role].label}
+            {loginStatus === 'loading' ? '登录中...' : `登录 ${roleMeta[role].label}`}
           </button>
         </form>
+        {loginError && <div className="inline-message error">{loginError}</div>}
       </section>
     </main>
   )
@@ -93,6 +95,8 @@ export default function App() {
   const [role, setRole] = useState(() => localStorage.getItem('starhub-role') || 'C')
   const [isLoggedIn, setIsLoggedIn] = useState(() => localStorage.getItem('starhub-login') === 'true')
   const [account, setAccount] = useState('')
+  const [loginStatus, setLoginStatus] = useState('idle')
+  const [loginError, setLoginError] = useState('')
 
   useEffect(() => {
     localStorage.setItem('starhub-role', role)
@@ -102,9 +106,26 @@ export default function App() {
     localStorage.setItem('starhub-login', String(isLoggedIn))
   }, [isLoggedIn])
 
-  const handleLogin = (event) => {
+  const handleLogin = async (event) => {
     event.preventDefault()
-    setIsLoggedIn(true)
+    const loginAccount = account.trim() || 'operator@ruiyinchang.com'
+    setLoginStatus('loading')
+    setLoginError('')
+    try {
+      const response = await webLogin({ account: loginAccount, name: loginAccount })
+      const data = response.data?.data || {}
+      if (data.token) {
+        localStorage.setItem('starhub-token', data.token)
+      }
+      if (data.current_tenant) {
+        localStorage.setItem('starhub-tenant', JSON.stringify(data.current_tenant))
+      }
+      setIsLoggedIn(true)
+      setLoginStatus('success')
+    } catch {
+      setLoginStatus('error')
+      setLoginError('登录失败，请确认后端服务可用。')
+    }
   }
 
   if (!isLoggedIn) {
@@ -115,6 +136,8 @@ export default function App() {
         role={role}
         onRoleChange={setRole}
         onLogin={handleLogin}
+        loginStatus={loginStatus}
+        loginError={loginError}
       />
     )
   }
@@ -150,7 +173,14 @@ export default function App() {
                 <option value="G">政府 G</option>
               </select>
             </label>
-            <button className="button button-secondary" type="button" onClick={() => setIsLoggedIn(false)}>
+            <button
+              className="button button-secondary"
+              type="button"
+              onClick={() => {
+                localStorage.removeItem('starhub-token')
+                setIsLoggedIn(false)
+              }}
+            >
               切换账号
             </button>
           </div>

@@ -17,16 +17,21 @@
 ### 3. AI 宣发内容生成
 - 支持生成海报文案或短视频脚本
 - 输入演出名称、艺人、城市等信息后，可生成宣传语
-- 若未配置阿里云 DashScope API Key，则自动回退到 mock 文案
+- 若未配置阿里云 DashScope API Key，则自动回退到本地兜底文案
 
 ### 4. 预约功能
 - 用户可填写姓名和手机号预约演出
 - 预约信息写入数据库
 
-### 5. 数据库与示例数据
-- 使用 SQLite 数据库
-- 启动时自动创建 `demo.db` 并写入初始化数据
-- 包含 `artists`、`shows`、`orders`、`ai_generations` 等表
+### 5. 项目决策闭环
+- 支持 Web 登录并绑定默认客户空间
+- 支持项目创建、项目版本留痕、三情景财务测算
+- 支持人工推进决策与任务列表
+
+### 6. 数据库
+- 主库使用 MySQL 8.0，默认库名为 `ip_actor_platform`
+- 后端必须通过 `DATABASE_URL` 连接数据库，未配置时会拒绝启动
+- 核心表包含 `tenants`、`users`、`projects`、`project_versions`、`decisions`、`tasks` 等
 
 ---
 
@@ -38,7 +43,7 @@
 
 ## 技术栈
 
-- 后端：FastAPI + SQLAlchemy + SQLite
+- 后端：FastAPI + SQLAlchemy + MySQL 8.0
 - 前端：React + Vite + Axios
 - 语言：Python / JavaScript
 - AI 能力：可选接入 DashScope（Qwen）文本生成接口
@@ -61,6 +66,7 @@ pip install -r requirements.txt
 ```powershell
 cd D:\code\IP_actor_platform
 .\.venv\Scripts\Activate.ps1
+$env:DATABASE_URL="mysql+pymysql://root:123456789@127.0.0.1:3306/ip_actor_platform?charset=utf8mb4"
 python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
@@ -92,9 +98,16 @@ http://localhost:5173
 
 ```text
 IP_platform/
-├─ main.py                 # FastAPI 后端入口
+├─ main.py                 # 兼容入口，保留 uvicorn main:app 启动方式
+├─ app/                    # FastAPI 后端应用包
+│  ├─ main.py              # 应用工厂与路由注册
+│  ├─ database.py          # 数据库连接与会话依赖
+│  ├─ models.py            # SQLAlchemy ORM 模型
+│  ├─ schemas.py           # Pydantic 入参与出参模型
+│  ├─ routes.py            # API 路由层
+│  ├─ services.py          # 业务逻辑、种子数据与财务计算
+│  └─ responses.py         # 统一响应结构
 ├─ requirements.txt        # Python 依赖
-├─ demo.db                # SQLite 数据库（首次启动自动生成）
 ├─ starhub-web/           # React 前端工程
 │  ├─ src/
 │  ├─ package.json
@@ -150,6 +163,30 @@ IP_platform/
 - `GET /ping`
   - 返回 `{"ok": true}`
 
+### 5. Phase 1 项目决策接口
+- `POST /auth/web-login`
+  - Web 端登录，返回统一 token 与当前客户空间
+- `GET /tenants`
+  - 获取可用客户空间
+- `POST /tenants/switch`
+  - 切换客户空间
+- `GET /projects`
+  - 获取当前客户空间项目列表
+- `POST /projects`
+  - 创建项目并生成初始版本
+- `GET /projects/{project_id}`
+  - 获取项目详情与当前版本
+- `GET /projects/{project_id}/versions`
+  - 获取项目版本列表
+- `POST /finance/calculate`
+  - 执行三情景财务测算，并生成新的版本快照
+- `POST /decisions`
+  - 提交人工决策
+- `GET /tasks`
+  - 获取任务列表，可按 `project_id` 过滤
+- `POST /tasks`
+  - 创建任务
+
 ---
 
 ## 使用方法
@@ -167,6 +204,7 @@ pip install -r requirements.txt
 
 ```bash
 cd IP_platform
+export DATABASE_URL='mysql+pymysql://root:123456789@127.0.0.1:3306/ip_actor_platform?charset=utf8mb4'
 uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
@@ -240,8 +278,8 @@ export DASHSCOPE_API_TOKEN=your_token
 ## 注意事项
 
 1. 前端默认请求地址为 `http://localhost:8000`，如果后端运行在其他机器或端口，请修改 `starhub-web/src/api.js` 中的 `baseURL`。
-2. 数据库首次启动时会自动初始化示例数据，若需要重置数据库，可删除 `demo.db` 后重新启动。
-3. 本项目当前仍使用本地 SQLite 与初始化数据，生产部署前需补充权限、审计、监控与数据治理能力。
+2. MySQL 首次启动时会自动创建业务表和默认客户空间；后端不再创建或依赖本地 SQLite 数据库文件。
+3. 生产部署前需补充权限、审计、监控与数据治理能力。
 
 ---
 

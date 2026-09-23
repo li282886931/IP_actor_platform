@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 
-import { listShows } from '../api'
+import { calculateFinance, createDecision, createProject, listProjects, listShows, listTasks } from '../api'
 import ShowCard from '../components/ShowCard'
 
 const dashboardByRole = {
@@ -139,6 +139,267 @@ function RoleDashboard({ role }) {
   )
 }
 
+function BusinessWorkbench() {
+  const [projects, setProjects] = useState([])
+  const [tasks, setTasks] = useState([])
+  const [financeResults, setFinanceResults] = useState({})
+  const [status, setStatus] = useState('loading')
+  const [submitStatus, setSubmitStatus] = useState('idle')
+  const [projectActionStatus, setProjectActionStatus] = useState({})
+  const [message, setMessage] = useState('')
+  const [form, setForm] = useState({
+    name: '',
+    artist_name: '',
+    city: '',
+    venue: '',
+  })
+
+  useEffect(() => {
+    let active = true
+    setStatus('loading')
+
+    Promise.all([listProjects(), listTasks()])
+      .then(([projectResponse, taskResponse]) => {
+        if (!active) return
+        setProjects(projectResponse.data.data || [])
+        setTasks(taskResponse.data.data || [])
+        setStatus('success')
+      })
+      .catch(() => {
+        if (active) setStatus('error')
+      })
+
+    return () => {
+      active = false
+    }
+  }, [])
+
+  const handleFieldChange = (field, value) => {
+    setForm((current) => ({ ...current, [field]: value }))
+  }
+
+  const handleCreateProject = async (event) => {
+    event.preventDefault()
+    if (!form.name.trim()) {
+      setMessage('请填写项目名称')
+      return
+    }
+
+    setSubmitStatus('loading')
+    setMessage('')
+    try {
+      const response = await createProject({
+        ...form,
+        name: form.name.trim(),
+        artist_name: form.artist_name.trim(),
+        city: form.city.trim(),
+        venue: form.venue.trim(),
+      })
+      setProjects((current) => [response.data.data, ...current])
+      setForm({ name: '', artist_name: '', city: '', venue: '' })
+      setSubmitStatus('success')
+      setMessage('项目已创建，可继续补充财务测算参数。')
+    } catch {
+      setSubmitStatus('error')
+      setMessage('项目创建失败，请稍后重试。')
+    }
+  }
+
+  const formatNumber = (value) => new Intl.NumberFormat('zh-CN').format(value || 0)
+
+  const handleCalculateFinance = async (project) => {
+    setProjectActionStatus((current) => ({ ...current, [`finance-${project.id}`]: 'loading' }))
+    setMessage('')
+    try {
+      const response = await calculateFinance({
+        project_id: project.id,
+        expected_attendance: project.expected_attendance,
+        avg_ticket_price: project.avg_ticket_price,
+        artist_fee: project.artist_fee,
+        venue_cost: project.venue_cost,
+        marketing_cost: project.marketing_cost,
+        production_cost: project.production_cost,
+      })
+      const result = response.data.data
+      setFinanceResults((current) => ({ ...current, [project.id]: result }))
+      setProjects((current) => current.map((item) => (
+        item.id === project.id
+          ? { ...item, status: result.project_status || 'calculated', current_version_id: result.version_id || item.current_version_id }
+          : item
+      )))
+      setProjectActionStatus((current) => ({ ...current, [`finance-${project.id}`]: 'success' }))
+    } catch {
+      setProjectActionStatus((current) => ({ ...current, [`finance-${project.id}`]: 'error' }))
+      setMessage('财务测算失败，请补齐项目参数后重试。')
+    }
+  }
+
+  const handleAdvanceDecision = async (project) => {
+    const versionId = financeResults[project.id]?.version_id || project.current_version_id
+    setProjectActionStatus((current) => ({ ...current, [`decision-${project.id}`]: 'loading' }))
+    setMessage('')
+    try {
+      await createDecision({
+        project_id: project.id,
+        version_id: versionId,
+        decision_type: 'advance',
+        conditions: '完成政策审批、场地安全、艺人授权与资金合同确认后推进。',
+      })
+      setProjects((current) => current.map((item) => (
+        item.id === project.id ? { ...item, status: 'pending_confirmation' } : item
+      )))
+      setProjectActionStatus((current) => ({ ...current, [`decision-${project.id}`]: 'success' }))
+      setMessage('已提交推进决策')
+    } catch {
+      setProjectActionStatus((current) => ({ ...current, [`decision-${project.id}`]: 'error' }))
+      setMessage('决策提交失败，请确认已有可用版本。')
+    }
+  }
+
+  const activeProjects = projects.filter((project) => project.status !== 'archived').length
+  const pendingTasks = tasks.filter((task) => task.status === 'pending').length
+  const calculatedProjects = projects.filter((project) => project.status === 'calculated').length
+  const decisionProjects = projects.filter((project) => project.status === 'pending_confirmation').length
+
+  const metrics = [
+    { label: '项目总数', value: String(projects.length), delta: `${activeProjects} 个仍在推进` },
+    { label: '已测算项目', value: String(calculatedProjects), delta: '财务结果可复算留痕' },
+    { label: '待决策项目', value: String(decisionProjects), delta: '需负责人确认版本' },
+    { label: '待办任务', value: String(pendingTasks), delta: 'Agent / 人工任务池', tone: pendingTasks ? 'danger' : undefined },
+  ]
+
+  return (
+    <div className="page-stack">
+      <section className="page-lead">
+        <div>
+          <span className="eyebrow">PHASE 1 PROJECT FLOW</span>
+          <h2>项目决策工作台</h2>
+          <p>围绕项目创建、财务测算、版本留痕和人工确认，打通最小决策闭环。</p>
+        </div>
+        <Link className="button button-primary" to="/generate">生成宣发内容</Link>
+      </section>
+
+      <MetricGrid metrics={metrics} />
+
+      <section className="content-grid content-grid-wide">
+        <article className="panel">
+          <div className="panel-heading">
+            <div>
+              <span className="eyebrow">PROJECTS</span>
+              <h3>项目列表</h3>
+            </div>
+            <span className="section-count">{projects.length} 个项目</span>
+          </div>
+
+          {status === 'loading' && <div className="state-panel">正在加载项目数据...</div>}
+          {status === 'error' && (
+            <div className="state-panel error">
+              <strong>项目数据暂时不可用</strong>
+              <span>请确认后端服务已启动并连接到 MySQL。</span>
+            </div>
+          )}
+          {status === 'success' && projects.length === 0 && <div className="state-panel">暂无项目，先创建一个项目。</div>}
+          {status === 'success' && projects.length > 0 && (
+            <div className="summary-list">
+              {projects.map((project) => (
+                <span key={project.id}>
+                  {project.name}
+                  <strong>{project.status === 'calculated' ? '已测算' : project.status}</strong>
+                  <small>{[project.artist_name, project.city, project.venue].filter(Boolean).join(' · ') || '基础信息待补充'}</small>
+                  {financeResults[project.id]?.scenarios?.neutral && (
+                    <small>
+                      中性利润 ¥{formatNumber(financeResults[project.id].scenarios.neutral.profit)}
+                    </small>
+                  )}
+                  {financeResults[project.id]?.breakeven_attendance && (
+                    <small>保本人数 {formatNumber(financeResults[project.id].breakeven_attendance)}</small>
+                  )}
+                  <div className="inline-actions">
+                    <button
+                      className="button button-secondary"
+                      disabled={projectActionStatus[`finance-${project.id}`] === 'loading'}
+                      onClick={() => handleCalculateFinance(project)}
+                      type="button"
+                    >
+                      {projectActionStatus[`finance-${project.id}`] === 'loading' ? '测算中...' : '计算盈亏'}
+                    </button>
+                    <button
+                      className="button button-primary"
+                      disabled={projectActionStatus[`decision-${project.id}`] === 'loading'}
+                      onClick={() => handleAdvanceDecision(project)}
+                      type="button"
+                    >
+                      {projectActionStatus[`decision-${project.id}`] === 'loading' ? '提交中...' : '提交推进决策'}
+                    </button>
+                  </div>
+                </span>
+              ))}
+            </div>
+          )}
+        </article>
+
+        <article className="panel">
+          <div className="panel-heading">
+            <div>
+              <span className="eyebrow">TASKS</span>
+              <h3>待办任务</h3>
+            </div>
+          </div>
+
+          {tasks.length === 0 ? (
+            <div className="state-panel">暂无待办任务</div>
+          ) : (
+            <div className="activity-list">
+              {tasks.map((task) => (
+                <div key={task.id}>
+                  <span className={`activity-mark ${task.status === 'pending' ? 'warning' : 'success'}`} />
+                  <p>
+                    <strong>{task.title}</strong>
+                    <small>{task.due_date || '未设置截止时间'}</small>
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </article>
+      </section>
+
+      <section className="panel">
+        <div className="panel-heading">
+          <div>
+            <span className="eyebrow">CREATE PROJECT</span>
+            <h3>创建项目</h3>
+          </div>
+        </div>
+        <form className="generator-form" onSubmit={handleCreateProject}>
+          <div className="form-grid">
+            <label className="field">
+              <span>项目名称</span>
+              <input value={form.name} onChange={(event) => handleFieldChange('name', event.target.value)} />
+            </label>
+            <label className="field">
+              <span>艺人</span>
+              <input value={form.artist_name} onChange={(event) => handleFieldChange('artist_name', event.target.value)} />
+            </label>
+            <label className="field">
+              <span>城市</span>
+              <input value={form.city} onChange={(event) => handleFieldChange('city', event.target.value)} />
+            </label>
+            <label className="field">
+              <span>场馆</span>
+              <input value={form.venue} onChange={(event) => handleFieldChange('venue', event.target.value)} />
+            </label>
+          </div>
+          <button className="button button-primary" disabled={submitStatus === 'loading'} type="submit">
+            {submitStatus === 'loading' ? '创建中...' : '创建项目'}
+          </button>
+        </form>
+        {message && <div className={`inline-message ${submitStatus === 'success' ? 'success' : 'error'}`}>{message}</div>}
+      </section>
+    </div>
+  )
+}
+
 export default function Home({ role = 'C' }) {
   const [shows, setShows] = useState([])
   const [status, setStatus] = useState('loading')
@@ -166,6 +427,10 @@ export default function Home({ role = 'C' }) {
       active = false
     }
   }, [role])
+
+  if (role === 'B') {
+    return <BusinessWorkbench />
+  }
 
   if (role !== 'C') {
     return <RoleDashboard role={role} />
