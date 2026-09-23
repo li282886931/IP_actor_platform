@@ -52,4 +52,27 @@ describe('Generate', () => {
     resolveRequest({ data: { data: { result: 'Done' } } })
     await waitFor(() => expect(screen.getByText('Done')).toBeInTheDocument())
   })
+
+  it('requests new AI content on every click and renders the latest result automatically', async () => {
+    generateAI
+      .mockResolvedValueOnce({ data: { data: { result: 'First generated copy' } } })
+      .mockResolvedValueOnce({ data: { data: { result: 'Second generated copy' } } })
+
+    render(<Generate />)
+
+    const user = userEvent.setup()
+    const button = screen.getByRole('button', { name: /一键生成/ })
+
+    await user.click(button)
+    expect(await screen.findByText('First generated copy')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /一键生成/ }))
+    expect(await screen.findByText('Second generated copy')).toBeInTheDocument()
+    expect(screen.queryByText('First generated copy')).not.toBeInTheDocument()
+
+    expect(generateAI).toHaveBeenCalledTimes(2)
+    expect(generateAI.mock.calls[0][0].generation_nonce).toBeTruthy()
+    expect(generateAI.mock.calls[1][0].generation_nonce).toBeTruthy()
+    expect(generateAI.mock.calls[0][0].generation_nonce).not.toBe(generateAI.mock.calls[1][0].generation_nonce)
+  })
 })

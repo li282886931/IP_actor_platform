@@ -6,6 +6,7 @@ import { webLogin } from './api'
 import Artist from './pages/Artist'
 import Generate from './pages/Generate'
 import Home from './pages/Home'
+import ProjectDetail from './pages/ProjectDetail'
 import ShowDetail from './pages/ShowDetail'
 import UserManagement from './pages/UserManagement'
 
@@ -176,6 +177,8 @@ export default function App() {
 
   const currentTitle = location.pathname.startsWith('/show/')
     ? '演出详情'
+    : location.pathname.startsWith('/projects/')
+      ? '项目详情'
     : routeTitles[location.pathname] || roleMeta[activeRole].title
 
   return (
@@ -217,6 +220,7 @@ export default function App() {
             <Route path="/generate" element={<Generate role={activeRole} />} />
             <Route path="/users" element={<UserManagement currentUser={currentUser} />} />
             <Route path="/show/:id" element={<ShowDetail role={activeRole} />} />
+            <Route path="/projects/:id" element={<ProjectDetail />} />
             <Route path="*" element={<Navigate replace to="/" />} />
           </Routes>
         </main>

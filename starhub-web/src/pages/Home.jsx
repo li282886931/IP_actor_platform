@@ -310,7 +310,7 @@ function BusinessWorkbench() {
             <div className="summary-list">
               {projects.map((project) => (
                 <span key={project.id}>
-                  {project.name}
+                  <Link className="summary-title-link" to={`/projects/${project.id}`}>{project.name}</Link>
                   <strong>{project.status === 'calculated' ? '已测算' : project.status}</strong>
                   <small>{[project.artist_name, project.city, project.venue].filter(Boolean).join(' · ') || '基础信息待补充'}</small>
                   {financeResults[project.id]?.scenarios?.neutral && (

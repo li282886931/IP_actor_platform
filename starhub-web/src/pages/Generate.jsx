@@ -21,8 +21,12 @@ export default function Generate({ role = 'B' }) {
     event?.preventDefault()
     setStatus('loading')
     setCopyStatus('')
+    setResult('')
     try {
-      const response = await generateAI(form)
+      const response = await generateAI({
+        ...form,
+        generation_nonce: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      })
       setResult(response.data?.data?.result || response.data?.result || JSON.stringify(response.data))
       setStatus('success')
     } catch {

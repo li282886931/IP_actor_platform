@@ -34,6 +34,7 @@ class AIGenerateIn(BaseModel):
     show_name: Optional[str] = ''
     artist: Optional[str] = ''
     city: Optional[str] = ''
+    generation_nonce: Optional[str] = ''
 
 
 class OrderIn(BaseModel):

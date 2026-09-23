@@ -982,6 +982,16 @@ a.module-card:hover {
   line-height: 1.5;
 }
 
+.summary-title-link {
+  color: var(--text);
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.summary-title-link:hover {
+  color: var(--primary);
+}
+
 .inline-actions {
   display: flex;
   flex-wrap: wrap;
@@ -1000,6 +1010,49 @@ a.module-card:hover {
   display: grid;
   gap: 12px;
   width: 100%;
+}
+
+.project-detail-page .page-lead {
+  align-items: flex-start;
+}
+
+.project-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.compact-form {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.compact-form .button {
+  justify-self: start;
+  min-height: 38px;
+  padding: 0 14px;
+}
+
+.inline-form {
+  grid-template-columns: minmax(240px, 1fr) auto;
+  align-items: end;
+}
+
+.agent-answer {
+  margin-top: 14px;
+  padding: 14px;
+  color: var(--text);
+  line-height: 1.65;
+  background: var(--primary-soft);
+  border: 1px solid #9bb7eb;
+  border-radius: 6px;
+}
+
+.state-panel.compact {
+  min-height: auto;
+  margin-top: 14px;
+  padding: 16px;
 }
 
 .generator-layout {
@@ -1472,6 +1525,7 @@ a.module-card:hover {
   .show-grid,
   .form-grid,
   .artist-facts,
+  .project-detail-grid,
   .detail-facts {
     grid-template-columns: 1fr;
   }
@@ -1494,6 +1548,10 @@ a.module-card:hover {
   }
 
   .segmented-control {
+    grid-template-columns: 1fr;
+  }
+
+  .inline-form {
     grid-template-columns: 1fr;
   }
 

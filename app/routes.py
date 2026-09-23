@@ -1,4 +1,5 @@
 import os
+import random
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
@@ -87,7 +88,7 @@ def extract_llama_server_text(data):
     if isinstance(choices, list) and choices:
         first_choice = choices[0] or {}
         message = first_choice.get('message') or {}
-        content = message.get('content') or first_choice.get('text')
+        content = message.get('content') or message.get('reasoning_content') or first_choice.get('text')
         if content:
             return content
 
@@ -757,9 +758,12 @@ def get_artist(artist_id: int, db: Session = Depends(get_db)):
 @router.post('/ai/generate')
 def ai_generate(payload: AIGenerateIn, db: Session = Depends(get_db)):
     content_type_name = '短视频脚本' if payload.type == 'video_script' else '海报文案'
+    generation_nonce = payload.generation_nonce or uuid.uuid4().hex
+    generation_seed = random.randint(1, 2_147_483_647)
     prompt = f"""
     你是资深演出行业营销策划和票务转化专家。请为以下演出生成一份可直接用于运营投放的完整宣发方案。
 
+    本次创作批次：{generation_nonce}
     内容类型：{content_type_name}
     演出名称：{payload.show_name}
     艺人：{payload.artist}
@@ -772,6 +776,7 @@ def ai_generate(payload: AIGenerateIn, db: Session = Depends(get_db)):
     4. 海报文案要包含主标题、副标题、卖点 bullet、行动号召。
     5. 短视频脚本要包含 3-5 个镜头、画面、口播/字幕、节奏提示。
     6. 避免空泛形容词，尽量围绕艺人、城市、现场体验和购票转化展开。
+    7. 本次必须重新创作，不要复用上一次生成的句式、标题和行动号召；允许在传播角度、开场钩子、短视频节奏和投放建议上做变化。
     """.strip()
 
     result_text = None
@@ -786,8 +791,11 @@ def ai_generate(payload: AIGenerateIn, db: Session = Depends(get_db)):
                 json={
                     "model": llama_server_model,
                     "messages": [{"role": "user", "content": prompt}],
-                    "temperature": 0.75,
-                    "top_p": 0.9,
+                    "temperature": 0.95,
+                    "top_p": 0.92,
+                    "presence_penalty": 0.6,
+                    "frequency_penalty": 0.35,
+                    "seed": generation_seed,
                     "max_tokens": 1200,
                 },
                 timeout=LLAMA_SERVER_TIMEOUT_SECONDS,
@@ -807,7 +815,7 @@ def ai_generate(payload: AIGenerateIn, db: Session = Depends(get_db)):
                 json={
                     "model": "qwen-turbo",
                     "input": {"messages": [{"role": "user", "content": prompt}]},
-                    "parameters": {"temperature": 0.75, "top_p": 0.9, "max_tokens": 1200},
+                    "parameters": {"temperature": 0.95, "top_p": 0.92, "max_tokens": 1200},
                 },
             )
             resp.raise_for_status()

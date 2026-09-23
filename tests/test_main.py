@@ -33,6 +33,10 @@ def test_database_url_uses_config_when_env_is_missing(monkeypatch):
     assert app_module.resolve_database_url() == "mysql+pymysql://root:pw@127.0.0.1:3306/ip_actor_platform"
 
 
+def test_llama_server_timeout_allows_local_generation():
+    assert config_module.LLAMA_SERVER_TIMEOUT_SECONDS >= 90
+
+
 def make_temp_session(monkeypatch):
     engine = create_engine(
         "sqlite://",
@@ -161,7 +165,10 @@ def test_ai_generate_prefers_local_llama_server(monkeypatch):
     assert calls[0]["url"] == "http://127.0.0.1:18080/v1/chat/completions"
     assert calls[0]["json"]["model"] == "qwen-local"
     assert calls[0]["json"]["max_tokens"] >= 800
+    assert isinstance(calls[0]["json"]["seed"], int)
+    assert calls[0]["json"]["temperature"] >= 0.9
     prompt = calls[0]["json"]["messages"][0]["content"]
+    assert "本次创作批次" in prompt
     assert "完整宣发方案" in prompt
     assert "传播定位" in prompt
     assert "短视频脚本" in prompt
@@ -173,6 +180,14 @@ def test_ai_generate_prefers_local_llama_server(monkeypatch):
         assert generation.result == "Local llama copy"
     finally:
         db.close()
+
+
+def test_extract_llama_server_text_reads_reasoning_content():
+    assert routes_module.extract_llama_server_text({
+        "choices": [
+            {"message": {"content": "", "reasoning_content": "Reasoning model output"}}
+        ]
+    }) == "Reasoning model output"
 
 
 def test_list_shows_returns_seeded_data(monkeypatch):
