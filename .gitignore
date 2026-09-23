@@ -6,3 +6,5 @@ node_modules/
 .venv*
 starhub-web/dist
 .superpowers/
+*.pptx
+*.docx
