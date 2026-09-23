@@ -25,13 +25,27 @@
 
 ### 5. 项目决策闭环
 - 支持 Web 登录并绑定默认客户空间
+- 默认初始化 5 个账号，密码均为 `123456`
+- 登录后根据用户组渲染对应工作台，不再由前端手动选择角色
+- root 用户可在工作台内添加、删除用户并设置用户组
 - 支持项目创建、项目版本留痕、三情景财务测算
-- 支持人工推进决策与任务列表
+- 支持盈亏平衡测算、事实核验、证据上传、假设管理、关卡与风险管理
+- 支持人工推进决策、任务提交、Agent 项目问答、案例检索与报告分享
 
 ### 6. 数据库
 - 主库使用 MySQL 8.0，默认库名为 `ip_actor_platform`
 - 默认连接配置写在 `app/config.py`，也可以通过 `DATABASE_URL` 环境变量覆盖
-- 核心表包含 `tenants`、`users`、`projects`、`project_versions`、`decisions`、`tasks` 等
+- 核心表包含 `tenants`、`users`、`projects`、`project_versions`、`facts`、`evidences`、`assumptions`、`gates`、`risks`、`decisions`、`tasks`、`report_shares` 等
+
+默认账号：
+
+| 账号 | 密码 | 用户组 | 页面角色 |
+| --- | --- | --- | --- |
+| `root` | `123456` | `root` | 主办方 / 用户管理 |
+| `b_user` | `123456` | `B` | 主办方 |
+| `brand_user` | `123456` | `Brand` | 品牌方 |
+| `g_user` | `123456` | `G` | 政府 / 文旅 |
+| `c_user` | `123456` | `C` | 观众端 |
 
 ---
 
@@ -165,9 +179,19 @@ IP_platform/
 - `GET /ping`
   - 返回 `{"ok": true}`
 
-### 5. Phase 1 项目决策接口
+### 5. 项目决策闭环接口
 - `POST /auth/web-login`
-  - Web 端登录，返回统一 token 与当前客户空间
+  - Web 端账号密码登录，返回统一 token、当前客户空间和用户组角色
+- `POST /auth/wechat-login`
+  - 微信端登录入口；本地环境按 `code` 生成可测 openid，返回统一 token
+- `GET /users`
+  - 获取用户列表
+- `POST /users`
+  - 创建用户，参数：`account`, `name`, `password`, `group_code`
+- `DELETE /users/{user_id}`
+  - 删除用户，root 用户不可删除
+- `GET /user-groups`
+  - 获取可分配用户组；用户组会决定前端渲染的工作台角色
 - `GET /tenants`
   - 获取可用客户空间
 - `POST /tenants/switch`
@@ -182,12 +206,44 @@ IP_platform/
   - 获取项目版本列表
 - `POST /finance/calculate`
   - 执行三情景财务测算，并生成新的版本快照
+- `POST /finance/breakeven`
+  - 基于项目成本与票价计算盈亏平衡人数和目标利润人数
+- `GET /facts`
+  - 获取事实列表，可按 `project_id` 过滤
+- `POST /facts`
+  - 创建项目事实，参数：`project_id`, `title`, `content`, `source`
+- `POST /facts/{fact_id}/verify`
+  - 核验事实，支持状态：`verified`, `rejected`, `needs_review`
+- `GET /evidences`
+  - 获取证据列表，可按 `project_id` 或 `fact_id` 过滤
+- `POST /evidences/upload`
+  - 登记证据文件，参数：`project_id`, `fact_id`, `name`, `file_url`, `evidence_type`, `source`
+- `GET /assumptions`
+  - 获取项目假设列表，可按 `project_id` 过滤
+- `POST /assumptions`
+  - 创建项目假设，参数：`project_id`, `title`, `content`, `confidence`
+- `GET /gates`
+  - 获取项目关卡列表，可按 `project_id` 过滤
+- `POST /gates`
+  - 创建项目关卡，参数：`project_id`, `name`, `status`, `required_evidence`, `owner_group`
+- `GET /risks`
+  - 获取项目风险列表，可按 `project_id` 过滤
+- `POST /risks`
+  - 创建项目风险，参数：`project_id`, `title`, `level`, `mitigation`, `status`
 - `POST /decisions`
   - 提交人工决策
 - `GET /tasks`
   - 获取任务列表，可按 `project_id` 过滤
 - `POST /tasks`
   - 创建任务
+- `POST /tasks/{task_id}/submit`
+  - 提交任务结果，可关联 `evidence_ids`
+- `POST /agent/chat`
+  - 基于项目、关卡和风险返回下一步建议
+- `GET /cases/search`
+  - 检索项目案例，可按名称、艺人、城市或场馆关键字过滤
+- `POST /reports/{project_id}/share`
+  - 创建项目报告分享链接，可指定 `version_id` 和有效天数
 
 ---
 

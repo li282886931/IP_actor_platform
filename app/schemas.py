@@ -43,7 +43,29 @@ class OrderIn(BaseModel):
 
 class WebLoginIn(BaseModel):
     account: str
+    password: str
     name: Optional[str] = ''
+
+
+class WechatLoginIn(BaseModel):
+    code: str
+    name: Optional[str] = ''
+    phone: Optional[str] = ''
+    group_code: Optional[str] = 'C'
+
+
+class UserCreateIn(BaseModel):
+    account: str
+    name: str
+    password: str
+    group_code: str
+
+
+class UserUpdateIn(BaseModel):
+    name: Optional[str] = None
+    password: Optional[str] = None
+    group_code: Optional[str] = None
+    status: Optional[str] = None
 
 
 class ProjectIn(BaseModel):
@@ -71,6 +93,16 @@ class FinanceCalculateIn(BaseModel):
     production_cost: Optional[int] = None
 
 
+class FinanceBreakevenIn(BaseModel):
+    project_id: int
+    target_profit: Optional[int] = 0
+    avg_ticket_price: Optional[int] = None
+    artist_fee: Optional[int] = None
+    venue_cost: Optional[int] = None
+    marketing_cost: Optional[int] = None
+    production_cost: Optional[int] = None
+
+
 class DecisionIn(BaseModel):
     project_id: int
     version_id: int
@@ -84,3 +116,63 @@ class TaskIn(BaseModel):
     title: str
     description: Optional[str] = ''
     due_date: Optional[str] = ''
+
+
+class TaskSubmitIn(BaseModel):
+    result: str
+    evidence_ids: Optional[list[int]] = None
+
+
+class FactIn(BaseModel):
+    project_id: int
+    title: str
+    content: Optional[str] = ''
+    source: Optional[str] = ''
+
+
+class FactVerifyIn(BaseModel):
+    status: str
+    comment: Optional[str] = ''
+
+
+class AssumptionIn(BaseModel):
+    project_id: int
+    title: str
+    content: Optional[str] = ''
+    confidence: Optional[int] = 50
+
+
+class EvidenceUploadIn(BaseModel):
+    project_id: int
+    fact_id: Optional[int] = None
+    name: str
+    file_url: str
+    evidence_type: Optional[str] = 'document'
+    source: Optional[str] = ''
+    metadata: Optional[dict] = None
+
+
+class GateIn(BaseModel):
+    project_id: int
+    name: str
+    status: Optional[str] = 'pending'
+    required_evidence: Optional[str] = ''
+    owner_group: Optional[str] = ''
+
+
+class RiskIn(BaseModel):
+    project_id: int
+    title: str
+    level: Optional[str] = 'medium'
+    mitigation: Optional[str] = ''
+    status: Optional[str] = 'open'
+
+
+class AgentChatIn(BaseModel):
+    project_id: Optional[int] = None
+    message: str
+
+
+class ReportShareIn(BaseModel):
+    version_id: Optional[int] = None
+    expires_in_days: Optional[int] = 7

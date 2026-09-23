@@ -79,8 +79,10 @@ class User(Base):
     unionid = Column(String(128), nullable=True, unique=True)
     account = Column(String(255), nullable=True, unique=True)
     name = Column(String(255), nullable=False)
+    password_hash = Column(String(128), default='')
     phone = Column(String(64), default='')
     group_id = Column(Integer, ForeignKey('user_groups.id'), nullable=True)
+    group_code = Column(String(64), default='B')
     status = Column(String(64), default='active')
     created_at = Column(DateTime, server_default=func.current_timestamp())
 
@@ -155,4 +157,85 @@ class Task(Base):
     due_date = Column(String(64), default='')
     status = Column(String(64), default='pending')
     result = Column(Text, default='')
+    evidence_ids = Column(JSON, default=list)
+    created_at = Column(DateTime, server_default=func.current_timestamp())
+
+
+class Fact(Base):
+    __tablename__ = 'facts'
+
+    id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, ForeignKey('projects.id'), nullable=False)
+    title = Column(String(255), nullable=False)
+    content = Column(Text, default='')
+    source = Column(String(128), default='')
+    status = Column(String(64), default='pending')
+    verified_by = Column(Integer, ForeignKey('users.id'), nullable=True)
+    verified_comment = Column(Text, default='')
+    created_at = Column(DateTime, server_default=func.current_timestamp())
+    verified_at = Column(DateTime, nullable=True)
+
+
+class Assumption(Base):
+    __tablename__ = 'assumptions'
+
+    id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, ForeignKey('projects.id'), nullable=False)
+    title = Column(String(255), nullable=False)
+    content = Column(Text, default='')
+    confidence = Column(Integer, default=50)
+    status = Column(String(64), default='active')
+    created_by = Column(Integer, ForeignKey('users.id'), nullable=True)
+    created_at = Column(DateTime, server_default=func.current_timestamp())
+
+
+class Evidence(Base):
+    __tablename__ = 'evidences'
+
+    id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, ForeignKey('projects.id'), nullable=False)
+    fact_id = Column(Integer, ForeignKey('facts.id'), nullable=True)
+    name = Column(String(255), nullable=False)
+    file_url = Column(Text, nullable=False)
+    evidence_type = Column(String(64), default='document')
+    source = Column(String(128), default='')
+    status = Column(String(64), default='uploaded')
+    meta = Column(JSON, default=dict)
+    uploaded_by = Column(Integer, ForeignKey('users.id'), nullable=True)
+    created_at = Column(DateTime, server_default=func.current_timestamp())
+
+
+class Gate(Base):
+    __tablename__ = 'gates'
+
+    id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, ForeignKey('projects.id'), nullable=False)
+    name = Column(String(255), nullable=False)
+    status = Column(String(64), default='pending')
+    required_evidence = Column(Text, default='')
+    owner_group = Column(String(64), default='')
+    created_at = Column(DateTime, server_default=func.current_timestamp())
+
+
+class Risk(Base):
+    __tablename__ = 'risks'
+
+    id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, ForeignKey('projects.id'), nullable=False)
+    title = Column(String(255), nullable=False)
+    level = Column(String(64), default='medium')
+    mitigation = Column(Text, default='')
+    status = Column(String(64), default='open')
+    created_at = Column(DateTime, server_default=func.current_timestamp())
+
+
+class ReportShare(Base):
+    __tablename__ = 'report_shares'
+
+    id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, ForeignKey('projects.id'), nullable=False)
+    version_id = Column(Integer, ForeignKey('project_versions.id'), nullable=True)
+    token = Column(String(128), nullable=False, unique=True)
+    expires_in_days = Column(Integer, default=7)
+    created_by = Column(Integer, ForeignKey('users.id'), nullable=True)
     created_at = Column(DateTime, server_default=func.current_timestamp())

@@ -434,6 +434,49 @@ a:focus-visible {
   gap: 12px;
 }
 
+.user-group-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.user-group-card {
+  display: grid;
+  min-height: 132px;
+  padding: 16px;
+  text-align: left;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  box-shadow: var(--shadow);
+  cursor: pointer;
+}
+
+.user-group-card:hover,
+.user-group-card.active {
+  border-color: #8fb0ee;
+  background: var(--primary-soft);
+}
+
+.user-group-card span {
+  color: var(--primary);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.user-group-card strong {
+  margin-top: 12px;
+  font-size: 18px;
+}
+
+.user-group-card small {
+  margin-top: 8px;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .metric-card {
   display: grid;
   min-height: 116px;
@@ -786,6 +829,60 @@ a.module-card:hover {
   flex: 1;
 }
 
+.suggestion-field {
+  position: relative;
+}
+
+.suggestion-list {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  z-index: 20;
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  max-height: 260px;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.16);
+}
+
+.suggestion-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 11px 12px;
+  color: var(--text);
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.suggestion-option:hover,
+.suggestion-option:focus-visible {
+  background: var(--blue-soft);
+  outline: none;
+}
+
+.suggestion-option span {
+  display: grid;
+  gap: 3px;
+}
+
+.suggestion-option small,
+.suggestion-option em {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-style: normal;
+}
+
 .artist-overview {
   display: grid;
   grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
@@ -899,6 +996,12 @@ a.module-card:hover {
   font-size: 12px;
 }
 
+.inline-edit-form {
+  display: grid;
+  gap: 12px;
+  width: 100%;
+}
+
 .generator-layout {
   display: grid;
   grid-template-columns: minmax(360px, 0.9fr) minmax(420px, 1.1fr);
@@ -982,6 +1085,14 @@ a.module-card:hover {
   align-items: center;
   gap: 12px;
   margin-top: 22px;
+}
+
+.user-create-form > .button {
+  margin-top: 24px;
+}
+
+.project-create-form > .button {
+  margin-top: 24px;
 }
 
 .form-actions > span {
@@ -1356,6 +1467,7 @@ a.module-card:hover {
   }
 
   .metric-grid,
+  .user-group-grid,
   .module-grid,
   .show-grid,
   .form-grid,

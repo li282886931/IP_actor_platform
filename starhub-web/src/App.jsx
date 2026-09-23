@@ -7,6 +7,7 @@ import Artist from './pages/Artist'
 import Generate from './pages/Generate'
 import Home from './pages/Home'
 import ShowDetail from './pages/ShowDetail'
+import UserManagement from './pages/UserManagement'
 
 const roleMeta = {
   C: { label: '观众端', title: '演出发现', desc: '浏览演出、查看推荐并管理预约' },
@@ -18,9 +19,28 @@ const roleMeta = {
 const routeTitles = {
   '/artist': '艺人洞察',
   '/generate': 'AI 宣发',
+  '/users': '用户管理',
 }
 
-function LoginView({ account, onAccountChange, role, onRoleChange, onLogin, loginStatus, loginError }) {
+function roleFromUser(user) {
+  if (!user) return null
+  if (user.can_manage_users || user.group_code === 'root' || user.account === 'root') return 'B'
+  return roleMeta[user.role] ? user.role : null
+}
+
+function normalizeRole(value) {
+  return roleMeta[value] ? value : 'C'
+}
+
+function clearReadableCookies() {
+  document.cookie.split(';').forEach((cookie) => {
+    const name = cookie.split('=')[0]?.trim()
+    if (!name) return
+    document.cookie = `${name}=; Max-Age=0; path=/`
+  })
+}
+
+function LoginView({ account, onAccountChange, password, onPasswordChange, onLogin, loginStatus, loginError }) {
   return (
     <main className="login-page">
       <section className="login-intro">
@@ -38,16 +58,14 @@ function LoginView({ account, onAccountChange, role, onRoleChange, onLogin, logi
         </div>
         <div className="role-preview-grid">
           {Object.entries(roleMeta).map(([value, item]) => (
-            <button
-              className={`role-preview${role === value ? ' selected' : ''}`}
+            <article
+              className="role-preview"
               key={value}
-              onClick={() => onRoleChange(value)}
-              type="button"
             >
               <span>{item.label}</span>
               <strong>{item.title}</strong>
               <small>{item.desc}</small>
-            </button>
+            </article>
           ))}
         </div>
       </section>
@@ -56,18 +74,9 @@ function LoginView({ account, onAccountChange, role, onRoleChange, onLogin, logi
         <div className="login-panel-heading">
           <span className="eyebrow">WELCOME BACK</span>
           <h2>登录工作台</h2>
-          <p>选择身份并进入运营工作台。</p>
+          <p>使用账号密码登录，系统会根据用户组进入对应工作台。</p>
         </div>
         <form onSubmit={onLogin} className="login-form">
-          <label>
-            <span>登录角色</span>
-            <select value={role} onChange={(event) => onRoleChange(event.target.value)}>
-              <option value="C">观众 C</option>
-              <option value="B">主办方 B</option>
-              <option value="Brand">品牌 Brand</option>
-              <option value="G">政府 G</option>
-            </select>
-          </label>
           <label>
             <span>账号</span>
             <input
@@ -78,10 +87,15 @@ function LoginView({ account, onAccountChange, role, onRoleChange, onLogin, logi
           </label>
           <label>
             <span>密码</span>
-            <input type="password" placeholder="输入登录密码" />
+            <input
+              type="password"
+              value={password}
+              onChange={(event) => onPasswordChange(event.target.value)}
+              placeholder="输入登录密码"
+            />
           </label>
           <button className="button button-primary button-block" type="submit">
-            {loginStatus === 'loading' ? '登录中...' : `登录 ${roleMeta[role].label}`}
+            {loginStatus === 'loading' ? '登录中...' : '登录'}
           </button>
         </form>
         {loginError && <div className="inline-message error">{loginError}</div>}
@@ -92,11 +106,24 @@ function LoginView({ account, onAccountChange, role, onRoleChange, onLogin, logi
 
 export default function App() {
   const location = useLocation()
-  const [role, setRole] = useState(() => localStorage.getItem('starhub-role') || 'C')
+  const [role, setRole] = useState(() => normalizeRole(localStorage.getItem('starhub-role') || 'C'))
   const [isLoggedIn, setIsLoggedIn] = useState(() => localStorage.getItem('starhub-login') === 'true')
+  const [currentUser, setCurrentUser] = useState(() => {
+    const stored = localStorage.getItem('starhub-user')
+    return stored ? JSON.parse(stored) : null
+  })
   const [account, setAccount] = useState('')
+  const [password, setPassword] = useState('')
   const [loginStatus, setLoginStatus] = useState('idle')
   const [loginError, setLoginError] = useState('')
+  const activeRole = roleFromUser(currentUser) || normalizeRole(role)
+  const canManageUsers = currentUser?.can_manage_users || currentUser?.group_code === 'root' || currentUser?.account === 'root'
+
+  useEffect(() => {
+    if (activeRole !== role) {
+      setRole(activeRole)
+    }
+  }, [activeRole, role])
 
   useEffect(() => {
     localStorage.setItem('starhub-role', role)
@@ -108,14 +135,19 @@ export default function App() {
 
   const handleLogin = async (event) => {
     event.preventDefault()
-    const loginAccount = account.trim() || 'operator@ruiyinchang.com'
+    const loginAccount = account.trim()
     setLoginStatus('loading')
     setLoginError('')
     try {
-      const response = await webLogin({ account: loginAccount, name: loginAccount })
+      const response = await webLogin({ account: loginAccount, password })
       const data = response.data?.data || {}
       if (data.token) {
         localStorage.setItem('starhub-token', data.token)
+      }
+      if (data.user) {
+        localStorage.setItem('starhub-user', JSON.stringify(data.user))
+        setCurrentUser(data.user)
+        setRole(roleFromUser(data.user) || 'C')
       }
       if (data.current_tenant) {
         localStorage.setItem('starhub-tenant', JSON.stringify(data.current_tenant))
@@ -133,8 +165,8 @@ export default function App() {
       <LoginView
         account={account}
         onAccountChange={setAccount}
-        role={role}
-        onRoleChange={setRole}
+        password={password}
+        onPasswordChange={setPassword}
         onLogin={handleLogin}
         loginStatus={loginStatus}
         loginError={loginError}
@@ -144,54 +176,47 @@ export default function App() {
 
   const currentTitle = location.pathname.startsWith('/show/')
     ? '演出详情'
-    : routeTitles[location.pathname] || roleMeta[role].title
+    : routeTitles[location.pathname] || roleMeta[activeRole].title
 
   return (
     <div className="app-shell">
-      <Sidebar role={role} />
+      <Sidebar role={activeRole} canManageUsers={canManageUsers} />
 
       <div className="app-workspace">
         <header className="topbar">
           <div className="topbar-heading">
-            <span className="eyebrow">{roleMeta[role].label}</span>
+            <span className="eyebrow">{roleMeta[activeRole].label}</span>
             <h1>{currentTitle}</h1>
-            <p>{roleMeta[role].desc}</p>
+            <p>{roleMeta[activeRole].desc}</p>
           </div>
 
           <div className="topbar-actions">
             <span className="platform-badge">AI 驱动 · 运营平台</span>
-            <label className="role-control">
-              <span className="sr-only">当前角色</span>
-              <select
-                aria-label="当前角色"
-                value={role}
-                onChange={(event) => setRole(event.target.value)}
-              >
-                <option value="C">观众 C</option>
-                <option value="B">主办方 B</option>
-                <option value="Brand">品牌 Brand</option>
-                <option value="G">政府 G</option>
-              </select>
-            </label>
+            {currentUser && <span className="platform-badge">{currentUser.name || currentUser.account}</span>}
             <button
               className="button button-secondary"
               type="button"
               onClick={() => {
                 localStorage.removeItem('starhub-token')
+                localStorage.removeItem('starhub-user')
+                localStorage.removeItem('starhub-tenant')
+                clearReadableCookies()
+                setCurrentUser(null)
                 setIsLoggedIn(false)
               }}
             >
-              切换账号
+              退出
             </button>
           </div>
         </header>
 
         <main className="workspace-content">
           <Routes>
-            <Route path="/" element={<Home role={role} />} />
-            <Route path="/artist" element={<Artist role={role} />} />
-            <Route path="/generate" element={<Generate role={role} />} />
-            <Route path="/show/:id" element={<ShowDetail role={role} />} />
+            <Route path="/" element={<Home role={activeRole} currentUser={currentUser} />} />
+            <Route path="/artist" element={<Artist role={activeRole} />} />
+            <Route path="/generate" element={<Generate role={activeRole} />} />
+            <Route path="/users" element={<UserManagement currentUser={currentUser} />} />
+            <Route path="/show/:id" element={<ShowDetail role={activeRole} />} />
             <Route path="*" element={<Navigate replace to="/" />} />
           </Routes>
         </main>

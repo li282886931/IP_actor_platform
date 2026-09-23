@@ -23,8 +23,11 @@ const navigationByRole = {
   ],
 }
 
-export default function Sidebar({ role }) {
-  const items = navigationByRole[role] || navigationByRole.C
+export default function Sidebar({ role, canManageUsers = false }) {
+  const baseItems = navigationByRole[role] || navigationByRole.C
+  const items = canManageUsers
+    ? [...baseItems, { to: '/users', label: '用户管理', mark: '04' }]
+    : baseItems
 
   return (
     <aside className="app-sidebar">
@@ -41,9 +44,9 @@ export default function Sidebar({ role }) {
         {items.map((item) => (
           <NavLink
             key={item.to}
-            to={item.to}
-            end={item.to === '/'}
             className={({ isActive }) => `sidebar-link${isActive ? ' active' : ''}`}
+            end={item.to === '/'}
+            to={item.to}
           >
             <span className="sidebar-link-mark" aria-hidden="true">{item.mark}</span>
             <span>{item.label}</span>

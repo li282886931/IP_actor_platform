@@ -1,7 +1,14 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 
-import { calculateFinance, createDecision, createProject, listProjects, listShows, listTasks } from '../api'
+import {
+  calculateFinance,
+  createDecision,
+  createProject,
+  listProjects,
+  listShows,
+  listTasks,
+} from '../api'
 import ShowCard from '../components/ShowCard'
 
 const dashboardByRole = {
@@ -371,7 +378,7 @@ function BusinessWorkbench() {
             <h3>创建项目</h3>
           </div>
         </div>
-        <form className="generator-form" onSubmit={handleCreateProject}>
+        <form className="generator-form project-create-form" onSubmit={handleCreateProject}>
           <div className="form-grid">
             <label className="field">
               <span>项目名称</span>
@@ -396,6 +403,7 @@ function BusinessWorkbench() {
         </form>
         {message && <div className={`inline-message ${submitStatus === 'success' ? 'success' : 'error'}`}>{message}</div>}
       </section>
+
     </div>
   )
 }

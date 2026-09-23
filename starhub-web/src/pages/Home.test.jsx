@@ -4,7 +4,14 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
 
 import Home from './Home'
-import { calculateFinance, createDecision, createProject, listProjects, listShows, listTasks } from '../api'
+import {
+  calculateFinance,
+  createDecision,
+  createProject,
+  listProjects,
+  listShows,
+  listTasks,
+} from '../api'
 
 vi.mock('../api', () => ({
   calculateFinance: vi.fn(),
@@ -192,5 +199,20 @@ describe('Home', () => {
       })
     })
     expect(await screen.findByText('已提交推进决策')).toBeInTheDocument()
+  })
+
+  it('does not render user management inside the business workbench', async () => {
+    listProjects.mockResolvedValue({ data: { data: [] } })
+    listTasks.mockResolvedValue({ data: { data: [] } })
+
+    render(
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <Home role="B" currentUser={{ account: 'root', group_code: 'root', can_manage_users: true }} />
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByText('项目决策工作台')).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: '用户管理' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '添加用户' })).not.toBeInTheDocument()
   })
 })

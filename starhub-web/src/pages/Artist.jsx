@@ -6,6 +6,31 @@ export default function Artist({ role = 'B' }) {
   const [query, setQuery] = useState('')
   const [artist, setArtist] = useState(null)
   const [status, setStatus] = useState('idle')
+  const [suggestions, setSuggestions] = useState([])
+  const [isSuggestionOpen, setIsSuggestionOpen] = useState(false)
+
+  const handleQueryChange = async (event) => {
+    const value = event.target.value
+    const keyword = value.trim()
+    setQuery(value)
+
+    if (!keyword) {
+      setSuggestions([])
+      setIsSuggestionOpen(false)
+      setArtist(null)
+      setStatus('idle')
+      return
+    }
+
+    try {
+      const response = await searchArtist(keyword)
+      setSuggestions(response.data.data || [])
+      setIsSuggestionOpen(true)
+    } catch {
+      setSuggestions([])
+      setIsSuggestionOpen(false)
+    }
+  }
 
   const handleSearch = async (event) => {
     event?.preventDefault()
@@ -21,6 +46,14 @@ export default function Artist({ role = 'B' }) {
       setArtist(null)
       setStatus('error')
     }
+  }
+
+  const handleSelectSuggestion = (selectedArtist) => {
+    setQuery(selectedArtist.name)
+    setArtist(selectedArtist)
+    setStatus('success')
+    setSuggestions([])
+    setIsSuggestionOpen(false)
   }
 
   return (
@@ -42,13 +75,33 @@ export default function Artist({ role = 'B' }) {
           <span className="panel-note">支持艺人名称模糊搜索</span>
         </div>
         <form className="search-form" onSubmit={handleSearch}>
-          <label className="field grow">
+          <label className="field grow suggestion-field">
             <span>艺人名称</span>
             <input
               value={query}
-              onChange={(event) => setQuery(event.target.value)}
+              onChange={handleQueryChange}
+              onFocus={() => setIsSuggestionOpen(suggestions.length > 0)}
               placeholder="输入艺人名字，如：周杰伦"
             />
+            {isSuggestionOpen && suggestions.length > 0 && (
+              <div className="suggestion-list" role="listbox" aria-label="艺人搜索建议">
+                {suggestions.map((item) => (
+                  <button
+                    className="suggestion-option"
+                    key={item.id}
+                    type="button"
+                    aria-label={`选择 ${item.name}`}
+                    onClick={() => handleSelectSuggestion(item)}
+                  >
+                    <span>
+                      <strong>{item.name}</strong>
+                      <small>{item.tags || '暂无标签'}</small>
+                    </span>
+                    <em>热度 {item.heat_score}</em>
+                  </button>
+                ))}
+              </div>
+            )}
           </label>
           <button className="button button-primary" disabled={status === 'loading'} type="submit">
             {status === 'loading' ? '查询中...' : '查询热度'}
