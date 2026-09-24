@@ -8,10 +8,14 @@ from . import database
 from .models import (
     Assumption,
     Artist,
+    DocumentParseJob,
     Evidence,
+    ExternalDataJob,
     Fact,
     Gate,
+    OSSUpload,
     ProjectVersion,
+    ProjectAnalysisJob,
     ReportShare,
     Risk,
     Show,
@@ -339,6 +343,58 @@ def serialize_evidence(evidence: Evidence):
     }
 
 
+def serialize_oss_upload(upload: OSSUpload):
+    return {
+        "id": upload.id,
+        "project_id": upload.project_id,
+        "fact_id": upload.fact_id,
+        "provider": upload.provider,
+        "bucket": upload.bucket,
+        "object_key": upload.object_key,
+        "file_name": upload.file_name,
+        "content_type": upload.content_type,
+        "evidence_type": upload.evidence_type,
+        "source": upload.source,
+        "status": upload.status,
+        "file_url": upload.file_url,
+        "size": upload.size,
+        "checksum": upload.checksum,
+        "metadata": upload.meta or {},
+    }
+
+
+def serialize_document_parse_job(job: DocumentParseJob):
+    return {
+        "id": job.id,
+        "tenant_id": job.tenant_id,
+        "project_id": job.project_id,
+        "evidence_id": job.evidence_id,
+        "file_name": job.file_name,
+        "file_kind": job.file_kind,
+        "parse_scope": job.parse_scope,
+        "purpose": job.purpose,
+        "status": job.status,
+        "parameters": job.parameters or {},
+        "result": job.result or {},
+        "created_by": job.created_by,
+    }
+
+
+def serialize_project_analysis_job(job: ProjectAnalysisJob):
+    return {
+        "id": job.id,
+        "tenant_id": job.tenant_id,
+        "project_id": job.project_id,
+        "version_id": job.version_id,
+        "purpose": job.purpose,
+        "status": job.status,
+        "parameters": job.parameters or {},
+        "result": job.result or {},
+        "error_message": job.error_message,
+        "requested_by": job.requested_by,
+    }
+
+
 def serialize_gate(gate: Gate):
     return {
         "id": gate.id,
@@ -369,6 +425,23 @@ def serialize_report_share(share: ReportShare):
         "token": share.token,
         "expires_in_days": share.expires_in_days,
         "share_url": f"/shared/reports/{share.token}",
+    }
+
+
+def serialize_external_data_job(job: ExternalDataJob):
+    return {
+        "id": job.id,
+        "tenant_id": job.tenant_id,
+        "project_id": job.project_id,
+        "source_type": job.source_type,
+        "provider": job.provider,
+        "query": job.query,
+        "purpose": job.purpose,
+        "status": job.status,
+        "parameters": job.parameters or {},
+        "result": job.result or {},
+        "error_message": job.error_message,
+        "requested_by": job.requested_by,
     }
 
 

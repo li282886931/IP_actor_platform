@@ -1,0 +1,30 @@
+<view class="page">
+  <view class="hero">
+    <view class="eyebrow">{{screen.group}} · {{screen.id}}</view>
+    <view class="title">{{screen.title}}</view>
+    <view class="subtitle">{{screen.subtitle}}</view>
+    <view class="highlight">{{screen.highlight}}</view>
+  </view>
+
+  <view wx:if="{{isForm}}" class="panel">
+    <view class="panel-title">输入与联调</view>
+    <input class="input" value="{{keyword}}" bindinput="onInput" placeholder="{{placeholder}}" />
+  </view>
+
+  <view class="panel">
+    <view class="panel-head">
+      <view class="panel-title">业务记录</view>
+      <view class="state {{loadState}}">{{loadState}}</view>
+    </view>
+    <view wx:for="{{items}}" wx:key="id" class="item">
+      <view class="item-main">
+        <view class="item-title">{{item.title}}</view>
+        <view class="item-desc">{{item.description}}</view>
+      </view>
+      <view class="badge">{{item.status}}</view>
+    </view>
+  </view>
+
+  <view class="message" wx:if="{{message}}">{{message}}</view>
+  <button class="primary" bindtap="onPrimaryTap">{{screen.primaryAction}}</button>
+</view>

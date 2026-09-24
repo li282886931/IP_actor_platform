@@ -1,4 +1,7 @@
 import os
+import zipfile
+from pathlib import Path
+from xml.sax.saxutils import escape
 
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -10,6 +13,90 @@ import main as app_module
 import app.config as config_module
 import app.database as db_module
 import app.routes as routes_module
+
+
+def write_minimal_docx(path: Path, paragraphs: list[str]):
+    document_xml = "".join(
+        f"<w:p><w:r><w:t>{escape(paragraph)}</w:t></w:r></w:p>"
+        for paragraph in paragraphs
+    )
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr(
+            "[Content_Types].xml",
+            """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+</Types>""",
+        )
+        archive.writestr(
+            "_rels/.rels",
+            """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+</Relationships>""",
+        )
+        archive.writestr(
+            "word/document.xml",
+            f"""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>{document_xml}</w:body></w:document>""",
+        )
+
+
+def write_minimal_xlsx(path: Path, rows: list[list[object]]):
+    def cell_ref(row_index: int, column_index: int):
+        return f"{chr(ord('A') + column_index)}{row_index}"
+
+    sheet_rows = []
+    for row_index, row in enumerate(rows, start=1):
+        cells = []
+        for column_index, value in enumerate(row):
+            ref = cell_ref(row_index, column_index)
+            if isinstance(value, (int, float)):
+                cells.append(f'<c r="{ref}"><v>{value}</v></c>')
+            else:
+                cells.append(f'<c r="{ref}" t="inlineStr"><is><t>{escape(str(value))}</t></is></c>')
+        sheet_rows.append(f'<row r="{row_index}">{"".join(cells)}</row>')
+
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr(
+            "[Content_Types].xml",
+            """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+  <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+</Types>""",
+        )
+        archive.writestr(
+            "_rels/.rels",
+            """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>""",
+        )
+        archive.writestr(
+            "xl/_rels/workbook.xml.rels",
+            """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+</Relationships>""",
+        )
+        archive.writestr(
+            "xl/workbook.xml",
+            """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+ xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets>
+</workbook>""",
+        )
+        archive.writestr(
+            "xl/worksheets/sheet1.xml",
+            f"""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>{"".join(sheet_rows)}</sheetData></worksheet>""",
+        )
 
 
 def test_database_url_example_lives_in_config_file():
@@ -34,7 +121,21 @@ def test_database_url_uses_config_when_env_is_missing(monkeypatch):
 
 
 def test_llama_server_timeout_allows_local_generation():
-    assert config_module.LLAMA_SERVER_TIMEOUT_SECONDS >= 90
+    assert config_module.LLAMA_SERVER_TIMEOUT_SECONDS >= 300
+
+
+def test_backend_schema_sql_contains_all_model_tables():
+    schema_path = Path(app_module.__file__).parent / "app" / "schema.sql"
+    assert schema_path.exists()
+    schema_sql = schema_path.read_text(encoding="utf-8")
+    table_names = {table.name for table in app_module.Base.metadata.sorted_tables}
+
+    for table_name in table_names:
+        assert f"CREATE TABLE {table_name}" in schema_sql
+
+    assert "ENGINE=InnoDB" in schema_sql
+    assert "FOREIGN KEY" in schema_sql
+    assert "project_analysis_jobs" in schema_sql
 
 
 def make_temp_session(monkeypatch):
@@ -110,6 +211,359 @@ def test_ai_generate_returns_nested_result_and_records_generation(monkeypatch):
         db.close()
 
 
+def test_oss_upload_reservation_creates_evidence_after_completion(monkeypatch):
+    client, session_factory = make_test_client(monkeypatch)
+
+    try:
+        project_response = client.post(
+            "/projects",
+            json={"name": "OSS 资料上传项目", "artist_name": "测试艺人", "city": "北京"},
+        )
+        assert project_response.status_code == 200
+        project = project_response.json()["data"]
+
+        initiate_response = client.post(
+            "/oss/uploads/initiate",
+            json={
+                "project_id": project["id"],
+                "file_name": "venue-contract.pdf",
+                "content_type": "application/pdf",
+                "evidence_type": "contract",
+                "source": "venue",
+            },
+        )
+        assert initiate_response.status_code == 200
+        upload = initiate_response.json()["data"]
+        assert upload["status"] == "pending"
+        assert upload["provider"] == "local-placeholder"
+        assert upload["object_key"].startswith(f"projects/{project['id']}/")
+        assert upload["upload_url"].endswith(upload["object_key"])
+        assert upload["headers"]["Content-Type"] == "application/pdf"
+
+        complete_response = client.post(
+            f"/oss/uploads/{upload['id']}/complete",
+            json={
+                "file_url": "oss://bucket/projects/venue-contract.pdf",
+                "size": 1024,
+                "checksum": "sha256-local",
+                "metadata": {"stage": "contract-review"},
+            },
+        )
+        assert complete_response.status_code == 200
+        completed = complete_response.json()["data"]
+        assert completed["upload"]["status"] == "completed"
+        assert completed["evidence"]["project_id"] == project["id"]
+        assert completed["evidence"]["file_url"] == "oss://bucket/projects/venue-contract.pdf"
+        assert completed["evidence"]["metadata"]["object_key"] == upload["object_key"]
+        assert completed["evidence"]["metadata"]["size"] == 1024
+    finally:
+        app_module.app.dependency_overrides.clear()
+
+    db = session_factory()
+    try:
+        assert db.query(app_module.OSSUpload).count() == 1
+        assert db.query(app_module.Evidence).count() == 1
+    finally:
+        db.close()
+
+
+def test_external_data_async_job_can_be_run_and_queried(monkeypatch):
+    client, session_factory = make_test_client(monkeypatch)
+
+    try:
+        project_response = client.post(
+            "/projects",
+            json={"name": "外部数据采集项目", "artist_name": "测试艺人", "city": "上海"},
+        )
+        assert project_response.status_code == 200
+        project = project_response.json()["data"]
+
+        create_response = client.post(
+            "/external-data/jobs",
+            json={
+                "project_id": project["id"],
+                "source_type": "web",
+                "provider": "mcp",
+                "query": "测试艺人 上海 演唱会 热度",
+                "purpose": "artist_heat",
+                "parameters": {"time_range": "30d"},
+            },
+        )
+        assert create_response.status_code == 200
+        job = create_response.json()["data"]
+        assert job["status"] == "queued"
+        assert job["provider"] == "mcp"
+        assert job["parameters"]["time_range"] == "30d"
+
+        run_response = client.post(f"/external-data/jobs/{job['id']}/run")
+        assert run_response.status_code == 200
+        completed = run_response.json()["data"]
+        assert completed["status"] == "completed"
+        assert completed["result"]["source_type"] == "web"
+        assert completed["result"]["provider"] == "mcp"
+        assert completed["result"]["requires_human_verification"] is True
+
+        get_response = client.get(f"/external-data/jobs/{job['id']}")
+        assert get_response.status_code == 200
+        assert get_response.json()["data"]["status"] == "completed"
+
+        list_response = client.get(f"/external-data/jobs?project_id={project['id']}")
+        assert list_response.status_code == 200
+        assert list_response.json()["data"][0]["id"] == job["id"]
+    finally:
+        app_module.app.dependency_overrides.clear()
+
+    db = session_factory()
+    try:
+        assert db.query(app_module.ExternalDataJob).count() == 1
+    finally:
+        db.close()
+
+
+def test_document_parse_job_extracts_docx_and_writes_review_candidates(monkeypatch, tmp_path):
+    client, session_factory = make_test_client(monkeypatch)
+    docx_path = tmp_path / "venue-contract.docx"
+    write_minimal_docx(
+        docx_path,
+        [
+            "项目名称：杭州音乐节",
+            "艺人：测试艺人",
+            "城市：杭州",
+            "场馆：城市公园",
+            "档期：2026-10-01",
+            "预计人数：20000",
+            "平均票价：399",
+            "审批：需补充营业性演出批文",
+            "风险：雨季天气影响户外执行",
+        ],
+    )
+
+    try:
+        project_response = client.post(
+            "/projects",
+            json={"name": "DOCX 资料解析项目", "artist_name": "测试艺人", "city": "杭州"},
+        )
+        assert project_response.status_code == 200
+        project = project_response.json()["data"]
+
+        evidence_response = client.post(
+            "/evidences/upload",
+            json={
+                "project_id": project["id"],
+                "name": "场馆合同.docx",
+                "file_url": str(docx_path),
+                "evidence_type": "contract",
+                "source": "venue",
+            },
+        )
+        assert evidence_response.status_code == 200
+        evidence = evidence_response.json()["data"]
+
+        create_job_response = client.post(
+            f"/evidences/{evidence['id']}/parse-jobs",
+            json={"purpose": "project_evidence"},
+        )
+        assert create_job_response.status_code == 200
+        job = create_job_response.json()["data"]
+        assert job["status"] == "queued"
+        assert job["file_kind"] == "docx"
+        assert job["parse_scope"] == "single_project"
+
+        run_response = client.post(f"/document-parse-jobs/{job['id']}/run")
+        assert run_response.status_code == 200
+        completed = run_response.json()["data"]
+        assert completed["status"] == "completed"
+        assert completed["result"]["requires_human_verification"] is True
+        assert "杭州音乐节" in completed["result"]["extracted_text"]
+        assert completed["result"]["candidate_facts"][0]["content"].startswith("项目名称：杭州音乐节")
+        assert completed["result"]["created_records"]["facts"]
+        assert completed["result"]["created_records"]["assumptions"]
+        assert completed["result"]["created_records"]["risks"]
+        assert completed["result"]["created_records"]["gates"]
+    finally:
+        app_module.app.dependency_overrides.clear()
+
+    db = session_factory()
+    try:
+        assert db.query(app_module.DocumentParseJob).count() == 1
+        fact = db.query(app_module.Fact).filter(app_module.Fact.project_id == project["id"]).one()
+        assert fact.status == "pending"
+        assert "杭州音乐节" in fact.content
+        assert db.query(app_module.Assumption).filter(app_module.Assumption.project_id == project["id"]).one().status == "active"
+        assert db.query(app_module.Risk).filter(app_module.Risk.project_id == project["id"]).one().status == "open"
+        assert db.query(app_module.Gate).filter(app_module.Gate.project_id == project["id"]).one().status == "pending"
+    finally:
+        db.close()
+
+
+def test_spreadsheet_parse_job_extracts_xlsx_candidates_and_confirms_multiple_projects(monkeypatch, tmp_path):
+    client, session_factory = make_test_client(monkeypatch)
+    xlsx_path = tmp_path / "tour-budget.xlsx"
+    write_minimal_xlsx(
+        xlsx_path,
+        [
+            ["项目名称", "艺人", "城市", "场馆", "档期", "预计人数", "平均票价", "艺人费", "场租", "宣发费", "制作费"],
+            ["巡演北京站", "测试艺人", "北京", "北京场馆", "2026-10-01", 12000, 680, 2000000, 800000, 500000, 700000],
+            ["巡演上海站", "测试艺人", "上海", "上海场馆", "2026-10-08", 10000, 780, 2100000, 900000, 550000, 750000],
+        ],
+    )
+
+    try:
+        host_project_response = client.post(
+            "/projects",
+            json={"name": "巡演批量导入", "artist_name": "测试艺人", "city": "全国"},
+        )
+        assert host_project_response.status_code == 200
+        host_project = host_project_response.json()["data"]
+
+        evidence_response = client.post(
+            "/evidences/upload",
+            json={
+                "project_id": host_project["id"],
+                "name": "巡演城市预算表.xlsx",
+                "file_url": str(xlsx_path),
+                "evidence_type": "spreadsheet",
+                "source": "finance",
+            },
+        )
+        assert evidence_response.status_code == 200
+        evidence = evidence_response.json()["data"]
+
+        job_response = client.post(
+            f"/evidences/{evidence['id']}/parse-jobs",
+            json={"parse_scope": "batch_projects", "purpose": "tour_budget_import"},
+        )
+        assert job_response.status_code == 200
+        job = job_response.json()["data"]
+        assert job["file_kind"] == "spreadsheet"
+        assert job["parse_scope"] == "batch_projects"
+
+        run_response = client.post(f"/document-parse-jobs/{job['id']}/run")
+        assert run_response.status_code == 200
+        parsed = run_response.json()["data"]
+        assert len(parsed["result"]["candidate_projects"]) == 2
+        assert parsed["result"]["candidate_projects"][0]["name"] == "巡演北京站"
+        assert parsed["result"]["candidate_projects"][0]["venue_cost"] == 800000
+        assert parsed["result"]["field_mapping"]["艺人"] == "artist_name"
+        assert parsed["result"]["requires_mapping_confirmation"] is True
+
+        confirm_response = client.post(f"/document-parse-jobs/{job['id']}/confirm-projects")
+        assert confirm_response.status_code == 200
+        confirmed = confirm_response.json()["data"]
+        assert len(confirmed["projects"]) == 2
+        assert {project["city"] for project in confirmed["projects"]} == {"北京", "上海"}
+        assert all(project["current_version_id"] for project in confirmed["projects"])
+    finally:
+        app_module.app.dependency_overrides.clear()
+
+    db = session_factory()
+    try:
+        assert db.query(app_module.DocumentParseJob).count() == 1
+        assert db.query(app_module.Project).count() == 3
+        assert db.query(app_module.ProjectVersion).count() == 3
+    finally:
+        db.close()
+
+
+def test_project_analysis_job_builds_human_review_recommendation(monkeypatch, tmp_path):
+    client, session_factory = make_test_client(monkeypatch)
+    docx_path = tmp_path / "analysis-source.docx"
+    write_minimal_docx(
+        docx_path,
+        [
+            "项目名称：杭州音乐节",
+            "艺人：测试艺人",
+            "风险：雨季天气影响户外执行",
+            "审批：需补充营业性演出批文",
+        ],
+    )
+
+    try:
+        project_response = client.post(
+            "/projects",
+            json={
+                "name": "杭州音乐节",
+                "artist_name": "测试艺人",
+                "city": "杭州",
+                "venue": "城市公园",
+                "schedule": "2026-10-01",
+                "expected_attendance": 20000,
+                "avg_ticket_price": 399,
+                "artist_fee": 2600000,
+                "venue_cost": 900000,
+                "marketing_cost": 500000,
+                "production_cost": 1200000,
+            },
+        )
+        project = project_response.json()["data"]
+        finance_response = client.post(
+            "/finance/calculate",
+            json={
+                "project_id": project["id"],
+                "expected_attendance": 20000,
+                "avg_ticket_price": 399,
+                "artist_fee": 2600000,
+                "venue_cost": 900000,
+                "marketing_cost": 500000,
+                "production_cost": 1200000,
+            },
+        )
+        assert finance_response.status_code == 200
+
+        evidence_response = client.post(
+            "/evidences/upload",
+            json={
+                "project_id": project["id"],
+                "name": "项目资料.docx",
+                "file_url": str(docx_path),
+                "evidence_type": "document",
+                "source": "operator",
+            },
+        )
+        evidence = evidence_response.json()["data"]
+        parse_job = client.post(f"/evidences/{evidence['id']}/parse-jobs", json={}).json()["data"]
+        assert client.post(f"/document-parse-jobs/{parse_job['id']}/run").status_code == 200
+
+        external_response = client.post(
+            "/external-data/jobs",
+            json={
+                "project_id": project["id"],
+                "source_type": "web",
+                "provider": "mcp",
+                "query": "杭州 音乐节 天气 交通 舆情",
+                "purpose": "market_risk",
+            },
+        )
+        external_job = external_response.json()["data"]
+        assert client.post(f"/external-data/jobs/{external_job['id']}/run").status_code == 200
+
+        create_response = client.post(
+            f"/projects/{project['id']}/analysis-jobs",
+            json={"purpose": "investment_decision"},
+        )
+        assert create_response.status_code == 200
+        analysis_job = create_response.json()["data"]
+        assert analysis_job["status"] == "completed"
+        assert analysis_job["version_id"] == finance_response.json()["data"]["version_id"]
+        assert analysis_job["result"]["requires_human_verification"] is True
+        assert analysis_job["result"]["recommendation"] in {"advance", "conditional_advance", "pause", "reject"}
+        assert analysis_job["result"]["inputs"]["facts"]["pending"] >= 1
+        assert analysis_job["result"]["inputs"]["risks"]["open"] >= 1
+        assert analysis_job["result"]["human_review_questions"]
+
+        get_response = client.get(f"/projects/{project['id']}/analysis-jobs/{analysis_job['id']}")
+        assert get_response.status_code == 200
+        assert get_response.json()["data"]["id"] == analysis_job["id"]
+    finally:
+        app_module.app.dependency_overrides.clear()
+
+    db = session_factory()
+    try:
+        assert db.query(app_module.ProjectAnalysisJob).count() == 1
+    finally:
+        db.close()
+
+
 def test_ai_generate_prefers_local_llama_server(monkeypatch):
     session_factory = make_temp_session(monkeypatch)
     app_module.init_db()
@@ -167,11 +621,14 @@ def test_ai_generate_prefers_local_llama_server(monkeypatch):
     assert calls[0]["json"]["max_tokens"] >= 800
     assert isinstance(calls[0]["json"]["seed"], int)
     assert calls[0]["json"]["temperature"] >= 0.9
+    assert calls[0]["json"]["chat_template_kwargs"] == {"enable_thinking": False}
     prompt = calls[0]["json"]["messages"][0]["content"]
+    assert prompt.startswith("/no_think")
     assert "本次创作批次" in prompt
     assert "完整宣发方案" in prompt
     assert "传播定位" in prompt
     assert "短视频脚本" in prompt
+    assert "禁止编造" in prompt
     assert calls[0]["timeout"] == config_module.LLAMA_SERVER_TIMEOUT_SECONDS
 
     db = session_factory()
@@ -182,12 +639,12 @@ def test_ai_generate_prefers_local_llama_server(monkeypatch):
         db.close()
 
 
-def test_extract_llama_server_text_reads_reasoning_content():
+def test_extract_llama_server_text_does_not_expose_reasoning_content():
     assert routes_module.extract_llama_server_text({
         "choices": [
             {"message": {"content": "", "reasoning_content": "Reasoning model output"}}
         ]
-    }) == "Reasoning model output"
+    }) is None
 
 
 def test_list_shows_returns_seeded_data(monkeypatch):

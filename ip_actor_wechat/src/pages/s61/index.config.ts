@@ -1,0 +1,3 @@
+export default definePageConfig({
+  navigationBarTitleText: '星河计划 2027 全国巡演',
+})

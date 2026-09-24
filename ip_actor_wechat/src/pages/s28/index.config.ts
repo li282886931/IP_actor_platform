@@ -1,0 +1,3 @@
+export default definePageConfig({
+  navigationBarTitleText: '保守情况：只剩很薄利润',
+})

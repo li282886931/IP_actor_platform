@@ -1,0 +1,3 @@
+export default definePageConfig({
+  navigationBarTitleText: '你准备做多大，手上有多少钱？',
+})

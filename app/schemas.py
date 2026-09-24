@@ -153,6 +153,30 @@ class EvidenceUploadIn(BaseModel):
     metadata: Optional[dict] = None
 
 
+class OSSUploadInitiateIn(BaseModel):
+    project_id: int
+    fact_id: Optional[int] = None
+    file_name: str
+    content_type: Optional[str] = 'application/octet-stream'
+    evidence_type: Optional[str] = 'document'
+    source: Optional[str] = ''
+    metadata: Optional[dict] = None
+
+
+class OSSUploadCompleteIn(BaseModel):
+    file_url: Optional[str] = None
+    size: Optional[int] = None
+    checksum: Optional[str] = ''
+    fact_id: Optional[int] = None
+    metadata: Optional[dict] = None
+
+
+class DocumentParseJobIn(BaseModel):
+    parse_scope: Optional[str] = None
+    purpose: Optional[str] = ''
+    parameters: Optional[dict] = None
+
+
 class GateIn(BaseModel):
     project_id: int
     name: str
@@ -177,3 +201,18 @@ class AgentChatIn(BaseModel):
 class ReportShareIn(BaseModel):
     version_id: Optional[int] = None
     expires_in_days: Optional[int] = 7
+
+
+class ExternalDataJobIn(BaseModel):
+    project_id: Optional[int] = None
+    source_type: str
+    provider: Optional[str] = 'mcp'
+    query: str
+    purpose: Optional[str] = ''
+    parameters: Optional[dict] = None
+
+
+class ProjectAnalysisJobIn(BaseModel):
+    version_id: Optional[int] = None
+    purpose: Optional[str] = ''
+    parameters: Optional[dict] = None

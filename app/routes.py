@@ -1,5 +1,6 @@
 import os
 import random
+import re
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
@@ -15,11 +16,15 @@ from .models import (
     Assumption,
     Artist,
     Decision,
+    DocumentParseJob,
     Evidence,
+    ExternalDataJob,
     Fact,
     Gate,
     Order,
+    OSSUpload,
     Project,
+    ProjectAnalysisJob,
     ProjectVersion,
     ReportShare,
     Risk,
@@ -36,12 +41,15 @@ from .schemas import (
     AssumptionIn,
     ArtistOut,
     DecisionIn,
+    DocumentParseJobIn,
     EvidenceUploadIn,
     FactIn,
     FactVerifyIn,
     FinanceBreakevenIn,
     FinanceCalculateIn,
     GateIn,
+    OSSUploadCompleteIn,
+    OSSUploadInitiateIn,
     OrderIn,
     ProjectIn,
     ReportShareIn,
@@ -53,7 +61,10 @@ from .schemas import (
     UserUpdateIn,
     WebLoginIn,
     WechatLoginIn,
+    ExternalDataJobIn,
+    ProjectAnalysisJobIn,
 )
+from .document_parsers import parse_document_evidence, parse_spreadsheet_evidence
 from .services import (
     GROUPS,
     calculate_breakeven_result,
@@ -64,9 +75,13 @@ from .services import (
     next_project_version_no,
     project_input_snapshot,
     serialize_assumption,
+    serialize_document_parse_job,
     serialize_evidence,
     serialize_fact,
     serialize_gate,
+    serialize_external_data_job,
+    serialize_oss_upload,
+    serialize_project_analysis_job,
     serialize_project,
     serialize_report_share,
     serialize_risk,
@@ -80,6 +95,45 @@ from .services import (
 router = APIRouter()
 
 
+def safe_object_name(file_name: str):
+    sanitized = re.sub(r'[^A-Za-z0-9._-]+', '-', file_name.strip()).strip('.-')
+    return sanitized or 'upload.bin'
+
+
+def infer_file_kind(file_name: str):
+    suffix = file_name.rsplit('.', 1)[-1].lower() if '.' in file_name else ''
+    if suffix == 'docx':
+        return 'docx'
+    if suffix == 'pdf':
+        return 'pdf'
+    if suffix in {'xlsx', 'xls', 'csv'}:
+        return 'spreadsheet'
+    if suffix in {'png', 'jpg', 'jpeg', 'webp'}:
+        return 'image'
+    return 'document'
+
+
+def project_payload_from_candidate(candidate: dict):
+    allowed = {
+        'name',
+        'type',
+        'artist_name',
+        'city',
+        'venue',
+        'schedule',
+        'expected_attendance',
+        'avg_ticket_price',
+        'artist_fee',
+        'venue_cost',
+        'marketing_cost',
+        'production_cost',
+    }
+    data = {key: candidate.get(key) for key in allowed if key in candidate}
+    data['name'] = data.get('name') or f"{candidate.get('artist_name') or '未命名项目'}-{candidate.get('city') or '待定城市'}"
+    data['type'] = data.get('type') or 'concert'
+    return data
+
+
 def extract_llama_server_text(data):
     if not isinstance(data, dict):
         return None
@@ -88,7 +142,7 @@ def extract_llama_server_text(data):
     if isinstance(choices, list) and choices:
         first_choice = choices[0] or {}
         message = first_choice.get('message') or {}
-        content = message.get('content') or message.get('reasoning_content') or first_choice.get('text')
+        content = message.get('content') or first_choice.get('text')
         if content:
             return content
 
@@ -97,6 +151,141 @@ def extract_llama_server_text(data):
         return content
 
     return data.get('response')
+
+
+def create_records_from_parse_result(db: Session, job: DocumentParseJob, result: dict):
+    created = {"facts": [], "assumptions": [], "risks": [], "gates": []}
+
+    for item in result.get('candidate_facts') or []:
+        fact = Fact(
+            project_id=job.project_id,
+            title=item.get('title') or f"{job.file_name} 解析候选事实",
+            content=item.get('content') or '',
+            source=item.get('source') or job.file_kind,
+            status='pending',
+        )
+        db.add(fact)
+        db.flush()
+        created["facts"].append(fact.id)
+
+    for item in result.get('candidate_assumptions') or []:
+        assumption = Assumption(
+            project_id=job.project_id,
+            title=item.get('title') or '资料解析假设',
+            content=item.get('content') or '',
+            confidence=item.get('confidence') or 50,
+            status='active',
+            created_by=job.created_by,
+        )
+        db.add(assumption)
+        db.flush()
+        created["assumptions"].append(assumption.id)
+
+    for item in result.get('candidate_risks') or []:
+        risk = Risk(
+            project_id=job.project_id,
+            title=item.get('title') or '资料解析风险',
+            level=item.get('level') or 'medium',
+            mitigation=item.get('mitigation') or '由负责人复核资料后处理。',
+            status='open',
+        )
+        db.add(risk)
+        db.flush()
+        created["risks"].append(risk.id)
+
+    for item in result.get('candidate_gates') or []:
+        gate = Gate(
+            project_id=job.project_id,
+            name=item.get('name') or '资料人工核验',
+            status=item.get('status') or 'pending',
+            required_evidence=item.get('required_evidence') or job.file_name,
+            owner_group=item.get('owner_group') or 'B',
+        )
+        db.add(gate)
+        db.flush()
+        created["gates"].append(gate.id)
+
+    return created
+
+
+def build_project_analysis_result(db: Session, project: Project, version: ProjectVersion):
+    facts = db.query(Fact).filter(Fact.project_id == project.id).all()
+    assumptions = db.query(Assumption).filter(Assumption.project_id == project.id).all()
+    risks = db.query(Risk).filter(Risk.project_id == project.id).all()
+    gates = db.query(Gate).filter(Gate.project_id == project.id).all()
+    evidences = db.query(Evidence).filter(Evidence.project_id == project.id).all()
+    external_jobs = db.query(ExternalDataJob).filter(ExternalDataJob.project_id == project.id).all()
+    finance_result = version.finance_result or {}
+    neutral_profit = ((finance_result.get('scenarios') or {}).get('neutral') or {}).get('profit')
+
+    open_risks = [risk for risk in risks if risk.status == 'open']
+    pending_gates = [gate for gate in gates if gate.status in {'pending', 'blocked'}]
+    pending_facts = [fact for fact in facts if fact.status != 'verified']
+
+    if any(gate.status == 'blocked' for gate in gates) or (neutral_profit is not None and neutral_profit < 0):
+        recommendation = 'pause'
+    elif open_risks or pending_gates or pending_facts:
+        recommendation = 'conditional_advance'
+    else:
+        recommendation = 'advance'
+
+    human_review_questions = []
+    if pending_facts:
+        human_review_questions.append('请核验解析生成的候选事实是否与原始资料一致。')
+    if pending_gates:
+        human_review_questions.append('请确认审批、授权、付款或场地方资料是否已经补齐。')
+    if open_risks:
+        human_review_questions.append('请确认开放风险的缓释措施和责任人。')
+    if not human_review_questions:
+        human_review_questions.append('请负责人复核分析结论后再形成最终决策。')
+
+    return {
+        "project": {
+            "id": project.id,
+            "name": project.name,
+            "city": project.city,
+            "artist_name": project.artist_name,
+        },
+        "version_id": version.id,
+        "inputs": {
+            "facts": {
+                "total": len(facts),
+                "verified": len([fact for fact in facts if fact.status == 'verified']),
+                "pending": len(pending_facts),
+            },
+            "assumptions": {
+                "total": len(assumptions),
+                "active": len([item for item in assumptions if item.status == 'active']),
+            },
+            "risks": {
+                "total": len(risks),
+                "open": len(open_risks),
+            },
+            "gates": {
+                "total": len(gates),
+                "pending": len(pending_gates),
+            },
+            "evidences": len(evidences),
+            "external_data_jobs": {
+                "total": len(external_jobs),
+                "completed": len([job for job in external_jobs if job.status == 'completed']),
+            },
+            "finance_status": finance_result.get('status') or 'missing',
+            "neutral_profit": neutral_profit,
+        },
+        "analysis_summary": "已汇总项目版本、财务测算、证据、事实、假设、风险、门禁和外部采集任务，结论仅作为负责人核验前的候选判断。",
+        "risk_explanations": [
+            {"title": risk.title, "level": risk.level, "mitigation": risk.mitigation}
+            for risk in open_risks[:10]
+        ],
+        "missing_materials": [
+            gate.required_evidence or gate.name
+            for gate in pending_gates
+        ],
+        "human_review_questions": human_review_questions,
+        "recommendation": recommendation,
+        "requires_human_verification": True,
+    }
 
 
 @router.post('/auth/web-login')
@@ -585,6 +774,99 @@ def upload_evidence(payload: EvidenceUploadIn, db: Session = Depends(get_db)):
     return json_ok(serialize_evidence(evidence))
 
 
+@router.post('/oss/uploads/initiate')
+def initiate_oss_upload(payload: OSSUploadInitiateIn, db: Session = Depends(get_db)):
+    tenant, user = get_or_create_default_context(db)
+    project = db.query(Project).filter(Project.id == payload.project_id, Project.tenant_id == tenant.id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail='Project not found')
+    if payload.fact_id:
+        fact = db.query(Fact).filter(Fact.id == payload.fact_id, Fact.project_id == project.id).first()
+        if not fact:
+            raise HTTPException(status_code=404, detail='Fact not found')
+
+    file_name = safe_object_name(payload.file_name)
+    object_key = f"projects/{project.id}/{uuid.uuid4().hex}/{file_name}"
+    upload = OSSUpload(
+        project_id=project.id,
+        fact_id=payload.fact_id,
+        provider='local-placeholder',
+        bucket='',
+        object_key=object_key,
+        file_name=file_name,
+        content_type=payload.content_type or 'application/octet-stream',
+        evidence_type=payload.evidence_type or 'document',
+        source=payload.source or '',
+        status='pending',
+        meta=payload.metadata or {},
+        created_by=user.id,
+    )
+    db.add(upload)
+    db.commit()
+    db.refresh(upload)
+    return json_ok({
+        **serialize_oss_upload(upload),
+        "upload_url": f"/oss/local-placeholder/{object_key}",
+        "method": "PUT",
+        "headers": {"Content-Type": upload.content_type},
+        "expires_in_seconds": 900,
+    })
+
+
+@router.post('/oss/uploads/{upload_id}/complete')
+def complete_oss_upload(upload_id: int, payload: OSSUploadCompleteIn, db: Session = Depends(get_db)):
+    tenant, user = get_or_create_default_context(db)
+    upload = db.query(OSSUpload).join(Project, OSSUpload.project_id == Project.id).filter(
+        OSSUpload.id == upload_id,
+        Project.tenant_id == tenant.id,
+    ).first()
+    if not upload:
+        raise HTTPException(status_code=404, detail='OSS upload not found')
+    if upload.status == 'completed':
+        raise HTTPException(status_code=400, detail='OSS upload already completed')
+    fact_id = payload.fact_id if payload.fact_id is not None else upload.fact_id
+    if fact_id:
+        fact = db.query(Fact).filter(Fact.id == fact_id, Fact.project_id == upload.project_id).first()
+        if not fact:
+            raise HTTPException(status_code=404, detail='Fact not found')
+
+    file_url = payload.file_url or f"oss://local-placeholder/{upload.object_key}"
+    upload.fact_id = fact_id
+    upload.file_url = file_url
+    upload.size = payload.size
+    upload.checksum = payload.checksum or ''
+    upload.status = 'completed'
+    upload.completed_at = datetime.now(timezone.utc)
+    upload_meta = {
+        **(upload.meta or {}),
+        **(payload.metadata or {}),
+        "object_key": upload.object_key,
+        "provider": upload.provider,
+        "size": payload.size,
+        "checksum": payload.checksum or '',
+    }
+    upload.meta = upload_meta
+    evidence = Evidence(
+        project_id=upload.project_id,
+        fact_id=fact_id,
+        name=upload.file_name,
+        file_url=file_url,
+        evidence_type=upload.evidence_type,
+        source=upload.source or upload.provider,
+        status='uploaded',
+        meta=upload_meta,
+        uploaded_by=user.id,
+    )
+    db.add(evidence)
+    db.commit()
+    db.refresh(upload)
+    db.refresh(evidence)
+    return json_ok({
+        "upload": serialize_oss_upload(upload),
+        "evidence": serialize_evidence(evidence),
+    })
+
+
 @router.get('/evidences')
 def list_evidences(project_id: Optional[int] = None, fact_id: Optional[int] = None, db: Session = Depends(get_db)):
     tenant_id = get_default_tenant_id(db)
@@ -595,6 +877,247 @@ def list_evidences(project_id: Optional[int] = None, fact_id: Optional[int] = No
         query = query.filter(Evidence.fact_id == fact_id)
     evidences = query.order_by(Evidence.id.desc()).all()
     return json_ok([serialize_evidence(evidence) for evidence in evidences])
+
+
+@router.post('/evidences/{evidence_id}/parse-jobs')
+def create_document_parse_job(evidence_id: int, payload: DocumentParseJobIn, db: Session = Depends(get_db)):
+    tenant, user = get_or_create_default_context(db)
+    evidence = db.query(Evidence).join(Project, Evidence.project_id == Project.id).filter(
+        Evidence.id == evidence_id,
+        Project.tenant_id == tenant.id,
+    ).first()
+    if not evidence:
+        raise HTTPException(status_code=404, detail='Evidence not found')
+    file_kind = infer_file_kind(evidence.name or evidence.file_url)
+    parse_scope = payload.parse_scope or ('batch_projects' if file_kind == 'spreadsheet' else 'single_project')
+    if parse_scope not in {'single_project', 'batch_projects'}:
+        raise HTTPException(status_code=400, detail='Invalid parse scope')
+    job = DocumentParseJob(
+        tenant_id=tenant.id,
+        project_id=evidence.project_id,
+        evidence_id=evidence.id,
+        file_name=evidence.name,
+        file_kind=file_kind,
+        parse_scope=parse_scope,
+        purpose=payload.purpose or '',
+        status='queued',
+        parameters=payload.parameters or {},
+        result={},
+        created_by=user.id,
+    )
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+    return json_ok(serialize_document_parse_job(job))
+
+
+@router.post('/document-parse-jobs/{job_id}/run')
+def run_document_parse_job(job_id: int, db: Session = Depends(get_db)):
+    tenant_id = get_default_tenant_id(db)
+    job = db.query(DocumentParseJob).filter(
+        DocumentParseJob.id == job_id,
+        DocumentParseJob.tenant_id == tenant_id,
+    ).first()
+    if not job:
+        raise HTTPException(status_code=404, detail='Document parse job not found')
+    evidence = db.query(Evidence).filter(Evidence.id == job.evidence_id, Evidence.project_id == job.project_id).first()
+    if not evidence:
+        raise HTTPException(status_code=404, detail='Evidence not found')
+    if job.status == 'completed':
+        return json_ok(serialize_document_parse_job(job))
+
+    job.status = 'running'
+    job.started_at = datetime.now(timezone.utc)
+    if job.parse_scope == 'batch_projects':
+        result = parse_spreadsheet_evidence(evidence)
+    else:
+        result = parse_document_evidence(evidence, job.file_kind)
+        result["created_records"] = create_records_from_parse_result(db, job, result)
+    job.result = result
+    job.status = 'completed'
+    job.completed_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(job)
+    return json_ok(serialize_document_parse_job(job))
+
+
+@router.post('/document-parse-jobs/{job_id}/confirm-projects')
+def confirm_document_parse_job_projects(job_id: int, db: Session = Depends(get_db)):
+    tenant, user = get_or_create_default_context(db)
+    job = db.query(DocumentParseJob).filter(
+        DocumentParseJob.id == job_id,
+        DocumentParseJob.tenant_id == tenant.id,
+    ).first()
+    if not job:
+        raise HTTPException(status_code=404, detail='Document parse job not found')
+    if job.status != 'completed':
+        raise HTTPException(status_code=400, detail='Document parse job is not completed')
+    candidates = (job.result or {}).get('candidate_projects') or []
+    if not candidates:
+        raise HTTPException(status_code=400, detail='No candidate projects to confirm')
+
+    created_projects = []
+    for candidate in candidates:
+        project_data = project_payload_from_candidate(candidate)
+        project = Project(
+            tenant_id=tenant.id,
+            name=project_data['name'],
+            type=project_data.get('type') or 'concert',
+            status='draft',
+            artist_name=project_data.get('artist_name') or '',
+            city=project_data.get('city') or '',
+            venue=project_data.get('venue') or '',
+            schedule=project_data.get('schedule') or '',
+            expected_attendance=project_data.get('expected_attendance'),
+            avg_ticket_price=project_data.get('avg_ticket_price'),
+            artist_fee=project_data.get('artist_fee'),
+            venue_cost=project_data.get('venue_cost'),
+            marketing_cost=project_data.get('marketing_cost'),
+            production_cost=project_data.get('production_cost'),
+            created_by=user.id,
+        )
+        db.add(project)
+        db.flush()
+        version = ProjectVersion(
+            project_id=project.id,
+            version_no=1,
+            input_snapshot=project_input_snapshot(project),
+            finance_result=None,
+            status='draft',
+            created_by=user.id,
+        )
+        db.add(version)
+        db.flush()
+        project.current_version_id = version.id
+        created_projects.append(project)
+
+    job.result = {**(job.result or {}), "confirmed_project_ids": [project.id for project in created_projects]}
+    db.commit()
+    for project in created_projects:
+        db.refresh(project)
+    return json_ok({"projects": [serialize_project(project) for project in created_projects]})
+
+
+@router.post('/external-data/jobs')
+def create_external_data_job(payload: ExternalDataJobIn, db: Session = Depends(get_db)):
+    tenant, user = get_or_create_default_context(db)
+    if payload.project_id:
+        project = db.query(Project).filter(Project.id == payload.project_id, Project.tenant_id == tenant.id).first()
+        if not project:
+            raise HTTPException(status_code=404, detail='Project not found')
+    source_type = payload.source_type.strip().lower()
+    if source_type not in {'web', 'api', 'skill', 'mcp'}:
+        raise HTTPException(status_code=400, detail='Invalid external data source type')
+    job = ExternalDataJob(
+        tenant_id=tenant.id,
+        project_id=payload.project_id,
+        source_type=source_type,
+        provider=(payload.provider or 'mcp').strip().lower(),
+        query=payload.query.strip(),
+        purpose=payload.purpose or '',
+        status='queued',
+        parameters=payload.parameters or {},
+        result={},
+        requested_by=user.id,
+    )
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+    return json_ok(serialize_external_data_job(job))
+
+
+@router.get('/external-data/jobs')
+def list_external_data_jobs(project_id: Optional[int] = None, db: Session = Depends(get_db)):
+    tenant_id = get_default_tenant_id(db)
+    query = db.query(ExternalDataJob).filter(ExternalDataJob.tenant_id == tenant_id)
+    if project_id:
+        query = query.filter(ExternalDataJob.project_id == project_id)
+    jobs = query.order_by(ExternalDataJob.id.desc()).all()
+    return json_ok([serialize_external_data_job(job) for job in jobs])
+
+
+@router.get('/external-data/jobs/{job_id}')
+def get_external_data_job(job_id: int, db: Session = Depends(get_db)):
+    tenant_id = get_default_tenant_id(db)
+    job = db.query(ExternalDataJob).filter(ExternalDataJob.id == job_id, ExternalDataJob.tenant_id == tenant_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail='External data job not found')
+    return json_ok(serialize_external_data_job(job))
+
+
+@router.post('/external-data/jobs/{job_id}/run')
+def run_external_data_job(job_id: int, db: Session = Depends(get_db)):
+    tenant_id = get_default_tenant_id(db)
+    job = db.query(ExternalDataJob).filter(ExternalDataJob.id == job_id, ExternalDataJob.tenant_id == tenant_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail='External data job not found')
+    if job.status == 'completed':
+        return json_ok(serialize_external_data_job(job))
+    job.status = 'running'
+    job.started_at = datetime.now(timezone.utc)
+    job.result = {
+        "summary": f"已预留通过 {job.provider} 获取 {job.source_type} 数据的异步采集流程。",
+        "query": job.query,
+        "source_type": job.source_type,
+        "provider": job.provider,
+        "purpose": job.purpose,
+        "items": [],
+        "requires_human_verification": True,
+        "note": "当前为后端预留实现；接入真实 Skill、MCP 或第三方 API 后写入可追溯来源、采集时间和置信度。",
+    }
+    job.status = 'completed'
+    job.completed_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(job)
+    return json_ok(serialize_external_data_job(job))
+
+
+@router.post('/projects/{project_id}/analysis-jobs')
+def create_project_analysis_job(project_id: int, payload: ProjectAnalysisJobIn, db: Session = Depends(get_db)):
+    tenant, user = get_or_create_default_context(db)
+    project = db.query(Project).filter(Project.id == project_id, Project.tenant_id == tenant.id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail='Project not found')
+    version_id = payload.version_id or project.current_version_id
+    version = db.query(ProjectVersion).filter(
+        ProjectVersion.id == version_id,
+        ProjectVersion.project_id == project.id,
+    ).first()
+    if not version:
+        raise HTTPException(status_code=404, detail='Project version not found')
+
+    job = ProjectAnalysisJob(
+        tenant_id=tenant.id,
+        project_id=project.id,
+        version_id=version.id,
+        purpose=payload.purpose or '',
+        status='running',
+        parameters=payload.parameters or {},
+        result={},
+        requested_by=user.id,
+        started_at=datetime.now(timezone.utc),
+    )
+    db.add(job)
+    db.flush()
+    job.result = build_project_analysis_result(db, project, version)
+    job.status = 'completed'
+    job.completed_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(job)
+    return json_ok(serialize_project_analysis_job(job))
+
+
+@router.get('/projects/{project_id}/analysis-jobs/{job_id}')
+def get_project_analysis_job(project_id: int, job_id: int, db: Session = Depends(get_db)):
+    tenant_id = get_default_tenant_id(db)
+    job = db.query(ProjectAnalysisJob).filter(
+        ProjectAnalysisJob.id == job_id,
+        ProjectAnalysisJob.project_id == project_id,
+        ProjectAnalysisJob.tenant_id == tenant_id,
+    ).first()
+    if not job:
+        raise HTTPException(status_code=404, detail='Project analysis job not found')
+    return json_ok(serialize_project_analysis_job(job))
 
 
 @router.get('/gates')
@@ -760,7 +1283,7 @@ def ai_generate(payload: AIGenerateIn, db: Session = Depends(get_db)):
     content_type_name = '短视频脚本' if payload.type == 'video_script' else '海报文案'
     generation_nonce = payload.generation_nonce or uuid.uuid4().hex
     generation_seed = random.randint(1, 2_147_483_647)
-    prompt = f"""
+    prompt = f"""/no_think
     你是资深演出行业营销策划和票务转化专家。请为以下演出生成一份可直接用于运营投放的完整宣发方案。
 
     本次创作批次：{generation_nonce}
@@ -777,6 +1300,7 @@ def ai_generate(payload: AIGenerateIn, db: Session = Depends(get_db)):
     5. 短视频脚本要包含 3-5 个镜头、画面、口播/字幕、节奏提示。
     6. 避免空泛形容词，尽量围绕艺人、城市、现场体验和购票转化展开。
     7. 本次必须重新创作，不要复用上一次生成的句式、标题和行动号召；允许在传播角度、开场钩子、短视频节奏和投放建议上做变化。
+    8. 禁止编造用户未提供的日期、场馆、票价、技术参数、效果提升比例或销售成绩；必要时使用“待确认”或提出补充建议。
     """.strip()
 
     result_text = None
@@ -796,6 +1320,7 @@ def ai_generate(payload: AIGenerateIn, db: Session = Depends(get_db)):
                     "presence_penalty": 0.6,
                     "frequency_penalty": 0.35,
                     "seed": generation_seed,
+                    "chat_template_kwargs": {"enable_thinking": False},
                     "max_tokens": 1200,
                 },
                 timeout=LLAMA_SERVER_TIMEOUT_SECONDS,

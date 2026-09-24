@@ -1,0 +1,3 @@
+export default definePageConfig({
+  navigationBarTitleText: '准备在哪里、什么时候做？',
+})

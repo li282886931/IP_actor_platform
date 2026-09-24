@@ -1,0 +1,128 @@
+.page {
+  min-height: 100vh;
+  padding: 32rpx;
+  background: linear-gradient(180deg, #eef4ff 0%, #f7f8fb 42%, #f7f8fb 100%);
+}
+.hero {
+  padding: 40rpx 32rpx;
+  border-radius: 24rpx;
+  background: #fff;
+  box-shadow: 0 10rpx 30rpx rgba(20, 38, 76, .08);
+}
+.eyebrow {
+  color: #2864dc;
+  font-size: 24rpx;
+  font-weight: 600;
+}
+.title {
+  margin-top: 16rpx;
+  color: #101828;
+  font-size: 44rpx;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.subtitle {
+  margin-top: 16rpx;
+  color: #4e5969;
+  font-size: 28rpx;
+  line-height: 1.55;
+}
+.highlight {
+  display: inline-flex;
+  margin-top: 24rpx;
+  padding: 10rpx 18rpx;
+  border-radius: 999rpx;
+  color: #0f3f91;
+  background: #e8f1ff;
+  font-size: 24rpx;
+}
+.panel {
+  margin-top: 24rpx;
+  padding: 28rpx;
+  border-radius: 20rpx;
+  background: #fff;
+  box-shadow: 0 8rpx 24rpx rgba(20, 38, 76, .06);
+}
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.panel-title {
+  color: #1d2129;
+  font-size: 30rpx;
+  font-weight: 700;
+}
+.state {
+  padding: 8rpx 14rpx;
+  border-radius: 999rpx;
+  color: #4e5969;
+  background: #f2f3f5;
+  font-size: 22rpx;
+}
+.state.success {
+  color: #16763b;
+  background: #e8ffea;
+}
+.state.example {
+  color: #9a5b00;
+  background: #fff3df;
+}
+.input {
+  margin-top: 20rpx;
+  height: 80rpx;
+  padding: 0 24rpx;
+  border-radius: 16rpx;
+  background: #f5f7fb;
+  color: #1d2129;
+}
+.item {
+  display: flex;
+  gap: 20rpx;
+  justify-content: space-between;
+  margin-top: 20rpx;
+  padding: 24rpx 0;
+  border-top: 1rpx solid #eef0f5;
+}
+.item-main {
+  min-width: 0;
+}
+.item-title {
+  color: #1d2129;
+  font-size: 28rpx;
+  font-weight: 600;
+}
+.item-desc {
+  margin-top: 8rpx;
+  color: #667085;
+  font-size: 24rpx;
+  line-height: 1.5;
+}
+.badge {
+  flex: 0 0 auto;
+  align-self: flex-start;
+  max-width: 180rpx;
+  padding: 8rpx 14rpx;
+  border-radius: 999rpx;
+  color: #2864dc;
+  background: #edf4ff;
+  font-size: 22rpx;
+}
+.message {
+  margin-top: 24rpx;
+  padding: 20rpx 24rpx;
+  border-radius: 16rpx;
+  color: #7a4a00;
+  background: #fff7e6;
+  font-size: 24rpx;
+}
+.primary {
+  margin-top: 32rpx;
+  width: 100%;
+  height: 92rpx;
+  border-radius: 999rpx;
+  color: #fff;
+  background: linear-gradient(135deg, #2864dc 0%, #0e42a8 100%);
+  font-size: 30rpx;
+  font-weight: 700;
+}
