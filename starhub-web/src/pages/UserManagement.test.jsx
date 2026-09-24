@@ -18,7 +18,7 @@ describe('UserManagement', () => {
     vi.clearAllMocks()
   })
 
-  it('renders four fixed user groups and filters users by selected group', async () => {
+  it('links user group cards to the create form without filtering the user list', async () => {
     const user = userEvent.setup()
     listUsers.mockResolvedValue({
       data: {
@@ -33,22 +33,30 @@ describe('UserManagement', () => {
 
     render(<UserManagement currentUser={{ account: 'root', group_code: 'root' }} />)
 
-    const groups = screen.getByLabelText('用户组筛选')
+    const groups = screen.getByLabelText('用户组选择')
     expect(within(groups).getByRole('button', { name: /主办方/ })).toBeInTheDocument()
     expect(within(groups).getByRole('button', { name: /品牌方/ })).toBeInTheDocument()
     expect(within(groups).getByRole('button', { name: /政府 \/ 文旅/ })).toBeInTheDocument()
     expect(within(groups).getByRole('button', { name: /观众端/ })).toBeInTheDocument()
-    expect(within(groups).queryByRole('button', { name: /超级管理员/ })).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '添加用户' }).closest('form')).toHaveClass('user-create-form')
+    expect(within(groups).queryByText('超级管理员')).not.toBeInTheDocument()
+    const createForm = screen.getByRole('button', { name: '添加用户' }).closest('form')
+    expect(createForm).toHaveClass('user-create-form')
+    expect(createForm).not.toHaveClass('generator-form')
 
     expect(await screen.findByText('b_user')).toBeInTheDocument()
-    expect(screen.queryByText('brand_user')).not.toBeInTheDocument()
+    expect(screen.getByText('brand_user')).toBeInTheDocument()
+    expect(screen.getByText('g_user')).toBeInTheDocument()
+    expect(screen.getByText('c_user')).toBeInTheDocument()
+    expect(screen.getByLabelText('用户组')).toHaveTextContent('主办方')
+    expect(screen.queryByRole('combobox', { name: '用户组' })).not.toBeInTheDocument()
 
     await user.click(within(groups).getByRole('button', { name: /品牌方/ }))
 
-    expect(await screen.findByText('brand_user')).toBeInTheDocument()
-    expect(screen.queryByText('b_user')).not.toBeInTheDocument()
-    expect(screen.getByLabelText('用户组')).toHaveValue('Brand')
+    expect(screen.getByLabelText('用户组')).toHaveTextContent('品牌方')
+    expect(screen.getByText('b_user')).toBeInTheDocument()
+    expect(screen.getByText('brand_user')).toBeInTheDocument()
+    expect(screen.getByText('g_user')).toBeInTheDocument()
+    expect(screen.getByText('c_user')).toBeInTheDocument()
   })
 
   it('creates and deletes users in the selected fixed user group', async () => {
@@ -79,7 +87,8 @@ describe('UserManagement', () => {
     })
     expect(await screen.findByText('brand_new')).toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: '删除 brand_new' }))
+    expect(screen.queryByRole('button', { name: '删除 brand_new' })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '删除' }))
     expect(deleteUser).toHaveBeenCalledWith(5)
   })
 
@@ -100,10 +109,10 @@ describe('UserManagement', () => {
 
     render(<UserManagement currentUser={{ account: 'root', group_code: 'root' }} />)
 
-    await user.click(screen.getByRole('button', { name: /品牌方/ }))
     expect(await screen.findByText('brand_edit')).toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: '修改 brand_edit' }))
+    expect(screen.queryByRole('button', { name: '修改 brand_edit' })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '修改' }))
     await user.clear(screen.getByLabelText('编辑用户姓名'))
     await user.type(screen.getByLabelText('编辑用户姓名'), '文旅用户')
     await user.type(screen.getByLabelText('新密码'), 'newpass123')

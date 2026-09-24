@@ -20,6 +20,7 @@ CREATE TABLE artists (
 	heat_score INTEGER,
 	fan_count VARCHAR(64),
 	risk_level INTEGER,
+	profile JSON,
 	PRIMARY KEY (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE INDEX ix_artists_name ON artists (name);

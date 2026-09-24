@@ -1,17 +1,25 @@
 import { useState } from 'react'
+import ReactMarkdown from 'react-markdown'
 
-import { generateAI } from '../api'
+import { generateAIStream } from '../api'
 
 const contentTypes = [
   { value: 'poster', label: '海报文案', description: '适合票务页、社交平台与线下物料' },
   { value: 'video_script', label: '短视频脚本', description: '生成分镜节奏与口播内容' },
 ]
 
+const cleanFinalResult = (value = '') => value
+  .replace(/<think\b[^>]*>[\s\S]*?<\/think>/gi, '')
+  .replace(/^\s*<\/?think>\s*$/gim, '')
+  .trim()
+
 export default function Generate({ role = 'B' }) {
   const [form, setForm] = useState({ type: 'poster', show_name: '', artist: '', city: '' })
   const [result, setResult] = useState('')
   const [status, setStatus] = useState('idle')
   const [copyStatus, setCopyStatus] = useState('')
+  const [progressMessages, setProgressMessages] = useState([])
+  const [thoughts, setThoughts] = useState('')
 
   const updateField = (field, value) => {
     setForm((current) => ({ ...current, [field]: value }))
@@ -22,12 +30,25 @@ export default function Generate({ role = 'B' }) {
     setStatus('loading')
     setCopyStatus('')
     setResult('')
+    setProgressMessages(['已提交创作需求'])
+    setThoughts('')
     try {
-      const response = await generateAI({
-        ...form,
-        generation_nonce: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-      })
-      setResult(response.data?.data?.result || response.data?.result || JSON.stringify(response.data))
+      const finalResult = await generateAIStream(
+        {
+          ...form,
+          generation_nonce: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        },
+        {
+          onProgress: (message) => {
+            if (message) setProgressMessages((current) => [...current, message])
+          },
+          onThought: (content) => {
+            if (content) setThoughts((current) => `${current}${content}`)
+          },
+          onFinal: (value) => setResult(cleanFinalResult(value)),
+        },
+      )
+      setResult(cleanFinalResult(finalResult))
       setStatus('success')
     } catch {
       setResult('')
@@ -119,6 +140,13 @@ export default function Generate({ role = 'B' }) {
             </button>
             <span>生成结果仍可继续编辑和复制</span>
           </div>
+          {status === 'loading' && progressMessages.length > 0 && (
+            <div className="generation-progress" aria-label="生成过程">
+              {progressMessages.map((message, index) => (
+                <span key={`${message}-${index}`}>{message}</span>
+              ))}
+            </div>
+          )}
         </form>
 
         <section className="panel result-panel">
@@ -140,8 +168,19 @@ export default function Generate({ role = 'B' }) {
               <span>请检查后端服务或稍后重试。</span>
             </div>
           )}
+          {(status === 'loading' || thoughts) && (
+            <div className="thinking-panel" aria-label="生成过程">
+              <div className="thinking-panel-heading">
+                <span>生成过程</span>
+                <small>{status === 'loading' ? '流式更新中' : '已完成'}</small>
+              </div>
+              <pre>{thoughts || '正在等待模型返回分析过程...'}</pre>
+            </div>
+          )}
           {result ? (
-            <article className="generated-copy">{result}</article>
+            <article className="generated-copy">
+              <ReactMarkdown>{result}</ReactMarkdown>
+            </article>
           ) : status !== 'error' && (
             <div className="result-placeholder">
               <span className="result-placeholder-mark" aria-hidden="true">AI</span>

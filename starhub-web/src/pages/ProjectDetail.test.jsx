@@ -8,9 +8,11 @@ import {
   agentChat,
   createAssumption,
   createEvidence,
+  createExternalDataJob,
   createFact,
   createGate,
   createRisk,
+  generateFeasibilityReport,
   createProject,
   createUser,
   deleteUser,
@@ -19,6 +21,7 @@ import {
   getShow,
   listAssumptions,
   listEvidences,
+  listExternalDataJobs,
   listFacts,
   listGates,
   listProjectVersions,
@@ -41,10 +44,12 @@ vi.mock('../api', () => ({
   agentChat: vi.fn(),
   createAssumption: vi.fn(),
   createEvidence: vi.fn(),
+  createExternalDataJob: vi.fn(),
   createFact: vi.fn(),
   createGate: vi.fn(),
   createProject: vi.fn(),
   createRisk: vi.fn(),
+  generateFeasibilityReport: vi.fn(),
   createUser: vi.fn(),
   deleteUser: vi.fn(),
   generateAI: vi.fn(),
@@ -52,6 +57,7 @@ vi.mock('../api', () => ({
   getShow: vi.fn(),
   listAssumptions: vi.fn(),
   listEvidences: vi.fn(),
+  listExternalDataJobs: vi.fn(),
   listFacts: vi.fn(),
   listGates: vi.fn(),
   listProjectVersions: vi.fn(),
@@ -140,6 +146,7 @@ describe('ProjectDetail', () => {
     listEvidences.mockResolvedValue({
       data: { data: [{ id: 9, name: '场馆报价单', file_url: 'https://example.com/quote.pdf', evidence_type: 'document', source: '场馆' }] },
     })
+    listExternalDataJobs.mockResolvedValue({ data: { data: [] } })
     listAssumptions.mockResolvedValue({
       data: { data: [{ id: 3, title: '上座率假设', content: '中性预计 85%', confidence: 80, status: 'active' }] },
     })
@@ -152,12 +159,47 @@ describe('ProjectDetail', () => {
     listTasks.mockResolvedValue({
       data: { data: [{ id: 6, title: '补充安保方案', description: '提交给场地方', status: 'pending', due_date: '2026-08-01' }] },
     })
-    createFact.mockResolvedValue({ data: { data: { id: 8, title: '票务通道确认', content: '已完成压测', source: '票务系统', status: 'pending' } } })
+    createFact
+      .mockResolvedValueOnce({ data: { data: { id: 8, title: '票务通道确认', content: '已完成压测', source: '票务系统', status: 'pending' } } })
+      .mockResolvedValueOnce({ data: { data: { id: 14, title: '老友嘉宾同台', content: '叶童档期需人工确认', source: '项目组访谈', status: 'pending' } } })
     verifyFact.mockResolvedValue({ data: { data: { id: 7, title: '艺人档期已确认', content: '经纪团队邮件确认', source: '邮件', status: 'verified' } } })
     createEvidence.mockResolvedValue({ data: { data: { id: 10, name: '批复文件', file_url: 'https://example.com/approval.pdf', evidence_type: 'document', source: '文旅局' } } })
+    createExternalDataJob.mockResolvedValue({
+      data: {
+        data: {
+          id: 21,
+          source_type: 'mcp',
+          provider: 'mcp',
+          query: '赵雅芝 抖音 主账号 工作室 粉丝量 话题播放量',
+          purpose: 'social_volume_verification',
+          status: 'queued',
+        },
+      },
+    })
     createAssumption.mockResolvedValue({ data: { data: { id: 11, title: '二开票假设', content: '追加 5000 张', confidence: 65, status: 'active' } } })
     createGate.mockResolvedValue({ data: { data: { id: 12, name: '消防验收', status: 'pending', required_evidence: '验收文件', owner_group: 'G' } } })
     createRisk.mockResolvedValue({ data: { data: { id: 13, title: '交通拥堵', level: 'high', mitigation: '错峰入场', status: 'open' } } })
+    generateFeasibilityReport.mockResolvedValue({
+      data: {
+        data: {
+          download_url: '/reports/files/20',
+          file_name: '北京大型演唱会测算-可行性研究报告.docx',
+          evidence: {
+            id: 20,
+            name: '北京大型演唱会测算-可行性研究报告.docx',
+            file_url: 'oss://local-placeholder/projects/1/reports/report.docx',
+            evidence_type: 'feasibility_report',
+            source: 'system',
+            status: 'uploaded',
+          },
+          calculation_result: {
+            scenarios: {
+              neutral: { total_income: 23695200, net_profit: 1095200 },
+            },
+          },
+        },
+      },
+    })
     submitTask.mockResolvedValue({ data: { data: { id: 6, title: '补充安保方案', status: 'submitted', result: '已提交材料' } } })
     agentChat.mockResolvedValue({ data: { data: { answer: '建议先完成安全审批并锁定交通方案。' } } })
     searchCases.mockResolvedValue({ data: { data: [{ project_id: 2, name: '上海体育场项目', artist_name: '五月天', city: '上海', venue: '上海体育场', status: 'calculated' }] } })
@@ -171,6 +213,12 @@ describe('ProjectDetail', () => {
     expect(screen.getByText('场馆报价单')).toBeInTheDocument()
     expect(screen.getByText('安全审批')).toBeInTheDocument()
     expect(screen.getByText('天气影响入场')).toBeInTheDocument()
+    expect(screen.getByText('市场资料对照')).toBeInTheDocument()
+    expect(screen.getByText('Sheet1-全网声量总览')).toBeInTheDocument()
+    expect(screen.getByText('Sheet8-粉丝期待调研')).toBeInTheDocument()
+    expect(screen.getAllByText('系统落点').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('外部抓取').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('人工补充').length).toBeGreaterThan(0)
 
     await user.type(screen.getByLabelText('事实标题'), '票务通道确认')
     await user.type(screen.getByLabelText('事实内容'), '已完成压测')
@@ -186,6 +234,26 @@ describe('ProjectDetail', () => {
     await user.type(screen.getByLabelText('证据链接'), 'https://example.com/approval.pdf')
     await user.click(screen.getByRole('button', { name: '上传证据' }))
     expect(await screen.findByText('批复文件')).toBeInTheDocument()
+
+    await user.type(screen.getByLabelText('资料条目'), '老友嘉宾同台')
+    await user.type(screen.getByLabelText('人工资料内容'), '叶童档期需人工确认')
+    await user.type(screen.getByLabelText('人工资料来源'), '项目组访谈')
+    await user.click(screen.getByRole('button', { name: '写入人工事实' }))
+    await waitFor(() => expect(createFact).toHaveBeenCalledWith({
+      project_id: 1,
+      title: '老友嘉宾同台',
+      content: '叶童档期需人工确认',
+      source: '项目组访谈',
+    }))
+
+    await user.click(screen.getAllByRole('button', { name: '安排抓取' })[0])
+    await waitFor(() => expect(createExternalDataJob).toHaveBeenCalledWith(expect.objectContaining({
+      project_id: 1,
+      source_type: 'mcp',
+      provider: 'mcp',
+      purpose: 'social_volume_verification',
+    })))
+    expect(await screen.findByText('赵雅芝 抖音 主账号 工作室 粉丝量 话题播放量')).toBeInTheDocument()
 
     await user.type(screen.getByLabelText('假设标题'), '二开票假设')
     await user.type(screen.getByLabelText('假设说明'), '追加 5000 张')
@@ -217,5 +285,14 @@ describe('ProjectDetail', () => {
 
     await user.click(screen.getByRole('button', { name: '生成分享链接' }))
     expect(await screen.findByText('/shared/reports/abc123')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '生成可行性报告' }))
+    await waitFor(() => expect(generateFeasibilityReport).toHaveBeenCalledWith(1, {
+      version_id: 2,
+      tax_fee_rate: 0.15,
+      use_ai_copy: true,
+    }))
+    expect(await screen.findByRole('link', { name: '北京大型演唱会测算-可行性研究报告.docx' })).toHaveAttribute('href', 'http://localhost:8000/reports/files/20')
+    expect(await screen.findByText('报告已生成，可下载核验')).toBeInTheDocument()
   })
 })

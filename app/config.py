@@ -10,3 +10,6 @@ OSS_PROVIDER = 'local-placeholder'
 MINIO_ENDPOINT = '127.0.0.1:9000'
 MINIO_BUCKET = 'ip-actor-platform'
 MINIO_SECURE = False
+
+REDIS_URL = 'redis://127.0.0.1:6379/0'
+REDIS_CACHE_TTL_SECONDS = 3600

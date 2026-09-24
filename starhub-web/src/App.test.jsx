@@ -10,15 +10,43 @@ vi.mock('./api', () => ({
   agentChat: vi.fn(),
   createAssumption: vi.fn(),
   createEvidence: vi.fn(),
+  createExternalDataJob: vi.fn(),
   createFact: vi.fn(),
   createGate: vi.fn(),
   createProject: vi.fn(),
   createRisk: vi.fn(),
   createUser: vi.fn(),
   deleteUser: vi.fn(),
+  getDashboardAnalytics: vi.fn().mockResolvedValue({
+    data: {
+      data: {
+        summary: {
+          active_projects: 0,
+          pending_tasks: 0,
+          reservations: 0,
+          on_sale_shows: 0,
+          neutral_profit_total: 0,
+        },
+      },
+    },
+  }),
   getProject: vi.fn(),
+  getTicketingSummary: vi.fn().mockResolvedValue({
+    data: {
+      data: {
+        summary: {
+          total_shows: 0,
+          on_sale_shows: 0,
+          reservation_count: 0,
+        },
+        shows: [],
+        orders: [],
+      },
+    },
+  }),
   listAssumptions: vi.fn().mockResolvedValue({ data: { data: [] } }),
   listEvidences: vi.fn().mockResolvedValue({ data: { data: [] } }),
+  listExternalDataJobs: vi.fn().mockResolvedValue({ data: { data: [] } }),
   listFacts: vi.fn().mockResolvedValue({ data: { data: [] } }),
   listGates: vi.fn().mockResolvedValue({ data: { data: [] } }),
   listProjectVersions: vi.fn().mockResolvedValue({ data: { data: [] } }),
@@ -31,6 +59,7 @@ vi.mock('./api', () => ({
   searchCases: vi.fn(),
   searchArtist: vi.fn(),
   shareReport: vi.fn(),
+  runExternalDataJob: vi.fn(),
   submitTask: vi.fn(),
   generateAI: vi.fn(),
   getShow: vi.fn(),

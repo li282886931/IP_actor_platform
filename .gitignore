@@ -14,6 +14,7 @@ node_modules/
 .env
 .env.*
 *.log
+storage/
 starhub-web/dist
 .pai/
 **/.pai/

@@ -4,7 +4,7 @@ from pathlib import Path
 from xml.sax.saxutils import escape
 
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, func
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -158,11 +158,37 @@ def test_init_db_seeds_empty_database(monkeypatch):
     session_factory = make_temp_session(monkeypatch)
 
     app_module.init_db()
+    app_module.init_db()
 
     db = session_factory()
     try:
-        assert db.query(app_module.Artist).count() == 3
+        assert db.query(app_module.Artist).count() == 13
         assert db.query(app_module.Show).count() == 3
+        caiqin = db.query(app_module.Artist).filter(app_module.Artist.name == "蔡琴").one()
+        assert caiqin.profile["age"] == "约68岁"
+        assert "丝绒歌后" in caiqin.profile["market_positioning"]
+        assert "不要告别" in caiqin.profile["touring_box_office_reference"]
+        liu_xiaoqing = db.query(app_module.Artist).filter(app_module.Artist.name == "刘晓庆").one()
+        assert liu_xiaoqing.risk_level >= 4
+        assert "反面参照" in liu_xiaoqing.profile["cooperation_recommendation"]
+        assert db.query(app_module.Artist).filter(app_module.Artist.name == "费玉清类").one().profile["market_positioning"] == "已封麦"
+        zhao = db.query(app_module.Artist).filter(app_module.Artist.name == "赵雅芝").one()
+        assert zhao.profile["market_dossier"]["sheet_count"] == 8
+        assert zhao.profile["market_dossier"]["row_count"] == 108
+        project = db.query(app_module.Project).filter(app_module.Project.name == "赵雅芝大秀市场分析").one()
+        assert project.artist_name == "赵雅芝"
+        assert db.query(app_module.Evidence).filter(app_module.Evidence.project_id == project.id).count() == 108
+        assert db.query(app_module.ExternalDataJob).filter(app_module.ExternalDataJob.project_id == project.id).count() == 69
+        assert db.query(app_module.Fact).filter(app_module.Fact.project_id == project.id).count() >= 60
+        assert db.query(app_module.Assumption).filter(app_module.Assumption.project_id == project.id).count() >= 30
+        duplicate_evidence_urls = (
+            db.query(app_module.Evidence.file_url)
+            .filter(app_module.Evidence.project_id == project.id)
+            .group_by(app_module.Evidence.file_url)
+            .having(func.count(app_module.Evidence.id) > 1)
+            .all()
+        )
+        assert duplicate_evidence_urls == []
     finally:
         db.close()
 
@@ -262,7 +288,7 @@ def test_oss_upload_reservation_creates_evidence_after_completion(monkeypatch):
     db = session_factory()
     try:
         assert db.query(app_module.OSSUpload).count() == 1
-        assert db.query(app_module.Evidence).count() == 1
+        assert db.query(app_module.Evidence).filter(app_module.Evidence.project_id == project["id"]).count() == 1
     finally:
         db.close()
 
@@ -344,6 +370,73 @@ def test_oss_upload_initiate_uses_minio_presigned_url_when_enabled(monkeypatch):
         db.close()
 
 
+def test_feasibility_report_uploads_generated_docx_to_minio(monkeypatch):
+    client, session_factory = make_test_client(monkeypatch)
+    monkeypatch.setenv("OSS_PROVIDER", "minio")
+    monkeypatch.setenv("MINIO_BUCKET", "ip-actor-test")
+
+    calls = []
+
+    class FakeMinioClient:
+        def bucket_exists(self, bucket):
+            calls.append(("bucket_exists", bucket))
+            return True
+
+        def make_bucket(self, bucket):
+            calls.append(("make_bucket", bucket))
+
+        def put_object(self, bucket, object_key, data, length, content_type):
+            content = data.read()
+            calls.append(("put_object", bucket, object_key, length, content_type, content[:2]))
+
+    monkeypatch.setattr(routes_module, "create_minio_client", lambda: FakeMinioClient())
+
+    try:
+        project_response = client.post(
+            "/projects",
+            json={
+                "name": "MinIO 可研项目",
+                "artist_name": "测试艺人",
+                "city": "上海",
+                "venue": "测试场馆",
+                "expected_attendance": 1000,
+                "avg_ticket_price": 500,
+                "artist_fee": 100000,
+                "venue_cost": 60000,
+                "marketing_cost": 20000,
+                "production_cost": 50000,
+            },
+        )
+        project = project_response.json()["data"]
+
+        report_response = client.post(f"/projects/{project['id']}/feasibility-report", json={"use_ai_copy": False})
+        assert report_response.status_code == 200
+        report = report_response.json()["data"]
+        assert report["file_url"].startswith("minio://ip-actor-test/")
+        assert report["download_url"] == report["file_url"]
+        assert report["evidence"]["metadata"]["provider"] == "minio"
+        assert calls[0] == ("bucket_exists", "ip-actor-test")
+        assert calls[1][0] == "put_object"
+        assert calls[1][1] == "ip-actor-test"
+        assert calls[1][2].endswith(f"/project-{project['id']}-feasibility-report.docx")
+        assert calls[1][3] > 0
+        assert calls[1][4] == "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        assert calls[1][5] == b"PK"
+    finally:
+        app_module.app.dependency_overrides.clear()
+
+    db = session_factory()
+    try:
+        evidence = db.query(app_module.Evidence).filter(
+            app_module.Evidence.project_id == project["id"],
+            app_module.Evidence.evidence_type == "feasibility_report",
+        ).one()
+        assert evidence.file_url.startswith("minio://ip-actor-test/")
+        assert evidence.meta["local_path"] == ""
+    finally:
+        db.close()
+
+
 def test_external_data_async_job_can_be_run_and_queried(monkeypatch):
     client, session_factory = make_test_client(monkeypatch)
 
@@ -392,7 +485,7 @@ def test_external_data_async_job_can_be_run_and_queried(monkeypatch):
 
     db = session_factory()
     try:
-        assert db.query(app_module.ExternalDataJob).count() == 1
+        assert db.query(app_module.ExternalDataJob).filter(app_module.ExternalDataJob.project_id == project["id"]).count() == 1
     finally:
         db.close()
 
@@ -536,8 +629,9 @@ def test_spreadsheet_parse_job_extracts_xlsx_candidates_and_confirms_multiple_pr
     db = session_factory()
     try:
         assert db.query(app_module.DocumentParseJob).count() == 1
-        assert db.query(app_module.Project).count() == 3
-        assert db.query(app_module.ProjectVersion).count() == 3
+        assert db.query(app_module.Project).filter(app_module.Project.artist_name == "测试艺人").count() == 3
+        project_ids = [project.id for project in db.query(app_module.Project).filter(app_module.Project.artist_name == "测试艺人").all()]
+        assert db.query(app_module.ProjectVersion).filter(app_module.ProjectVersion.project_id.in_(project_ids)).count() == 3
     finally:
         db.close()
 
@@ -724,6 +818,257 @@ def test_extract_llama_server_text_does_not_expose_reasoning_content():
     }) is None
 
 
+def test_ai_generate_strips_think_blocks_from_final_result(monkeypatch):
+    session_factory = make_temp_session(monkeypatch)
+    app_module.init_db()
+    monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
+    monkeypatch.delenv("DASHSCOPE_API_TOKEN", raising=False)
+    monkeypatch.setenv("LLAMA_SERVER_URL", "http://127.0.0.1:18080/v1/chat/completions")
+
+    class FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "choices": [
+                    {"message": {"content": "<think>internal reasoning</think>\n传播定位\n最终文案"}}
+                ]
+            }
+
+    monkeypatch.setattr(routes_module.requests, "post", lambda *args, **kwargs: FakeResponse())
+
+    def override_db():
+        db = session_factory()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    app_module.app.dependency_overrides[app_module.get_db] = override_db
+    try:
+        response = TestClient(app_module.app).post(
+            "/ai/generate",
+            json={"type": "poster", "show_name": "见面会", "artist": "大牛", "city": "上海"},
+        )
+    finally:
+        app_module.app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    result = response.json()["data"]["result"]
+    assert "<think>" not in result
+    assert "internal reasoning" not in result
+    assert result == "传播定位\n最终文案"
+
+
+def test_ai_generate_stream_returns_sse_progress_and_clean_final(monkeypatch):
+    session_factory = make_temp_session(monkeypatch)
+    app_module.init_db()
+    monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
+    monkeypatch.delenv("DASHSCOPE_API_TOKEN", raising=False)
+    monkeypatch.setenv("LLAMA_SERVER_URL", "http://127.0.0.1:18080/v1/chat/completions")
+
+    class FakeStreamResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def raise_for_status(self):
+            return None
+
+        def iter_lines(self, decode_unicode=False):
+            lines = [
+                'data: {"choices":[{"delta":{"reasoning_content":"先定位目标客群"}}]}'.encode("utf-8"),
+                'data: {"choices":[{"delta":{"content":"<think>判断传播角度</think>传播定位"}}]}'.encode("utf-8"),
+                'data: {"choices":[{"delta":{"content":"\\n最终文案：村庄见面会"}}]}'.encode("utf-8"),
+                b'data: [DONE]',
+            ]
+            yield from lines
+
+    calls = []
+
+    def fake_post(url, **kwargs):
+        calls.append(kwargs)
+        return FakeStreamResponse()
+
+    monkeypatch.setattr(routes_module.requests, "post", fake_post)
+
+    def override_db():
+        db = session_factory()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    app_module.app.dependency_overrides[app_module.get_db] = override_db
+    try:
+        with TestClient(app_module.app).stream(
+            "POST",
+            "/ai/generate/stream",
+            json={"type": "poster", "show_name": "见面会", "artist": "大牛", "city": "上海"},
+        ) as response:
+            body = response.read().decode("utf-8")
+    finally:
+        app_module.app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+    assert '"event": "progress"' in body
+    assert '"event": "thought"' in body
+    assert '"event": "final"' in body
+    assert "先定位目标客群" in body
+    assert "判断传播角度" in body
+    assert "<think>" not in body
+    assert "传播定位\\n最终文案：村庄见面会" in body
+    assert calls[0]["json"]["stream"] is True
+
+
+def test_ai_generate_stream_moves_plain_analysis_preamble_to_thought(monkeypatch):
+    session_factory = make_temp_session(monkeypatch)
+    app_module.init_db()
+    monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
+    monkeypatch.delenv("DASHSCOPE_API_TOKEN", raising=False)
+    monkeypatch.setenv("LLAMA_SERVER_URL", "http://127.0.0.1:18080/v1/chat/completions")
+
+    class FakeStreamResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def raise_for_status(self):
+            return None
+
+        def iter_lines(self, decode_unicode=False):
+            lines = [
+                'data: {"choices":[{"delta":{"content":"我们需要先判断传播策略。"}}]}'.encode("utf-8"),
+                'data: {"choices":[{"delta":{"content":"传播定位\\n最终文案"}}]}'.encode("utf-8"),
+                b'data: [DONE]',
+            ]
+            yield from lines
+
+    monkeypatch.setattr(routes_module.requests, "post", lambda *args, **kwargs: FakeStreamResponse())
+
+    def override_db():
+        db = session_factory()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    app_module.app.dependency_overrides[app_module.get_db] = override_db
+    try:
+        with TestClient(app_module.app).stream(
+            "POST",
+            "/ai/generate/stream",
+            json={"type": "poster", "show_name": "见面会", "artist": "大牛", "city": "上海"},
+        ) as response:
+            body = response.read().decode("utf-8")
+    finally:
+        app_module.app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert '"event": "thought"' in body
+    assert "我们需要先判断传播策略" in body
+    assert '"result": "传播定位\\n最终文案"' in body
+
+
+def test_ai_generate_returns_cached_result_from_redis(monkeypatch):
+    session_factory = make_temp_session(monkeypatch)
+    app_module.init_db()
+    monkeypatch.setenv("LLAMA_SERVER_URL", "http://127.0.0.1:18080/v1/chat/completions")
+    monkeypatch.setattr(
+        routes_module,
+        "redis_get_json",
+        lambda key: {"status": "completed", "result": "Redis cached copy"},
+    )
+    monkeypatch.setattr(routes_module, "redis_set_json", lambda *args, **kwargs: None)
+
+    def fail_post(*args, **kwargs):
+        raise AssertionError("llama server should not be called on cache hit")
+
+    monkeypatch.setattr(routes_module.requests, "post", fail_post)
+
+    def override_db():
+        db = session_factory()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    app_module.app.dependency_overrides[app_module.get_db] = override_db
+    try:
+        response = TestClient(app_module.app).post(
+            "/ai/generate",
+            json={
+                "type": "poster",
+                "show_name": "见面会",
+                "artist": "大牛",
+                "city": "上海",
+                "generation_nonce": "same-request",
+            },
+        )
+    finally:
+        app_module.app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["data"] == {"result": "Redis cached copy", "cache_hit": True}
+
+
+def test_ai_generate_stream_returns_cached_thought_and_result_from_redis(monkeypatch):
+    session_factory = make_temp_session(monkeypatch)
+    app_module.init_db()
+    monkeypatch.setenv("LLAMA_SERVER_URL", "http://127.0.0.1:18080/v1/chat/completions")
+    monkeypatch.setattr(
+        routes_module,
+        "redis_get_json",
+        lambda key: {
+            "status": "completed",
+            "thought": "缓存中的思考过程",
+            "result": "缓存中的最终文案",
+        },
+    )
+    monkeypatch.setattr(routes_module, "redis_set_json", lambda *args, **kwargs: None)
+
+    def fail_post(*args, **kwargs):
+        raise AssertionError("llama server should not be called on cache hit")
+
+    monkeypatch.setattr(routes_module.requests, "post", fail_post)
+
+    def override_db():
+        db = session_factory()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    app_module.app.dependency_overrides[app_module.get_db] = override_db
+    try:
+        with TestClient(app_module.app).stream(
+            "POST",
+            "/ai/generate/stream",
+            json={
+                "type": "poster",
+                "show_name": "见面会",
+                "artist": "大牛",
+                "city": "上海",
+                "generation_nonce": "same-request",
+            },
+        ) as response:
+            body = response.read().decode("utf-8")
+    finally:
+        app_module.app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert "命中 Redis 生成缓存" in body
+    assert '"event": "thought"' in body
+    assert "缓存中的思考过程" in body
+    assert '"result": "缓存中的最终文案"' in body
+
+
 def test_list_shows_returns_seeded_data(monkeypatch):
     session_factory = make_temp_session(monkeypatch)
     app_module.init_db()
@@ -746,6 +1091,96 @@ def test_list_shows_returns_seeded_data(monkeypatch):
     body = response.json()
     assert body["code"] == 0
     assert len(body["data"]) == 3
+
+
+def test_dashboard_analytics_uses_live_platform_data(monkeypatch):
+    client, session_factory = make_test_client(monkeypatch)
+
+    try:
+        project_response = client.post(
+            "/projects",
+            json={
+                "name": "看板验证项目",
+                "artist_name": "周杰伦",
+                "city": "北京",
+                "venue": "国家体育场",
+                "schedule": "2026-09-10",
+                "expected_attendance": 1000,
+                "avg_ticket_price": 500,
+                "artist_fee": 100000,
+                "venue_cost": 60000,
+                "marketing_cost": 20000,
+                "production_cost": 50000,
+            },
+        )
+        project = project_response.json()["data"]
+
+        finance_response = client.post(
+            "/finance/calculate",
+            json={
+                "project_id": project["id"],
+                "expected_attendance": 1000,
+                "avg_ticket_price": 500,
+                "artist_fee": 100000,
+                "venue_cost": 60000,
+                "marketing_cost": 20000,
+                "production_cost": 50000,
+            },
+        )
+        assert finance_response.status_code == 200
+
+        task_response = client.post(
+            "/tasks",
+            json={"project_id": project["id"], "title": "核对票务通道"},
+        )
+        assert task_response.status_code == 200
+
+        show_response = client.get("/shows")
+        show_id = show_response.json()["data"][0]["id"]
+        order_response = client.post(
+            f"/shows/{show_id}/order",
+            json={"name": "观众一", "phone": "13800000000"},
+        )
+        assert order_response.status_code == 200
+
+        analytics_response = client.get("/analytics/dashboard")
+    finally:
+        app_module.app.dependency_overrides.clear()
+
+    assert analytics_response.status_code == 200
+    data = analytics_response.json()["data"]
+    assert data["summary"]["active_projects"] >= 1
+    assert data["summary"]["pending_tasks"] >= 1
+    assert data["summary"]["reservations"] == 1
+    assert data["summary"]["on_sale_shows"] == 3
+    assert data["summary"]["neutral_profit_total"] == 270000
+    assert any(item["key"] == "neutral_profit_total" for item in data["metrics"])
+
+
+def test_ticketing_summary_lists_show_reservations(monkeypatch):
+    client, session_factory = make_test_client(monkeypatch)
+
+    try:
+        shows_response = client.get("/shows")
+        show = shows_response.json()["data"][0]
+        order_response = client.post(
+            f"/shows/{show['id']}/order",
+            json={"name": "票务用户", "phone": "13900000000"},
+        )
+        assert order_response.status_code == 200
+
+        summary_response = client.get("/ticketing/summary")
+    finally:
+        app_module.app.dependency_overrides.clear()
+
+    assert summary_response.status_code == 200
+    data = summary_response.json()["data"]
+    assert data["summary"]["total_shows"] == 3
+    assert data["summary"]["on_sale_shows"] == 3
+    assert data["summary"]["reservation_count"] == 1
+    assert data["shows"][0]["reservation_count"] == 1
+    assert data["orders"][0]["show_title"] == show["title"]
+    assert data["orders"][0]["phone"] == "13900000000"
 
 
 def test_root_login_and_user_management(monkeypatch):
@@ -979,12 +1414,126 @@ def test_phase1_project_decision_flow(monkeypatch):
 
     db = session_factory()
     try:
-        assert db.query(app_module.Project).count() == 1
-        assert db.query(app_module.ProjectVersion).count() == 2
-        assert db.query(app_module.Decision).count() == 1
-        assert db.query(app_module.Task).count() == 1
+        assert db.query(app_module.Project).filter(app_module.Project.name == "北京大型演唱会测算").count() == 1
+        assert db.query(app_module.ProjectVersion).filter(app_module.ProjectVersion.project_id == project["id"]).count() == 2
+        assert db.query(app_module.Decision).filter(app_module.Decision.project_id == project["id"]).count() == 1
+        assert db.query(app_module.Task).filter(app_module.Task.project_id == project["id"]).count() == 1
     finally:
         db.close()
+
+
+def test_project_feasibility_report_generates_docx_and_evidence(monkeypatch):
+    client, session_factory = make_test_client(monkeypatch)
+
+    try:
+        project_response = client.post(
+            "/projects",
+            json={
+                "name": "北京大型演唱会可研",
+                "artist_name": "周杰伦",
+                "city": "北京",
+                "venue": "国家体育场",
+                "schedule": "2026-09-10",
+                "expected_attendance": 48000,
+                "avg_ticket_price": 680,
+                "artist_fee": 12000000,
+                "venue_cost": 3600000,
+                "marketing_cost": 1800000,
+                "production_cost": 5200000,
+            },
+        )
+        assert project_response.status_code == 200
+        project = project_response.json()["data"]
+
+        fact_response = client.post(
+            "/facts",
+            json={
+                "project_id": project["id"],
+                "title": "场地方已确认档期",
+                "content": "档期锁定 2026-09-10",
+                "source": "venue",
+            },
+        )
+        assert fact_response.status_code == 200
+        risk_response = client.post(
+            "/risks",
+            json={
+                "project_id": project["id"],
+                "title": "审批进度风险",
+                "level": "medium",
+                "mitigation": "提前准备营业性演出批文材料",
+            },
+        )
+        assert risk_response.status_code == 200
+
+        report_response = client.post(
+            f"/projects/{project['id']}/feasibility-report",
+            json={
+                "tax_fee_rate": 0.15,
+                "sponsorship_income": 1000000,
+                "merchandise_income": 500000,
+                "use_ai_copy": False,
+            },
+        )
+        assert report_response.status_code == 200
+        report = report_response.json()["data"]
+        assert report["project_id"] == project["id"]
+        assert report["evidence"]["evidence_type"] == "feasibility_report"
+        assert report["evidence"]["file_url"].startswith("oss://local-placeholder/")
+        assert report["download_url"].startswith("/reports/files/")
+        assert report["file_name"].endswith(".docx")
+        assert report["calculation_result"]["formula_version"] == "feasibility-v1"
+        assert report["calculation_result"]["scenarios"]["neutral"]["occupancy_rate"] == 0.8
+        assert report["calculation_result"]["scenarios"]["neutral"]["gross_ticket_revenue"] == 26112000
+        assert report["calculation_result"]["scenarios"]["neutral"]["net_ticket_revenue"] == 22195200
+        assert report["calculation_result"]["scenarios"]["neutral"]["total_income"] == 23695200
+        assert report["calculation_result"]["scenarios"]["neutral"]["net_profit"] == 1095200
+        assert report["calculation_result"]["breakeven_occupancy_rate"] == 0.8146
+
+        download_response = client.get(report["download_url"])
+        assert download_response.status_code == 200
+        assert download_response.headers["content-type"].startswith(
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        )
+    finally:
+        app_module.app.dependency_overrides.clear()
+
+    db = session_factory()
+    try:
+        evidence = db.query(app_module.Evidence).filter(
+            app_module.Evidence.project_id == project["id"],
+            app_module.Evidence.evidence_type == "feasibility_report",
+        ).one()
+        assert evidence.name.endswith(".docx")
+        assert evidence.meta["calculation_result"]["scenarios"]["neutral"]["net_profit"] == 1095200
+        assert Path(evidence.meta["local_path"]).exists()
+    finally:
+        db.close()
+
+
+def test_project_feasibility_report_requires_complete_finance_inputs(monkeypatch):
+    client, _ = make_test_client(monkeypatch)
+
+    try:
+        project_response = client.post(
+            "/projects",
+            json={
+                "name": "缺参数项目",
+                "artist_name": "测试艺人",
+                "city": "北京",
+                "expected_attendance": 48000,
+                "avg_ticket_price": 680,
+            },
+        )
+        assert project_response.status_code == 200
+        project = project_response.json()["data"]
+
+        report_response = client.post(f"/projects/{project['id']}/feasibility-report", json={})
+        assert report_response.status_code == 400
+        assert report_response.json()["detail"]["status"] == "pending_input"
+        assert "artist_fee" in report_response.json()["detail"]["missing_fields"]
+    finally:
+        app_module.app.dependency_overrides.clear()
 
 
 def test_full_backend_plan_api_flow(monkeypatch):
@@ -1146,11 +1695,11 @@ def test_full_backend_plan_api_flow(monkeypatch):
 
     db = session_factory()
     try:
-        assert db.query(app_module.Fact).count() == 1
-        assert db.query(app_module.Evidence).count() == 1
-        assert db.query(app_module.Assumption).count() == 1
-        assert db.query(app_module.Gate).count() == 1
-        assert db.query(app_module.Risk).count() == 1
-        assert db.query(app_module.ReportShare).count() == 1
+        assert db.query(app_module.Fact).filter(app_module.Fact.project_id == project["id"]).count() == 1
+        assert db.query(app_module.Evidence).filter(app_module.Evidence.project_id == project["id"]).count() == 1
+        assert db.query(app_module.Assumption).filter(app_module.Assumption.project_id == project["id"]).count() == 1
+        assert db.query(app_module.Gate).filter(app_module.Gate.project_id == project["id"]).count() == 1
+        assert db.query(app_module.Risk).filter(app_module.Risk.project_id == project["id"]).count() == 1
+        assert db.query(app_module.ReportShare).filter(app_module.ReportShare.project_id == project["id"]).count() == 1
     finally:
         db.close()

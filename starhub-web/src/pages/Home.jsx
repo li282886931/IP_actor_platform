@@ -5,6 +5,9 @@ import {
   calculateFinance,
   createDecision,
   createProject,
+  createTask,
+  getDashboardAnalytics,
+  getTicketingSummary,
   listProjects,
   listShows,
   listTasks,
@@ -149,11 +152,16 @@ function RoleDashboard({ role }) {
 function BusinessWorkbench() {
   const [projects, setProjects] = useState([])
   const [tasks, setTasks] = useState([])
+  const [analytics, setAnalytics] = useState(null)
+  const [ticketing, setTicketing] = useState(null)
   const [financeResults, setFinanceResults] = useState({})
+  const [financeInputs, setFinanceInputs] = useState({})
+  const [decisionResults, setDecisionResults] = useState({})
   const [status, setStatus] = useState('loading')
   const [submitStatus, setSubmitStatus] = useState('idle')
   const [projectActionStatus, setProjectActionStatus] = useState({})
   const [message, setMessage] = useState('')
+  const [messageTone, setMessageTone] = useState('success')
   const [form, setForm] = useState({
     name: '',
     artist_name: '',
@@ -165,11 +173,18 @@ function BusinessWorkbench() {
     let active = true
     setStatus('loading')
 
-    Promise.all([listProjects(), listTasks()])
-      .then(([projectResponse, taskResponse]) => {
+    Promise.all([
+      listProjects(),
+      listTasks(),
+      getDashboardAnalytics().catch(() => ({ data: { data: null } })),
+      getTicketingSummary().catch(() => ({ data: { data: null } })),
+    ])
+      .then(([projectResponse, taskResponse, analyticsResponse, ticketingResponse]) => {
         if (!active) return
         setProjects(projectResponse.data.data || [])
         setTasks(taskResponse.data.data || [])
+        setAnalytics(analyticsResponse.data.data || null)
+        setTicketing(ticketingResponse.data.data || null)
         setStatus('success')
       })
       .catch(() => {
@@ -188,11 +203,13 @@ function BusinessWorkbench() {
   const handleCreateProject = async (event) => {
     event.preventDefault()
     if (!form.name.trim()) {
+      setMessageTone('error')
       setMessage('请填写项目名称')
       return
     }
 
     setSubmitStatus('loading')
+    setMessageTone('success')
     setMessage('')
     try {
       const response = await createProject({
@@ -205,14 +222,71 @@ function BusinessWorkbench() {
       setProjects((current) => [response.data.data, ...current])
       setForm({ name: '', artist_name: '', city: '', venue: '' })
       setSubmitStatus('success')
+      setMessageTone('success')
       setMessage('项目已创建，可继续补充财务测算参数。')
     } catch {
       setSubmitStatus('error')
+      setMessageTone('error')
       setMessage('项目创建失败，请稍后重试。')
     }
   }
 
   const formatNumber = (value) => new Intl.NumberFormat('zh-CN').format(value || 0)
+  const formatCurrency = (value) => `¥${formatNumber(value)}`
+  const missingFieldLabels = {
+    expected_attendance: '预计人数',
+    avg_ticket_price: '平均票价',
+    artist_fee: '艺人费',
+    venue_cost: '场地成本',
+    marketing_cost: '宣发成本',
+    production_cost: '制作成本',
+  }
+
+  const financeFields = [
+    { key: 'expected_attendance', label: '预计人数' },
+    { key: 'avg_ticket_price', label: '平均票价' },
+    { key: 'artist_fee', label: '艺人费' },
+    { key: 'venue_cost', label: '场地成本' },
+    { key: 'marketing_cost', label: '宣发成本' },
+    { key: 'production_cost', label: '制作成本' },
+  ]
+
+  const nextStepActions = [
+    { title: '发起政策审批', description: '确认政策审批材料、申报路径和责任人。' },
+    { title: '确认场地安全', description: '确认场地安全方案、安保容量、消防与应急预案。' },
+    { title: '确认艺人授权', description: '确认艺人授权范围、档期锁定、肖像与宣发素材使用边界。' },
+    { title: '确认资金合同', description: '确认资金预算、付款节点、合同主体和风控条款。' },
+  ]
+
+  const financeValue = (project, field) => (
+    financeInputs[project.id]?.[field] ?? project[field] ?? ''
+  )
+
+  const parseOptionalNumber = (value) => {
+    if (value === '' || value === null || value === undefined) return undefined
+    const numberValue = Number(value)
+    return Number.isFinite(numberValue) ? numberValue : undefined
+  }
+
+  const handleFinanceInputChange = (projectId, field, value) => {
+    setFinanceInputs((current) => ({
+      ...current,
+      [projectId]: {
+        ...(current[projectId] || {}),
+        [field]: value,
+      },
+    }))
+  }
+
+  const formatStatus = (value) => {
+    const statusMap = {
+      calculated: '已测算',
+      pending_confirmation: '待确认',
+      draft: '草稿',
+      archived: '已归档',
+    }
+    return statusMap[value] || value || '待处理'
+  }
 
   const handleCalculateFinance = async (project) => {
     setProjectActionStatus((current) => ({ ...current, [`finance-${project.id}`]: 'loading' }))
@@ -220,12 +294,12 @@ function BusinessWorkbench() {
     try {
       const response = await calculateFinance({
         project_id: project.id,
-        expected_attendance: project.expected_attendance,
-        avg_ticket_price: project.avg_ticket_price,
-        artist_fee: project.artist_fee,
-        venue_cost: project.venue_cost,
-        marketing_cost: project.marketing_cost,
-        production_cost: project.production_cost,
+        expected_attendance: parseOptionalNumber(financeValue(project, 'expected_attendance')),
+        avg_ticket_price: parseOptionalNumber(financeValue(project, 'avg_ticket_price')),
+        artist_fee: parseOptionalNumber(financeValue(project, 'artist_fee')),
+        venue_cost: parseOptionalNumber(financeValue(project, 'venue_cost')),
+        marketing_cost: parseOptionalNumber(financeValue(project, 'marketing_cost')),
+        production_cost: parseOptionalNumber(financeValue(project, 'production_cost')),
       })
       const result = response.data.data
       setFinanceResults((current) => ({ ...current, [project.id]: result }))
@@ -237,6 +311,7 @@ function BusinessWorkbench() {
       setProjectActionStatus((current) => ({ ...current, [`finance-${project.id}`]: 'success' }))
     } catch {
       setProjectActionStatus((current) => ({ ...current, [`finance-${project.id}`]: 'error' }))
+      setMessageTone('error')
       setMessage('财务测算失败，请补齐项目参数后重试。')
     }
   }
@@ -246,33 +321,64 @@ function BusinessWorkbench() {
     setProjectActionStatus((current) => ({ ...current, [`decision-${project.id}`]: 'loading' }))
     setMessage('')
     try {
-      await createDecision({
+      const response = await createDecision({
         project_id: project.id,
         version_id: versionId,
         decision_type: 'advance',
         conditions: '完成政策审批、场地安全、艺人授权与资金合同确认后推进。',
       })
+      const result = response.data.data
+      setDecisionResults((current) => ({ ...current, [project.id]: result }))
       setProjects((current) => current.map((item) => (
-        item.id === project.id ? { ...item, status: 'pending_confirmation' } : item
+        item.id === project.id ? { ...item, status: result.project_status || 'pending_confirmation' } : item
       )))
       setProjectActionStatus((current) => ({ ...current, [`decision-${project.id}`]: 'success' }))
+      setMessageTone('success')
       setMessage('已提交推进决策')
     } catch {
       setProjectActionStatus((current) => ({ ...current, [`decision-${project.id}`]: 'error' }))
+      setMessageTone('error')
       setMessage('决策提交失败，请确认已有可用版本。')
+    }
+  }
+
+  const hasNextStepTask = (projectId, title) => (
+    tasks.some((task) => task.project_id === projectId && task.title === title)
+  )
+
+  const handleCreateNextStepTask = async (project, decisionResult, action) => {
+    if (hasNextStepTask(project.id, action.title)) return
+
+    setProjectActionStatus((current) => ({ ...current, [`task-${project.id}-${action.title}`]: 'loading' }))
+    setMessage('')
+    try {
+      const versionLabel = decisionResult?.version_id ? `V${decisionResult.version_id}` : '当前版本'
+      const response = await createTask({
+        project_id: project.id,
+        title: action.title,
+        description: `基于推进决策 ${versionLabel}，${action.description}`,
+      })
+      setTasks((current) => [response.data.data, ...current])
+      setProjectActionStatus((current) => ({ ...current, [`task-${project.id}-${action.title}`]: 'success' }))
+      setMessageTone('success')
+      setMessage('下一步任务已安排')
+    } catch {
+      setProjectActionStatus((current) => ({ ...current, [`task-${project.id}-${action.title}`]: 'error' }))
+      setMessageTone('error')
+      setMessage('下一步任务创建失败，请稍后重试。')
     }
   }
 
   const activeProjects = projects.filter((project) => project.status !== 'archived').length
   const pendingTasks = tasks.filter((task) => task.status === 'pending').length
-  const calculatedProjects = projects.filter((project) => project.status === 'calculated').length
-  const decisionProjects = projects.filter((project) => project.status === 'pending_confirmation').length
+  const analyticsSummary = analytics?.summary || {}
+  const ticketingSummary = ticketing?.summary || {}
 
   const metrics = [
-    { label: '项目总数', value: String(projects.length), delta: `${activeProjects} 个仍在推进` },
-    { label: '已测算项目', value: String(calculatedProjects), delta: '财务结果可复算留痕' },
-    { label: '待决策项目', value: String(decisionProjects), delta: '需负责人确认版本' },
-    { label: '待办任务', value: String(pendingTasks), delta: 'Agent / 人工任务池', tone: pendingTasks ? 'danger' : undefined },
+    { label: '项目总数', value: String(projects.length), delta: `${analyticsSummary.active_projects ?? activeProjects} 个仍在推进` },
+    { label: '中性利润合计', value: formatCurrency(analyticsSummary.neutral_profit_total || 0), delta: '来自当前版本测算' },
+    { label: '预约人数', value: `${formatNumber(ticketingSummary.reservation_count ?? analyticsSummary.reservations ?? 0)} 人`, delta: `${ticketingSummary.on_sale_shows ?? analyticsSummary.on_sale_shows ?? 0} 场售票中` },
+    { label: '待办任务', value: String(analyticsSummary.pending_tasks ?? pendingTasks), delta: 'Agent / 人工任务池', tone: (analyticsSummary.pending_tasks ?? pendingTasks) ? 'danger' : undefined },
   ]
 
   return (
@@ -308,39 +414,149 @@ function BusinessWorkbench() {
           {status === 'success' && projects.length === 0 && <div className="state-panel">暂无项目，先创建一个项目。</div>}
           {status === 'success' && projects.length > 0 && (
             <div className="summary-list">
-              {projects.map((project) => (
-                <span key={project.id}>
-                  <Link className="summary-title-link" to={`/projects/${project.id}`}>{project.name}</Link>
-                  <strong>{project.status === 'calculated' ? '已测算' : project.status}</strong>
-                  <small>{[project.artist_name, project.city, project.venue].filter(Boolean).join(' · ') || '基础信息待补充'}</small>
-                  {financeResults[project.id]?.scenarios?.neutral && (
-                    <small>
-                      中性利润 ¥{formatNumber(financeResults[project.id].scenarios.neutral.profit)}
-                    </small>
-                  )}
-                  {financeResults[project.id]?.breakeven_attendance && (
-                    <small>保本人数 {formatNumber(financeResults[project.id].breakeven_attendance)}</small>
-                  )}
-                  <div className="inline-actions">
-                    <button
-                      className="button button-secondary"
-                      disabled={projectActionStatus[`finance-${project.id}`] === 'loading'}
-                      onClick={() => handleCalculateFinance(project)}
-                      type="button"
-                    >
-                      {projectActionStatus[`finance-${project.id}`] === 'loading' ? '测算中...' : '计算盈亏'}
-                    </button>
-                    <button
-                      className="button button-primary"
-                      disabled={projectActionStatus[`decision-${project.id}`] === 'loading'}
-                      onClick={() => handleAdvanceDecision(project)}
-                      type="button"
-                    >
-                      {projectActionStatus[`decision-${project.id}`] === 'loading' ? '提交中...' : '提交推进决策'}
-                    </button>
-                  </div>
-                </span>
-              ))}
+              {projects.map((project) => {
+                const financeResult = financeResults[project.id]
+                const neutralScenario = financeResult?.scenarios?.neutral
+                const hasCalculatedFinance = financeResult?.status !== 'pending_input' && neutralScenario
+                const missingFields = (financeResult?.missing_fields || []).map((field) => missingFieldLabels[field] || field)
+                const decisionResult = decisionResults[project.id]
+
+                return (
+                  <article className="project-list-row" key={project.id}>
+                    <div className="project-list-main">
+                      <Link className="summary-title-link" to={`/projects/${project.id}`}>{project.name}</Link>
+                      <small>{[project.artist_name, project.city, project.venue].filter(Boolean).join(' · ') || '基础信息待补充'}</small>
+                      {(neutralScenario || financeResult?.breakeven_attendance) && (
+                        <div className="project-list-metrics">
+                          {neutralScenario && (
+                            <small>
+                              中性利润 ¥{formatNumber(neutralScenario.profit)}
+                            </small>
+                          )}
+                          {financeResult?.breakeven_attendance && (
+                            <small>保本人数 {formatNumber(financeResult.breakeven_attendance)}</small>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    <strong className="project-status">{formatStatus(project.status)}</strong>
+                    <div className="inline-actions project-row-actions">
+                      <button
+                        className="button button-secondary"
+                        disabled={projectActionStatus[`finance-${project.id}`] === 'loading'}
+                        onClick={() => handleCalculateFinance(project)}
+                        type="button"
+                      >
+                        {projectActionStatus[`finance-${project.id}`] === 'loading' ? '测算中...' : '计算盈亏'}
+                      </button>
+                      <button
+                        className="button button-primary"
+                        disabled={projectActionStatus[`decision-${project.id}`] === 'loading'}
+                        onClick={() => handleAdvanceDecision(project)}
+                        type="button"
+                      >
+                        {projectActionStatus[`decision-${project.id}`] === 'loading' ? '提交中...' : '提交推进决策'}
+                      </button>
+                    </div>
+
+                    <div className="project-finance-inputs" aria-label={`${project.name}真实测算参数`}>
+                      {financeFields.map((field) => (
+                        <label className="field" key={field.key}>
+                          <span>{field.label}</span>
+                          <input
+                            inputMode="numeric"
+                            type="number"
+                            value={financeValue(project, field.key)}
+                            onChange={(event) => handleFinanceInputChange(project.id, field.key, event.target.value)}
+                          />
+                        </label>
+                      ))}
+                    </div>
+
+                    {financeResult && !hasCalculatedFinance && (
+                      <section className="project-action-result pending" aria-label={`${project.name}测算参数待补齐`}>
+                        <div className="project-action-result-heading">
+                          <strong>待补齐真实测算参数</strong>
+                          {financeResult.version_id && <em>V{financeResult.version_id}</em>}
+                        </div>
+                        <p className="project-result-note">
+                          {missingFields.length ? missingFields.join('、') : '请补齐真实人数、票价与成本后重新测算'}
+                        </p>
+                      </section>
+                    )}
+
+                    {financeResult && hasCalculatedFinance && (
+                      <section className="project-action-result" aria-label={`${project.name}测算结果`}>
+                        <div className="project-action-result-heading">
+                          <strong>测算结果</strong>
+                          {financeResult.version_id && <em>V{financeResult.version_id}</em>}
+                        </div>
+                        <dl className="project-result-grid">
+                          <div>
+                            <dt>中性收入</dt>
+                            <dd>{formatCurrency(neutralScenario?.revenue)}</dd>
+                          </div>
+                          <div>
+                            <dt>中性利润</dt>
+                            <dd>{formatCurrency(neutralScenario?.profit)}</dd>
+                          </div>
+                          <div>
+                            <dt>保本人数</dt>
+                            <dd>{formatNumber(financeResult.breakeven_attendance)}</dd>
+                          </div>
+                          <div>
+                            <dt>测算版本</dt>
+                            <dd>{financeResult.version_id ? `V${financeResult.version_id}` : '待生成'}</dd>
+                          </div>
+                        </dl>
+                      </section>
+                    )}
+
+                    {decisionResult && (
+                      <section className="project-action-result decision" aria-label={`${project.name}推进结果`}>
+                        <div className="project-action-result-heading">
+                          <strong>推进结果</strong>
+                          {decisionResult.version_id && <em>V{decisionResult.version_id}</em>}
+                        </div>
+                        <dl className="project-result-grid">
+                          <div>
+                            <dt>决策类型</dt>
+                            <dd>{decisionResult.decision_type === 'advance' ? '推进' : decisionResult.decision_type}</dd>
+                          </div>
+                          <div>
+                            <dt>决策状态</dt>
+                            <dd>{formatStatus(decisionResult.project_status)}</dd>
+                          </div>
+                          <div className="project-result-wide">
+                            <dt>推进条件</dt>
+                            <dd>{decisionResult.conditions || '待补充推进条件'}</dd>
+                          </div>
+                        </dl>
+                        <div className="next-step-actions">
+                          <strong>下一步操作</strong>
+                          <div>
+                            {nextStepActions.map((action) => {
+                              const scheduled = hasNextStepTask(project.id, action.title)
+                              const loading = projectActionStatus[`task-${project.id}-${action.title}`] === 'loading'
+                              return (
+                                <button
+                                  className={`button ${scheduled ? 'button-secondary' : 'button-primary'}`}
+                                  disabled={scheduled || loading}
+                                  key={action.title}
+                                  onClick={() => handleCreateNextStepTask(project, decisionResult, action)}
+                                  type="button"
+                                >
+                                  {scheduled ? '已安排' : loading ? '安排中...' : action.title}
+                                </button>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      </section>
+                    )}
+                  </article>
+                )
+              })}
             </div>
           )}
         </article>
@@ -369,6 +585,33 @@ function BusinessWorkbench() {
             </div>
           )}
         </article>
+
+        <article className="panel">
+          <div className="panel-heading">
+            <div>
+              <span className="eyebrow">TICKETING</span>
+              <h3>票务预约汇总</h3>
+            </div>
+            <span className="section-count">{formatNumber(ticketingSummary.reservation_count || 0)} 人预约</span>
+          </div>
+          <div className="summary-list compact-list">
+            <span>售票中场次<strong>{formatNumber(ticketingSummary.on_sale_shows || 0)} 场</strong></span>
+            <span>演出总数<strong>{formatNumber(ticketingSummary.total_shows || 0)} 场</strong></span>
+          </div>
+          {(ticketing?.shows || []).length > 0 && (
+            <div className="activity-list">
+              {(ticketing.shows || []).slice(0, 3).map((show) => (
+                <div key={show.id}>
+                  <span className="activity-mark success" />
+                  <p>
+                    <strong>{show.title}</strong>
+                    <small>{formatNumber(show.reservation_count || 0)} 人预约 · {show.status === 'on_sale' ? '售票中' : show.status}</small>
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </article>
       </section>
 
       <section className="panel">
@@ -378,7 +621,7 @@ function BusinessWorkbench() {
             <h3>创建项目</h3>
           </div>
         </div>
-        <form className="generator-form project-create-form" onSubmit={handleCreateProject}>
+        <form className="project-create-form" onSubmit={handleCreateProject}>
           <div className="form-grid">
             <label className="field">
               <span>项目名称</span>
@@ -401,7 +644,7 @@ function BusinessWorkbench() {
             {submitStatus === 'loading' ? '创建中...' : '创建项目'}
           </button>
         </form>
-        {message && <div className={`inline-message ${submitStatus === 'success' ? 'success' : 'error'}`}>{message}</div>}
+        {message && <div className={`inline-message ${messageTone}`}>{message}</div>}
       </section>
 
     </div>

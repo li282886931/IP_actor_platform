@@ -5,12 +5,15 @@ import {
   agentChat,
   createAssumption,
   createEvidence,
+  createExternalDataJob,
   createFact,
   createGate,
   createRisk,
+  generateFeasibilityReport,
   getProject,
   listAssumptions,
   listEvidences,
+  listExternalDataJobs,
   listFacts,
   listGates,
   listProjectVersions,
@@ -21,12 +24,14 @@ import {
   submitTask,
   verifyFact,
 } from '../api'
+import { zhaoYazhiMarketDossier } from '../data/marketDossier'
 
 const emptyFactForm = { title: '', content: '', source: '' }
 const emptyEvidenceForm = { name: '', file_url: '', source: '', evidence_type: 'document' }
 const emptyAssumptionForm = { title: '', content: '', confidence: 70 }
 const emptyGateForm = { name: '', required_evidence: '', owner_group: 'B' }
 const emptyRiskForm = { title: '', mitigation: '', level: 'medium' }
+const emptyMarketFactForm = { title: '', content: '', source: '' }
 
 function formatNumber(value) {
   return new Intl.NumberFormat('zh-CN').format(value || 0)
@@ -67,10 +72,12 @@ export default function ProjectDetail() {
   const [gates, setGates] = useState([])
   const [risks, setRisks] = useState([])
   const [tasks, setTasks] = useState([])
+  const [externalJobs, setExternalJobs] = useState([])
   const [cases, setCases] = useState([])
   const [status, setStatus] = useState('loading')
   const [message, setMessage] = useState('')
   const [shareUrl, setShareUrl] = useState('')
+  const [feasibilityReport, setFeasibilityReport] = useState(null)
   const [agentAnswer, setAgentAnswer] = useState('')
   const [taskResultById, setTaskResultById] = useState({})
   const [agentQuestion, setAgentQuestion] = useState('')
@@ -80,6 +87,7 @@ export default function ProjectDetail() {
   const [assumptionForm, setAssumptionForm] = useState(emptyAssumptionForm)
   const [gateForm, setGateForm] = useState(emptyGateForm)
   const [riskForm, setRiskForm] = useState(emptyRiskForm)
+  const [marketFactForm, setMarketFactForm] = useState(emptyMarketFactForm)
 
   useEffect(() => {
     let active = true
@@ -95,8 +103,9 @@ export default function ProjectDetail() {
       listGates(projectId),
       listRisks(projectId),
       listTasks(projectId),
+      listExternalDataJobs(projectId),
     ])
-      .then(([projectResponse, versionsResponse, factsResponse, evidencesResponse, assumptionsResponse, gatesResponse, risksResponse, tasksResponse]) => {
+      .then(([projectResponse, versionsResponse, factsResponse, evidencesResponse, assumptionsResponse, gatesResponse, risksResponse, tasksResponse, externalJobsResponse]) => {
         if (!active) return
         setProject(projectResponse.data.data)
         setVersions(versionsResponse.data.data || [])
@@ -106,6 +115,7 @@ export default function ProjectDetail() {
         setGates(gatesResponse.data.data || [])
         setRisks(risksResponse.data.data || [])
         setTasks(tasksResponse.data.data || [])
+        setExternalJobs(externalJobsResponse.data.data || [])
         setStatus('success')
       })
       .catch(() => {
@@ -159,6 +169,32 @@ export default function ProjectDetail() {
     })
     setEvidences((current) => [response.data.data, ...current])
     setEvidenceForm(emptyEvidenceForm)
+  }
+
+  const handleCreateMarketFact = async (event) => {
+    event.preventDefault()
+    if (!marketFactForm.title.trim() || !marketFactForm.content.trim()) return
+    const response = await createFact({
+      project_id: projectId,
+      title: marketFactForm.title.trim(),
+      content: marketFactForm.content.trim(),
+      source: marketFactForm.source.trim(),
+    })
+    setFacts((current) => [response.data.data, ...current])
+    setMarketFactForm(emptyMarketFactForm)
+  }
+
+  const handleScheduleCapture = async (row) => {
+    const response = await createExternalDataJob({
+      project_id: projectId,
+      ...row.capturePlan,
+      parameters: {
+        dossier_row_id: row.id,
+        system_target: row.systemTarget,
+        requires_human_verification: true,
+      },
+    })
+    setExternalJobs((current) => [response.data.data, ...current])
   }
 
   const handleCreateAssumption = async (event) => {
@@ -232,6 +268,24 @@ export default function ProjectDetail() {
     setMessage('报告分享链接已生成')
   }
 
+  const handleGenerateFeasibilityReport = async () => {
+    const response = await generateFeasibilityReport(projectId, {
+      version_id: project?.current_version_id,
+      tax_fee_rate: 0.15,
+      use_ai_copy: true,
+    })
+    const report = response.data.data
+    const downloadUrl = report.download_url?.startsWith('/')
+      ? `http://localhost:8000${report.download_url}`
+      : report.download_url
+    const normalized = { ...report, download_url: downloadUrl }
+    setFeasibilityReport(normalized)
+    if (report.evidence) {
+      setEvidences((current) => [report.evidence, ...current])
+    }
+    setMessage('报告已生成，可下载核验')
+  }
+
   if (status === 'loading') {
     return <div className="state-panel">正在加载项目详情...</div>
   }
@@ -256,7 +310,10 @@ export default function ProjectDetail() {
           <h2>{project.name}</h2>
           <p>集中管理项目版本、事实证据、假设、关卡、风险、任务与报告分享。</p>
         </div>
-        <button className="button button-primary" type="button" onClick={handleShareReport}>生成分享链接</button>
+        <div className="button-row">
+          <button className="button button-secondary" type="button" onClick={handleGenerateFeasibilityReport}>生成可行性报告</button>
+          <button className="button button-primary" type="button" onClick={handleShareReport}>生成分享链接</button>
+        </div>
       </section>
 
       <section className="metric-grid" aria-label="项目关键指标">
@@ -272,7 +329,13 @@ export default function ProjectDetail() {
 
       {(shareUrl || message) && (
         <section className="panel">
-          <div className="inline-message success">{shareUrl || message}</div>
+          {message && <div className="inline-message success">{message}</div>}
+          {shareUrl && <div className="inline-message success">{shareUrl}</div>}
+          {feasibilityReport?.download_url && (
+            <a className="button button-secondary" href={feasibilityReport.download_url} target="_blank" rel="noreferrer" download>
+              {feasibilityReport.file_name || '下载可行性研究报告'}
+            </a>
+          )}
         </section>
       )}
 
@@ -511,6 +574,85 @@ export default function ProjectDetail() {
             )}
           />
         </article>
+      </section>
+
+      <section className="panel market-dossier-panel">
+        <div className="panel-heading">
+          <div>
+            <span className="eyebrow">MARKET DOSSIER</span>
+            <h3>市场资料对照</h3>
+          </div>
+          <span className="section-count">{zhaoYazhiMarketDossier.length} 个 Sheet</span>
+        </div>
+
+        <form className="market-fact-form" onSubmit={handleCreateMarketFact}>
+          <label className="field">
+            <span>资料条目</span>
+            <input value={marketFactForm.title} onChange={(event) => setField(setMarketFactForm, 'title', event.target.value)} />
+          </label>
+          <label className="field field-wide">
+            <span>人工资料内容</span>
+            <input value={marketFactForm.content} onChange={(event) => setField(setMarketFactForm, 'content', event.target.value)} />
+          </label>
+          <label className="field">
+            <span>人工资料来源</span>
+            <input value={marketFactForm.source} onChange={(event) => setField(setMarketFactForm, 'source', event.target.value)} />
+          </label>
+          <button className="button button-primary" type="submit">写入人工事实</button>
+        </form>
+
+        <div className="dossier-grid">
+          {zhaoYazhiMarketDossier.map((sheet) => (
+            <article className="dossier-sheet" key={sheet.sheet}>
+              <div className="dossier-sheet-heading">
+                <strong>{sheet.sheet}</strong>
+                <small>{sheet.rows.length} 条数据</small>
+              </div>
+              <div className="dossier-row-list">
+                {sheet.rows.map((row) => {
+                  const primary = row.cells[sheet.headers[0]]
+                  const secondary = sheet.headers.slice(1, 3).map((header) => row.cells[header]).filter(Boolean).join(' · ')
+
+                  return (
+                    <div className="dossier-row" key={row.id}>
+                      <div className="dossier-row-main">
+                        <b>{primary}</b>
+                        <small>{secondary}</small>
+                      </div>
+                      <div className="dossier-row-meta">
+                        <span>系统落点</span>
+                        <strong>{row.systemTarget}</strong>
+                      </div>
+                      <div className="dossier-row-meta">
+                        <span>处理方式</span>
+                        <strong>{row.handling}</strong>
+                      </div>
+                      {row.capture && (
+                        <button className="button button-secondary" type="button" onClick={() => handleScheduleCapture(row)}>
+                          安排抓取
+                        </button>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </article>
+          ))}
+        </div>
+
+        <div className="external-job-list">
+          <strong>抓取任务</strong>
+          {externalJobs.length === 0 ? (
+            <small>暂无外部抓取任务</small>
+          ) : (
+            externalJobs.map((job) => (
+              <span key={job.id}>
+                {job.query}
+                <em>{statusLabel(job.status)} · {job.provider}</em>
+              </span>
+            ))
+          )}
+        </div>
       </section>
 
       <section className="panel">

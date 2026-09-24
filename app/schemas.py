@@ -1,6 +1,6 @@
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ArtistOut(BaseModel):
@@ -10,6 +10,7 @@ class ArtistOut(BaseModel):
     heat_score: int
     fan_count: Optional[str]
     risk_level: int
+    profile: dict = Field(default_factory=dict)
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -201,6 +202,14 @@ class AgentChatIn(BaseModel):
 class ReportShareIn(BaseModel):
     version_id: Optional[int] = None
     expires_in_days: Optional[int] = 7
+
+
+class FeasibilityReportIn(BaseModel):
+    version_id: Optional[int] = None
+    tax_fee_rate: Optional[float] = 0.15
+    sponsorship_income: Optional[int] = 0
+    merchandise_income: Optional[int] = 0
+    use_ai_copy: Optional[bool] = True
 
 
 class ExternalDataJobIn(BaseModel):

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { createUser, deleteUser, listUsers, updateUser } from '../api'
 
@@ -32,6 +32,7 @@ export default function UserManagement({ currentUser }) {
     group_code: 'B',
   })
   const authorized = canManageUsers(currentUser)
+  const selectedGroupMeta = USER_GROUPS.find((group) => group.code === selectedGroup) || USER_GROUPS[0]
 
   useEffect(() => {
     if (!authorized) {
@@ -55,12 +56,6 @@ export default function UserManagement({ currentUser }) {
       active = false
     }
   }, [authorized])
-
-  const selectedGroupMeta = USER_GROUPS.find((group) => group.code === selectedGroup) || USER_GROUPS[0]
-  const filteredUsers = useMemo(
-    () => users.filter((user) => user.group_code === selectedGroup),
-    [selectedGroup, users],
-  )
 
   const handleGroupSelect = (groupCode) => {
     setSelectedGroup(groupCode)
@@ -92,7 +87,6 @@ export default function UserManagement({ currentUser }) {
         group_code: form.group_code,
       })
       setUsers((current) => [...current, response.data.data])
-      setSelectedGroup(response.data.data.group_code)
       setForm({ account: '', name: '', password: '', group_code: response.data.data.group_code })
       setSubmitStatus('success')
       setMessage('用户已添加')
@@ -134,7 +128,6 @@ export default function UserManagement({ currentUser }) {
     setUsers((current) => current.map((item) => (
       item.id === user.id ? response.data.data : item
     )))
-    setSelectedGroup(response.data.data.group_code)
     cancelEditUser()
   }
 
@@ -157,7 +150,7 @@ export default function UserManagement({ currentUser }) {
         </div>
       </section>
 
-      <section className="user-group-grid" aria-label="用户组筛选">
+      <section className="user-group-grid" aria-label="用户组选择">
         {USER_GROUPS.map((group) => (
           <button
             className={`user-group-card${selectedGroup === group.code ? ' active' : ''}`}
@@ -178,9 +171,9 @@ export default function UserManagement({ currentUser }) {
             <span className="eyebrow">CREATE USER</span>
             <h3>添加{selectedGroupMeta.name}用户</h3>
           </div>
-          <span className="section-count">{filteredUsers.length} 个用户</span>
+          <span className="section-count">{users.length} 个用户</span>
         </div>
-        <form className="generator-form user-create-form" onSubmit={handleCreateUser}>
+        <form className="user-create-form" onSubmit={handleCreateUser}>
           <div className="form-grid">
             <label className="field">
               <span>用户账号</span>
@@ -194,14 +187,12 @@ export default function UserManagement({ currentUser }) {
               <span>初始密码</span>
               <input type="password" value={form.password} onChange={(event) => handleFieldChange('password', event.target.value)} />
             </label>
-            <label className="field">
+            <div className="field">
               <span>用户组</span>
-              <select value={form.group_code} onChange={(event) => handleGroupSelect(event.target.value)}>
-                {USER_GROUPS.map((group) => (
-                  <option key={group.code} value={group.code}>{group.name}</option>
-                ))}
-              </select>
-            </label>
+              <output aria-label="用户组" className="readonly-field">
+                {selectedGroupMeta.name}
+              </output>
+            </div>
           </div>
           <button className="button button-primary" disabled={submitStatus === 'loading'} type="submit">
             {submitStatus === 'loading' ? '添加中...' : '添加用户'}
@@ -214,16 +205,16 @@ export default function UserManagement({ currentUser }) {
         <div className="panel-heading">
           <div>
             <span className="eyebrow">USERS</span>
-            <h3>{selectedGroupMeta.name}用户</h3>
+            <h3>全部用户</h3>
           </div>
         </div>
         {status === 'loading' && <div className="state-panel">正在加载用户数据...</div>}
         {status === 'error' && <div className="state-panel error">用户数据暂时不可用</div>}
-        {status === 'success' && filteredUsers.length === 0 && <div className="state-panel">该用户组暂无用户</div>}
-        {status === 'success' && filteredUsers.length > 0 && (
+        {status === 'success' && users.length === 0 && <div className="state-panel">暂无用户</div>}
+        {status === 'success' && users.length > 0 && (
           <div className="summary-list">
-            {filteredUsers.map((user) => (
-              <span key={user.id}>
+            {users.map((user) => (
+              <span className="user-list-row" key={user.id}>
                 {editingUserId === user.id ? (
                   <form className="inline-edit-form" onSubmit={(event) => handleUpdateUser(event, user)}>
                     <strong>{user.account}</strong>
@@ -250,15 +241,17 @@ export default function UserManagement({ currentUser }) {
                   </form>
                 ) : (
                   <>
-                    {user.account}
-                    <strong>{user.group_code}</strong>
-                    <small>{user.name}</small>
-                    <div className="inline-actions">
+                    <div className="user-list-main">
+                      <b>{user.account}</b>
+                      <small>{user.name}</small>
+                    </div>
+                    <strong className="user-group-code">{user.group_code}</strong>
+                    <div className="inline-actions user-row-actions">
                       <button className="button button-secondary" type="button" onClick={() => startEditUser(user)}>
-                        修改 {user.account}
+                        修改
                       </button>
                       <button className="button button-secondary" type="button" onClick={() => handleDeleteUser(user)}>
-                        删除 {user.account}
+                        删除
                       </button>
                     </div>
                   </>

@@ -1,3 +1,6 @@
+import json
+import hashlib
+import io
 import os
 import random
 import re
@@ -7,9 +10,12 @@ from typing import Optional
 
 import requests
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import FileResponse, StreamingResponse
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from .config import LLAMA_SERVER_MODEL, LLAMA_SERVER_TIMEOUT_SECONDS, LLAMA_SERVER_URL, MINIO_BUCKET, MINIO_ENDPOINT, MINIO_SECURE, OSS_PROVIDER
+from .cache import redis_get_json, redis_set_json
 from .database import get_db
 from .models import (
     AIGeneration,
@@ -43,6 +49,7 @@ from .schemas import (
     DecisionIn,
     DocumentParseJobIn,
     EvidenceUploadIn,
+    FeasibilityReportIn,
     FactIn,
     FactVerifyIn,
     FinanceBreakevenIn,
@@ -65,6 +72,7 @@ from .schemas import (
     ProjectAnalysisJobIn,
 )
 from .document_parsers import parse_document_evidence, parse_spreadsheet_evidence
+from .feasibility_reports import build_feasibility_calculation, build_feasibility_report_docx
 from .services import (
     GROUPS,
     calculate_breakeven_result,
@@ -166,6 +174,47 @@ def create_upload_target(provider: str, object_key: str, content_type: str):
     }
 
 
+def local_report_storage_dir():
+    path = os.path.abspath(os.path.join(os.getcwd(), "storage", "reports"))
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def store_generated_report(provider: str, object_key: str, content: bytes, content_type: str):
+    if provider != 'minio':
+        storage_dir = local_report_storage_dir()
+        filename = f"{uuid.uuid4().hex}-{safe_object_name(os.path.basename(object_key))}"
+        local_path = os.path.join(storage_dir, filename)
+        with open(local_path, 'wb') as report_file:
+            report_file.write(content)
+        return {
+            "provider": "local-placeholder",
+            "bucket": "",
+            "object_key": object_key,
+            "file_url": f"oss://local-placeholder/{object_key}",
+            "local_path": local_path,
+            "size": len(content),
+        }
+
+    bucket = minio_bucket_name()
+    if not bucket:
+        raise HTTPException(status_code=500, detail='MINIO_BUCKET is required')
+    try:
+        client = create_minio_client()
+        ensure_minio_bucket(client, bucket)
+        client.put_object(bucket, object_key, io.BytesIO(content), length=len(content), content_type=content_type)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f'MinIO report upload failed: {exc}') from exc
+    return {
+        "provider": "minio",
+        "bucket": bucket,
+        "object_key": object_key,
+        "file_url": f"minio://{bucket}/{object_key}",
+        "local_path": "",
+        "size": len(content),
+    }
+
+
 def safe_object_name(file_name: str):
     sanitized = re.sub(r'[^A-Za-z0-9._-]+', '-', file_name.strip()).strip('.-')
     return sanitized or 'upload.bin'
@@ -215,13 +264,145 @@ def extract_llama_server_text(data):
         message = first_choice.get('message') or {}
         content = message.get('content') or first_choice.get('text')
         if content:
-            return content
+            return sanitize_ai_output(content)
 
     content = data.get('content')
     if content:
-        return content
+        return sanitize_ai_output(content)
 
-    return data.get('response')
+    response = data.get('response')
+    return sanitize_ai_output(response) if response else response
+
+
+def sanitize_ai_output(text: str):
+    if not text:
+        return ''
+    cleaned = re.sub(r'<think\b[^>]*>.*?</think>', '', text, flags=re.IGNORECASE | re.DOTALL)
+    cleaned = re.sub(r'^\s*</?think>\s*$', '', cleaned, flags=re.IGNORECASE | re.MULTILINE)
+    return cleaned.strip()
+
+
+def build_ai_generation_prompt(payload: AIGenerateIn, generation_nonce: str, allow_thinking: bool = False):
+    content_type_name = '短视频脚本' if payload.type == 'video_script' else '海报文案'
+    thinking_prefix = '' if allow_thinking else '/no_think\n'
+    thinking_rule = (
+        '9. 可以在模型 reasoning_content 中组织分析过程；最终 content 只输出可直接使用的正式文案。'
+        if allow_thinking
+        else '9. 不要输出 <think>、推理过程、reasoning_content 或内部分析，只输出最终可用内容。'
+    )
+    return f"""{thinking_prefix}你是资深演出行业营销策划和票务转化专家。请为以下演出生成一份可直接用于运营投放的完整宣发方案。
+
+    本次创作批次：{generation_nonce}
+    内容类型：{content_type_name}
+    演出名称：{payload.show_name}
+    艺人：{payload.artist}
+    城市：{payload.city}
+
+    输出要求：
+    1. 使用中文，语气专业、有现场感、有转化力。
+    2. 内容要丰富，不要只输出一句口号。
+    3. 必须包含以下小标题：传播定位、核心文案、社交平台短文案、短视频脚本、投放建议。
+    4. 海报文案要包含主标题、副标题、卖点 bullet、行动号召。
+    5. 短视频脚本要包含 3-5 个镜头、画面、口播/字幕、节奏提示。
+    6. 避免空泛形容词，尽量围绕艺人、城市、现场体验和购票转化展开。
+    7. 本次必须重新创作，不要复用上一次生成的句式、标题和行动号召；允许在传播角度、开场钩子、短视频节奏和投放建议上做变化。
+    8. 禁止编造用户未提供的日期、场馆、票价、技术参数、效果提升比例或销售成绩；必要时使用“待确认”或提出补充建议。
+    {thinking_rule}
+    """.strip()
+
+
+def sse_event(event: str, data: dict):
+    return f"data: {json.dumps({'event': event, **data}, ensure_ascii=False)}\n\n"
+
+
+def extract_stream_delta(data):
+    if not isinstance(data, dict):
+        return '', ''
+    choices = data.get('choices')
+    if not isinstance(choices, list) or not choices:
+        return '', ''
+    delta = choices[0].get('delta') or choices[0].get('message') or {}
+    content = delta.get('content') or choices[0].get('text') or ''
+    reasoning = delta.get('reasoning_content') or ''
+    return content, reasoning
+
+
+def split_think_content(text: str):
+    if not text:
+        return '', ''
+    thought_parts = re.findall(r'<think\b[^>]*>(.*?)</think>', text, flags=re.IGNORECASE | re.DOTALL)
+    visible = re.sub(r'<think\b[^>]*>.*?</think>', '', text, flags=re.IGNORECASE | re.DOTALL)
+    visible = re.sub(r'^\s*</?think>\s*$', '', visible, flags=re.IGNORECASE | re.MULTILINE)
+    thought = '\n'.join(part.strip() for part in thought_parts if part.strip())
+    return visible, thought
+
+
+def find_final_output_start(text: str):
+    match = re.search(r'(?:#{1,3}\s*)?(?:传播定位|核心文案|演出宣发方案|社交平台短文案|短视频脚本|投放建议)', text)
+    return match.start() if match else -1
+
+
+def fallback_ai_generate_result(payload: AIGenerateIn, db: Session):
+    response = ai_generate(payload, db)
+    try:
+        body = json.loads(response.body.decode('utf-8'))
+        return ((body.get('data') or {}).get('result') or '').strip()
+    except Exception:
+        return ''
+
+
+def ai_generation_cache_key(payload: AIGenerateIn, generation_nonce: str):
+    raw = json.dumps(
+        {
+            "type": payload.type,
+            "show_name": payload.show_name,
+            "artist": payload.artist,
+            "city": payload.city,
+            "generation_nonce": generation_nonce,
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+    )
+    digest = hashlib.sha256(raw.encode('utf-8')).hexdigest()
+    return f"ai:generation:{digest}"
+
+
+def completed_generation_cache_payload(result: str, thought: str = ''):
+    return {
+        "status": "completed",
+        "result": result,
+        "thought": thought,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def current_version_by_project(db: Session, project_ids: list[int]):
+    if not project_ids:
+        return {}
+    versions = db.query(ProjectVersion).filter(ProjectVersion.project_id.in_(project_ids)).all()
+    by_project = {}
+    for version in versions:
+        current = by_project.get(version.project_id)
+        if not current or version.version_no > current.version_no:
+            by_project[version.project_id] = version
+    return by_project
+
+
+def neutral_profit_from_version(version: Optional[ProjectVersion]):
+    if not version or not isinstance(version.finance_result, dict):
+        return 0
+    neutral = (version.finance_result.get('scenarios') or {}).get('neutral') or {}
+    return neutral.get('profit') or 0
+
+
+def serialize_order(order: Order, show_title: str = ''):
+    return {
+        "id": order.id,
+        "show_id": order.show_id,
+        "show_title": show_title,
+        "name": order.name,
+        "phone": order.phone,
+    }
 
 
 def create_records_from_parse_result(db: Session, job: DocumentParseJob, result: dict):
@@ -1336,6 +1517,172 @@ def share_report(project_id: int, payload: ReportShareIn, db: Session = Depends(
     return json_ok(serialize_report_share(share))
 
 
+@router.post('/projects/{project_id}/feasibility-report')
+def generate_feasibility_report(project_id: int, payload: FeasibilityReportIn, db: Session = Depends(get_db)):
+    tenant, user = get_or_create_default_context(db)
+    project = db.query(Project).filter(Project.id == project_id, Project.tenant_id == tenant.id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail='Project not found')
+
+    version_id = payload.version_id or project.current_version_id
+    version = None
+    if version_id:
+        version = db.query(ProjectVersion).filter(
+            ProjectVersion.id == version_id,
+            ProjectVersion.project_id == project.id,
+        ).first()
+        if not version:
+            raise HTTPException(status_code=404, detail='Project version not found')
+
+    calculation = build_feasibility_calculation(project, payload)
+    if calculation["status"] != "calculated":
+        raise HTTPException(status_code=400, detail=calculation)
+
+    facts = db.query(Fact).filter(Fact.project_id == project.id).order_by(Fact.id.desc()).all()
+    risks = db.query(Risk).filter(Risk.project_id == project.id).order_by(Risk.id.desc()).all()
+    assumptions = db.query(Assumption).filter(Assumption.project_id == project.id).order_by(Assumption.id.desc()).all()
+    copy_mode = 'ai_assisted_template' if payload.use_ai_copy else 'deterministic_template'
+    report_bytes = build_feasibility_report_docx(
+        project,
+        calculation,
+        facts,
+        risks,
+        assumptions,
+        copy_mode=copy_mode,
+    )
+
+    file_name = f"project-{project.id}-feasibility-report.docx"
+    object_key = f"projects/{project.id}/reports/{uuid.uuid4().hex}/{file_name}"
+    content_type = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    stored = store_generated_report(current_oss_provider(), object_key, report_bytes, content_type)
+    metadata = {
+        "object_key": stored["object_key"],
+        "provider": stored["provider"],
+        "bucket": stored["bucket"],
+        "size": stored["size"],
+        "local_path": stored["local_path"],
+        "content_type": content_type,
+        "version_id": version.id if version else None,
+        "copy_mode": copy_mode,
+        "calculation_result": calculation,
+    }
+    evidence = Evidence(
+        project_id=project.id,
+        fact_id=None,
+        name=file_name,
+        file_url=stored["file_url"],
+        evidence_type='feasibility_report',
+        source='system',
+        status='uploaded',
+        meta=metadata,
+        uploaded_by=user.id,
+    )
+    db.add(evidence)
+    db.commit()
+    db.refresh(evidence)
+    download_url = f"/reports/files/{evidence.id}" if stored["provider"] == "local-placeholder" else stored["file_url"]
+    return json_ok({
+        "project_id": project.id,
+        "version_id": version.id if version else None,
+        "file_name": file_name,
+        "file_url": stored["file_url"],
+        "download_url": download_url,
+        "calculation_result": calculation,
+        "evidence": serialize_evidence(evidence),
+    })
+
+
+@router.get('/reports/files/{evidence_id}')
+def download_report_file(evidence_id: int, db: Session = Depends(get_db)):
+    tenant_id = get_default_tenant_id(db)
+    evidence = db.query(Evidence).join(Project, Evidence.project_id == Project.id).filter(
+        Evidence.id == evidence_id,
+        Project.tenant_id == tenant_id,
+        Evidence.evidence_type == 'feasibility_report',
+    ).first()
+    if not evidence:
+        raise HTTPException(status_code=404, detail='Report file not found')
+    local_path = (evidence.meta or {}).get("local_path")
+    if not local_path or not os.path.exists(local_path):
+        raise HTTPException(status_code=404, detail='Local report file not found')
+    return FileResponse(
+        local_path,
+        media_type=(evidence.meta or {}).get("content_type") or 'application/octet-stream',
+        filename=evidence.name,
+    )
+
+
+@router.get('/analytics/dashboard')
+def dashboard_analytics(db: Session = Depends(get_db)):
+    tenant_id = get_default_tenant_id(db)
+    projects = db.query(Project).filter(Project.tenant_id == tenant_id).all()
+    project_ids = [project.id for project in projects]
+    versions_by_project = current_version_by_project(db, project_ids)
+    neutral_profit_total = sum(
+        neutral_profit_from_version(versions_by_project.get(project.id))
+        for project in projects
+    )
+    active_projects = sum(1 for project in projects if project.status != 'archived')
+    calculated_projects = sum(1 for project in projects if project.status == 'calculated')
+    pending_confirmation_projects = sum(1 for project in projects if project.status == 'pending_confirmation')
+    pending_tasks = db.query(Task).filter(Task.project_id.in_(project_ids), Task.status == 'pending').count() if project_ids else 0
+    reservations = db.query(Order).count()
+    on_sale_shows = db.query(Show).filter(Show.status == 'on_sale').count()
+    evidence_count = db.query(Evidence).filter(Evidence.project_id.in_(project_ids)).count() if project_ids else 0
+    external_jobs = db.query(ExternalDataJob).filter(ExternalDataJob.tenant_id == tenant_id).count()
+
+    summary = {
+        "active_projects": active_projects,
+        "calculated_projects": calculated_projects,
+        "pending_confirmation_projects": pending_confirmation_projects,
+        "pending_tasks": pending_tasks,
+        "reservations": reservations,
+        "on_sale_shows": on_sale_shows,
+        "neutral_profit_total": neutral_profit_total,
+        "evidence_count": evidence_count,
+        "external_jobs": external_jobs,
+    }
+    metrics = [
+        {"key": "active_projects", "label": "进行中项目", "value": active_projects, "unit": "个"},
+        {"key": "neutral_profit_total", "label": "中性利润合计", "value": neutral_profit_total, "unit": "元"},
+        {"key": "reservations", "label": "预约人数", "value": reservations, "unit": "人"},
+        {"key": "pending_tasks", "label": "待处理任务", "value": pending_tasks, "unit": "项"},
+        {"key": "on_sale_shows", "label": "售票中演出", "value": on_sale_shows, "unit": "场"},
+        {"key": "evidence_count", "label": "证据资料", "value": evidence_count, "unit": "条"},
+    ]
+    return json_ok({"summary": summary, "metrics": metrics})
+
+
+@router.get('/ticketing/summary')
+def ticketing_summary(db: Session = Depends(get_db)):
+    shows = db.query(Show).order_by(Show.id.desc()).all()
+    reservation_counts = dict(
+        db.query(Order.show_id, func.count(Order.id))
+        .group_by(Order.show_id)
+        .all()
+    )
+    show_titles = {show.id: show.title for show in shows}
+    show_rows = [
+        {
+            **ShowOut.model_validate(show).model_dump(),
+            "reservation_count": reservation_counts.get(show.id, 0),
+        }
+        for show in shows
+    ]
+    show_rows.sort(key=lambda item: (item["reservation_count"], item["id"]), reverse=True)
+    orders = db.query(Order).order_by(Order.id.desc()).limit(50).all()
+    summary = {
+        "total_shows": len(shows),
+        "on_sale_shows": sum(1 for show in shows if show.status == 'on_sale'),
+        "reservation_count": sum(reservation_counts.values()),
+    }
+    return json_ok({
+        "summary": summary,
+        "shows": show_rows,
+        "orders": [serialize_order(order, show_titles.get(order.show_id, '')) for order in orders],
+    })
+
+
 @router.get('/artists')
 def list_artists(q: Optional[str] = None, db: Session = Depends(get_db)):
     query = db.query(Artist)
@@ -1366,28 +1713,13 @@ def get_artist(artist_id: int, db: Session = Depends(get_db)):
 
 @router.post('/ai/generate')
 def ai_generate(payload: AIGenerateIn, db: Session = Depends(get_db)):
-    content_type_name = '短视频脚本' if payload.type == 'video_script' else '海报文案'
     generation_nonce = payload.generation_nonce or uuid.uuid4().hex
     generation_seed = random.randint(1, 2_147_483_647)
-    prompt = f"""/no_think
-    你是资深演出行业营销策划和票务转化专家。请为以下演出生成一份可直接用于运营投放的完整宣发方案。
-
-    本次创作批次：{generation_nonce}
-    内容类型：{content_type_name}
-    演出名称：{payload.show_name}
-    艺人：{payload.artist}
-    城市：{payload.city}
-
-    输出要求：
-    1. 使用中文，语气专业、有现场感、有转化力。
-    2. 内容要丰富，不要只输出一句口号。
-    3. 必须包含以下小标题：传播定位、核心文案、社交平台短文案、短视频脚本、投放建议。
-    4. 海报文案要包含主标题、副标题、卖点 bullet、行动号召。
-    5. 短视频脚本要包含 3-5 个镜头、画面、口播/字幕、节奏提示。
-    6. 避免空泛形容词，尽量围绕艺人、城市、现场体验和购票转化展开。
-    7. 本次必须重新创作，不要复用上一次生成的句式、标题和行动号召；允许在传播角度、开场钩子、短视频节奏和投放建议上做变化。
-    8. 禁止编造用户未提供的日期、场馆、票价、技术参数、效果提升比例或销售成绩；必要时使用“待确认”或提出补充建议。
-    """.strip()
+    prompt = build_ai_generation_prompt(payload, generation_nonce)
+    cache_key = ai_generation_cache_key(payload, generation_nonce)
+    cached_generation = redis_get_json(cache_key)
+    if cached_generation and cached_generation.get('status') == 'completed' and cached_generation.get('result'):
+        return json_ok({"result": cached_generation.get('result'), "cache_hit": True})
 
     result_text = None
     llama_server_url = os.environ.get('LLAMA_SERVER_URL', LLAMA_SERVER_URL)
@@ -1438,6 +1770,7 @@ def ai_generate(payload: AIGenerateIn, db: Session = Depends(get_db)):
             print('AI API error:', exc)
             result_text = None
 
+    result_text = sanitize_ai_output(result_text or '')
     if not result_text:
         if payload.type == 'poster':
             result_text = f"""
@@ -1512,10 +1845,129 @@ def ai_generate(payload: AIGenerateIn, db: Session = Depends(get_db)):
         generation = AIGeneration(type=payload.type, prompt=prompt, result=result_text)
         db.add(generation)
         db.commit()
+        redis_set_json(cache_key, completed_generation_cache_payload(result_text))
     except Exception as exc:
         print('Failed to save AI generation:', exc)
 
     return json_ok({"result": result_text})
+
+
+@router.post('/ai/generate/stream')
+def ai_generate_stream(payload: AIGenerateIn, db: Session = Depends(get_db)):
+    generation_nonce = payload.generation_nonce or uuid.uuid4().hex
+    generation_seed = random.randint(1, 2_147_483_647)
+    prompt = build_ai_generation_prompt(payload, generation_nonce, allow_thinking=True)
+    cache_key = ai_generation_cache_key(payload, generation_nonce)
+    llama_server_url = os.environ.get('LLAMA_SERVER_URL', LLAMA_SERVER_URL)
+    llama_server_model = os.environ.get('LLAMA_SERVER_MODEL', LLAMA_SERVER_MODEL)
+
+    def event_stream():
+        chunks = []
+        thought_chunks = []
+        preamble_buffer = ''
+        final_started = False
+        saved_by_fallback = False
+        cached_generation = redis_get_json(cache_key)
+        if cached_generation and cached_generation.get('status') == 'completed' and cached_generation.get('result'):
+            yield sse_event('progress', {"message": "命中 Redis 生成缓存"})
+            if cached_generation.get('thought'):
+                yield sse_event('thought', {"content": cached_generation.get('thought')})
+            yield sse_event('final', {"result": cached_generation.get('result'), "cache_hit": True})
+            return
+
+        yield sse_event('progress', {"message": "正在连接本地模型服务"})
+        if not llama_server_url:
+            fallback = fallback_ai_generate_result(payload, db)
+            yield sse_event('final', {"result": fallback})
+            return
+
+        try:
+            with requests.post(
+                llama_server_url,
+                headers={"Content-Type": "application/json"},
+                json={
+                    "model": llama_server_model,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "temperature": 0.95,
+                    "top_p": 0.92,
+                    "presence_penalty": 0.6,
+                    "frequency_penalty": 0.35,
+                    "seed": generation_seed,
+                    "chat_template_kwargs": {"enable_thinking": True},
+                    "max_tokens": 1200,
+                    "stream": True,
+                },
+                timeout=LLAMA_SERVER_TIMEOUT_SECONDS,
+                stream=True,
+            ) as resp:
+                resp.raise_for_status()
+                yield sse_event('progress', {"message": "模型正在生成内容"})
+                for line in resp.iter_lines(decode_unicode=False):
+                    if not line:
+                        continue
+                    text_line = line.decode('utf-8', errors='replace') if isinstance(line, bytes) else line
+                    if not text_line.startswith('data:'):
+                        continue
+                    payload_text = text_line.removeprefix('data:').strip()
+                    if payload_text == '[DONE]':
+                        break
+                    try:
+                        data = json.loads(payload_text)
+                    except json.JSONDecodeError:
+                        continue
+                    content, reasoning = extract_stream_delta(data)
+                    if reasoning:
+                        thought_chunks.append(reasoning)
+                        yield sse_event('thought', {"content": reasoning})
+                    if content:
+                        visible_content, tagged_thought = split_think_content(content)
+                        if tagged_thought:
+                            thought_chunks.append(tagged_thought)
+                            yield sse_event('thought', {"content": tagged_thought})
+                        if visible_content:
+                            if final_started:
+                                chunks.append(visible_content)
+                                yield sse_event('delta', {"content": visible_content})
+                            else:
+                                preamble_buffer += visible_content
+                                start_index = find_final_output_start(preamble_buffer)
+                                if start_index >= 0:
+                                    thought_text = preamble_buffer[:start_index].strip()
+                                    final_content = preamble_buffer[start_index:]
+                                    if thought_text:
+                                        thought_chunks.append(thought_text)
+                                        yield sse_event('thought', {"content": thought_text})
+                                    if final_content:
+                                        chunks.append(final_content)
+                                        yield sse_event('delta', {"content": final_content})
+                                    preamble_buffer = ''
+                                    final_started = True
+                                elif len(preamble_buffer) > 24:
+                                    thought_text = preamble_buffer[:-16]
+                                    if thought_text.strip():
+                                        thought_chunks.append(thought_text)
+                                        yield sse_event('thought', {"content": thought_text})
+                                    preamble_buffer = preamble_buffer[-16:]
+                result_text = sanitize_ai_output(''.join(chunks) or preamble_buffer)
+        except Exception as exc:
+            yield sse_event('progress', {"message": f"流式生成不可用，已切换为后端兜底内容：{exc}"})
+            result_text = ''
+
+        if not result_text:
+            result_text = fallback_ai_generate_result(payload, db)
+            saved_by_fallback = True
+        if not saved_by_fallback:
+            try:
+                generation = AIGeneration(type=payload.type, prompt=prompt, result=result_text)
+                db.add(generation)
+                db.commit()
+                redis_set_json(cache_key, completed_generation_cache_payload(result_text, ''.join(thought_chunks)))
+            except Exception as exc:
+                print('Failed to save AI generation stream:', exc)
+        yield sse_event('progress', {"message": "内容已整理完成"})
+        yield sse_event('final', {"result": result_text})
+
+    return StreamingResponse(event_stream(), media_type='text/event-stream; charset=utf-8')
 
 
 @router.get('/shows')

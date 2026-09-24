@@ -13,6 +13,7 @@ class Artist(Base):
     heat_score = Column(Integer, default=0)
     fan_count = Column(String(64), default='0')
     risk_level = Column(Integer, default=0)
+    profile = Column(JSON, default=dict)
 
 
 class Show(Base):
