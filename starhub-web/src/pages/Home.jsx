@@ -288,6 +288,20 @@ function BusinessWorkbench() {
     return statusMap[value] || value || '待处理'
   }
 
+  const formatTaskStatus = (value) => {
+    const statusMap = {
+      pending: '待处理',
+      submitted: '已提交',
+      completed: '已完成',
+    }
+    return statusMap[value] || value || '待处理'
+  }
+
+  const taskTone = (value) => {
+    if (value === 'completed' || value === 'submitted') return 'success'
+    return 'warning'
+  }
+
   const handleCalculateFinance = async (project) => {
     setProjectActionStatus((current) => ({ ...current, [`finance-${project.id}`]: 'loading' }))
     setMessage('')
@@ -373,6 +387,7 @@ function BusinessWorkbench() {
   const pendingTasks = tasks.filter((task) => task.status === 'pending').length
   const analyticsSummary = analytics?.summary || {}
   const ticketingSummary = ticketing?.summary || {}
+  const projectsById = Object.fromEntries(projects.map((project) => [project.id, project]))
 
   const metrics = [
     { label: '项目总数', value: String(projects.length), delta: `${analyticsSummary.active_projects ?? activeProjects} 个仍在推进` },
@@ -563,9 +578,11 @@ function BusinessWorkbench() {
 
         <article className="panel">
           <div className="panel-heading">
-            <div>
-              <span className="eyebrow">TASKS</span>
-              <h3>待办任务</h3>
+            <div className="task-panel-title">
+              <div>
+                <span className="eyebrow">TASKS</span>
+                <h3>待办任务</h3>
+              </div>
             </div>
           </div>
 
@@ -573,15 +590,30 @@ function BusinessWorkbench() {
             <div className="state-panel">暂无待办任务</div>
           ) : (
             <div className="activity-list">
-              {tasks.map((task) => (
-                <div key={task.id}>
-                  <span className={`activity-mark ${task.status === 'pending' ? 'warning' : 'success'}`} />
-                  <p>
-                    <strong>{task.title}</strong>
-                    <small>{task.due_date || '未设置截止时间'}</small>
-                  </p>
-                </div>
-              ))}
+              {tasks.map((task) => {
+                const project = projectsById[task.project_id]
+                const projectName = task.project_name || project?.name || `项目 #${task.project_id}`
+                const taskSummary = task.result || task.description || '待补充执行说明'
+                const evidenceCount = task.evidence_count ?? (Array.isArray(task.evidence_ids) ? task.evidence_ids.length : 0)
+                return (
+                  <div className="task-card" key={task.id}>
+                    <span className={`activity-mark ${taskTone(task.status)}`} />
+                    <div className="task-card-body">
+                      <div className="task-card-head">
+                        <strong>{task.title}</strong>
+                        <span className={`status-badge ${taskTone(task.status)}`}>{formatTaskStatus(task.status)}</span>
+                      </div>
+                      <small>{`${projectName} · 截止 ${task.due_date || '待设置'}`}</small>
+                      <p>{taskSummary}</p>
+                      <div className="task-card-foot">
+                        <small>{task.assignee_name ? `负责人：${task.assignee_name}` : '负责人待分配'}</small>
+                        <small>{`证据 ${evidenceCount} 份`}</small>
+                        <Link className="summary-title-link" to={`/projects/${task.project_id}`}>查看项目</Link>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           )}
         </article>

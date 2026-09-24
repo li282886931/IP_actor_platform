@@ -7,6 +7,7 @@ import re
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional
+from urllib.parse import quote
 
 import requests
 from fastapi import APIRouter, Depends, HTTPException
@@ -15,7 +16,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from .config import LLAMA_SERVER_MODEL, LLAMA_SERVER_TIMEOUT_SECONDS, LLAMA_SERVER_URL, MINIO_BUCKET, MINIO_ENDPOINT, MINIO_SECURE, OSS_PROVIDER
-from .cache import redis_get_json, redis_set_json
+from .cache import redis_delete, redis_get_json, redis_set_json
 from .database import get_db
 from .models import (
     AIGeneration,
@@ -101,6 +102,8 @@ from .services import (
 
 
 router = APIRouter()
+CAPTCHA_TTL_SECONDS = 300
+_captcha_fallback_store = {}
 
 
 def current_oss_provider():
@@ -252,6 +255,83 @@ def project_payload_from_candidate(candidate: dict):
     data['name'] = data.get('name') or f"{candidate.get('artist_name') or '未命名项目'}-{candidate.get('city') or '待定城市'}"
     data['type'] = data.get('type') or 'concert'
     return data
+
+
+def captcha_cache_key(captcha_id: str):
+    return f"auth:captcha:{captcha_id}"
+
+
+def generate_captcha_code(length: int = 4):
+    alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+    return ''.join(random.choice(alphabet) for _ in range(length))
+
+
+def build_captcha_svg(code: str):
+    width = 132
+    height = 44
+    line_palette = ['#dbe6ff', '#c5d6ff', '#e8eefc']
+    lines = []
+    for index, color in enumerate(line_palette):
+        offset = 6 + index * 12
+        lines.append(
+            f'<line x1="{offset}" y1="{8 + index * 7}" x2="{width - offset}" y2="{height - 8 - index * 5}" '
+            f'stroke="{color}" stroke-width="1.2" opacity="0.85" />'
+        )
+    glyphs = []
+    for index, char in enumerate(code):
+        x = 18 + index * 26
+        y = 29 + (-1 if index % 2 else 1)
+        rotation = (-8 + index * 5)
+        glyphs.append(
+            f'<text x="{x}" y="{y}" font-size="24" font-family="Arial, sans-serif" font-weight="700" '
+            f'fill="#203356" transform="rotate({rotation} {x} {y})">{char}</text>'
+        )
+    svg = (
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">'
+        '<rect width="100%" height="100%" rx="8" fill="#f3f7ff" />'
+        + ''.join(lines)
+        + ''.join(glyphs)
+        + '</svg>'
+    )
+    return svg
+
+
+def store_captcha_challenge(captcha_id: str, code: str, ttl_seconds: int = CAPTCHA_TTL_SECONDS):
+    expires_at = (datetime.now(timezone.utc) + timedelta(seconds=ttl_seconds)).isoformat()
+    payload = {"code": code.upper(), "expires_at": expires_at}
+    if not redis_set_json(captcha_cache_key(captcha_id), payload, ttl_seconds=ttl_seconds):
+        _captcha_fallback_store[captcha_id] = payload
+
+
+def load_captcha_challenge(captcha_id: str):
+    payload = redis_get_json(captcha_cache_key(captcha_id))
+    if payload is None:
+        payload = _captcha_fallback_store.get(captcha_id)
+    if not payload:
+        return None
+    expires_at = payload.get('expires_at')
+    if expires_at:
+        try:
+            expires_at_value = datetime.fromisoformat(expires_at)
+        except ValueError:
+            expires_at_value = datetime.now(timezone.utc) - timedelta(seconds=1)
+        if expires_at_value <= datetime.now(timezone.utc):
+            delete_captcha_challenge(captcha_id)
+            return None
+    return payload
+
+
+def delete_captcha_challenge(captcha_id: str):
+    redis_delete(captcha_cache_key(captcha_id))
+    _captcha_fallback_store.pop(captcha_id, None)
+
+
+def validate_captcha_challenge(captcha_id: str, captcha_code: str):
+    payload = load_captcha_challenge(captcha_id)
+    delete_captcha_challenge(captcha_id)
+    if not payload:
+        return False
+    return (captcha_code or '').strip().upper() == (payload.get('code') or '').upper()
 
 
 def extract_llama_server_text(data):
@@ -542,6 +622,8 @@ def build_project_analysis_result(db: Session, project: Project, version: Projec
 
 @router.post('/auth/web-login')
 def web_login(payload: WebLoginIn, db: Session = Depends(get_db)):
+    if not validate_captcha_challenge(payload.captcha_id, payload.captcha_code):
+        raise HTTPException(status_code=401, detail='Invalid captcha')
     tenant, _ = get_or_create_default_context(db)
     user = db.query(User).filter(User.account == payload.account, User.status == 'active').first()
     if not user or not verify_password(payload.password, user.password_hash):
@@ -552,6 +634,19 @@ def web_login(payload: WebLoginIn, db: Session = Depends(get_db)):
         "user": serialize_user(user),
         "current_tenant": {"id": tenant.id, "name": tenant.name, "status": tenant.status},
         "source": "web",
+    })
+
+
+@router.get('/auth/captcha')
+def issue_auth_captcha():
+    captcha_id = uuid.uuid4().hex
+    captcha_code = generate_captcha_code()
+    store_captcha_challenge(captcha_id, captcha_code, ttl_seconds=CAPTCHA_TTL_SECONDS)
+    captcha_svg = build_captcha_svg(captcha_code)
+    return json_ok({
+        "captcha_id": captcha_id,
+        "captcha_image": f"data:image/svg+xml,{quote(captcha_svg)}",
+        "expires_in_seconds": CAPTCHA_TTL_SECONDS,
     })
 
 
@@ -868,11 +963,14 @@ def create_decision(payload: DecisionIn, db: Session = Depends(get_db)):
 @router.get('/tasks')
 def list_tasks(project_id: Optional[int] = None, db: Session = Depends(get_db)):
     tenant_id = get_default_tenant_id(db)
-    query = db.query(Task).join(Project, Task.project_id == Project.id).filter(Project.tenant_id == tenant_id)
+    query = db.query(Task, Project.name, User.name).join(Project, Task.project_id == Project.id).outerjoin(User, Task.assignee_id == User.id).filter(Project.tenant_id == tenant_id)
     if project_id:
         query = query.filter(Task.project_id == project_id)
     tasks = query.order_by(Task.id.desc()).all()
-    return json_ok([serialize_task(task) for task in tasks])
+    return json_ok([
+        serialize_task(task, project_name=project_name, assignee_name=assignee_name)
+        for task, project_name, assignee_name in tasks
+    ])
 
 
 @router.post('/tasks')
@@ -881,6 +979,9 @@ def create_task(payload: TaskIn, db: Session = Depends(get_db)):
     project = db.query(Project).filter(Project.id == payload.project_id, Project.tenant_id == tenant_id).first()
     if not project:
         raise HTTPException(status_code=404, detail='Project not found')
+    assignee = None
+    if payload.assignee_id is not None:
+        assignee = db.query(User).filter(User.id == payload.assignee_id, User.status == 'active').first()
     task = Task(
         project_id=project.id,
         assignee_id=payload.assignee_id,
@@ -892,18 +993,19 @@ def create_task(payload: TaskIn, db: Session = Depends(get_db)):
     db.add(task)
     db.commit()
     db.refresh(task)
-    return json_ok(serialize_task(task))
+    return json_ok(serialize_task(task, project_name=project.name, assignee_name=assignee.name if assignee else None))
 
 
 @router.post('/tasks/{task_id}/submit')
 def submit_task(task_id: int, payload: TaskSubmitIn, db: Session = Depends(get_db)):
     tenant_id = get_default_tenant_id(db)
-    task = db.query(Task).join(Project, Task.project_id == Project.id).filter(
+    task_row = db.query(Task, Project.name, User.name).join(Project, Task.project_id == Project.id).outerjoin(User, Task.assignee_id == User.id).filter(
         Task.id == task_id,
         Project.tenant_id == tenant_id,
     ).first()
-    if not task:
+    if not task_row:
         raise HTTPException(status_code=404, detail='Task not found')
+    task, project_name, assignee_name = task_row
     evidence_ids = payload.evidence_ids or []
     if evidence_ids:
         existing_count = db.query(Evidence).filter(
@@ -917,7 +1019,7 @@ def submit_task(task_id: int, payload: TaskSubmitIn, db: Session = Depends(get_d
     task.status = 'submitted'
     db.commit()
     db.refresh(task)
-    return json_ok(serialize_task(task))
+    return json_ok(serialize_task(task, project_name=project_name, assignee_name=assignee_name))
 
 
 @router.get('/facts')

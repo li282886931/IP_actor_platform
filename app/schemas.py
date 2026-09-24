@@ -46,6 +46,8 @@ class OrderIn(BaseModel):
 class WebLoginIn(BaseModel):
     account: str
     password: str
+    captcha_id: str
+    captcha_code: str
     name: Optional[str] = ''
 
 

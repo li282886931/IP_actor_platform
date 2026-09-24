@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
-import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
+import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 
 import Sidebar from './components/Sidebar'
-import { webLogin } from './api'
+import { getAuthCaptcha, webLogin } from './api'
 import Artist from './pages/Artist'
 import Generate from './pages/Generate'
 import Home from './pages/Home'
@@ -23,6 +23,8 @@ const routeTitles = {
   '/users': '用户管理',
 }
 
+const APP_FAVICON_PATH = '/favicon.svg'
+
 function roleFromUser(user) {
   if (!user) return null
   if (user.can_manage_users || user.group_code === 'root' || user.account === 'root') return 'B'
@@ -41,7 +43,20 @@ function clearReadableCookies() {
   })
 }
 
-function LoginView({ account, onAccountChange, password, onPasswordChange, onLogin, loginStatus, loginError }) {
+function LoginView({
+  account,
+  onAccountChange,
+  password,
+  onPasswordChange,
+  captchaCode,
+  onCaptchaCodeChange,
+  captchaImage,
+  onRefreshCaptcha,
+  captchaLoading,
+  onLogin,
+  loginStatus,
+  loginError,
+}) {
   return (
     <main className="login-page">
       <section className="login-intro">
@@ -95,6 +110,26 @@ function LoginView({ account, onAccountChange, password, onPasswordChange, onLog
               placeholder="输入登录密码"
             />
           </label>
+          <div className="captcha-field">
+            <label>
+              <span>验证码</span>
+              <input
+                value={captchaCode}
+                onChange={(event) => onCaptchaCodeChange(event.target.value.toUpperCase())}
+                placeholder="输入图形验证码"
+              />
+            </label>
+            <div className="captcha-preview">
+              {captchaImage ? (
+                <img alt="登录验证码" className="captcha-image" src={captchaImage} />
+              ) : (
+                <div aria-hidden="true" className="captcha-image captcha-image-placeholder">加载中</div>
+              )}
+              <button className="button button-secondary" type="button" onClick={onRefreshCaptcha} disabled={captchaLoading}>
+                换一张验证码
+              </button>
+            </div>
+          </div>
           <button className="button button-primary button-block" type="submit">
             {loginStatus === 'loading' ? '登录中...' : '登录'}
           </button>
@@ -107,6 +142,7 @@ function LoginView({ account, onAccountChange, password, onPasswordChange, onLog
 
 export default function App() {
   const location = useLocation()
+  const navigate = useNavigate()
   const [role, setRole] = useState(() => normalizeRole(localStorage.getItem('starhub-role') || 'C'))
   const [isLoggedIn, setIsLoggedIn] = useState(() => localStorage.getItem('starhub-login') === 'true')
   const [currentUser, setCurrentUser] = useState(() => {
@@ -115,10 +151,15 @@ export default function App() {
   })
   const [account, setAccount] = useState('')
   const [password, setPassword] = useState('')
+  const [captchaId, setCaptchaId] = useState('')
+  const [captchaCode, setCaptchaCode] = useState('')
+  const [captchaImage, setCaptchaImage] = useState('')
+  const [captchaLoading, setCaptchaLoading] = useState(false)
   const [loginStatus, setLoginStatus] = useState('idle')
   const [loginError, setLoginError] = useState('')
   const activeRole = roleFromUser(currentUser) || normalizeRole(role)
   const canManageUsers = currentUser?.can_manage_users || currentUser?.group_code === 'root' || currentUser?.account === 'root'
+  const effectivePath = !canManageUsers && location.pathname === '/users' ? '/' : location.pathname
 
   useEffect(() => {
     if (activeRole !== role) {
@@ -134,13 +175,64 @@ export default function App() {
     localStorage.setItem('starhub-login', String(isLoggedIn))
   }, [isLoggedIn])
 
+  const loadCaptcha = async () => {
+    setCaptchaLoading(true)
+    try {
+      const response = await getAuthCaptcha()
+      const data = response.data?.data || {}
+      setCaptchaId(data.captcha_id || '')
+      setCaptchaImage(data.captcha_image || '')
+      setCaptchaCode('')
+    } catch {
+      setCaptchaId('')
+      setCaptchaImage('')
+      setLoginError('验证码加载失败，请刷新页面重试。')
+    } finally {
+      setCaptchaLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    let favicon = document.head.querySelector('link[rel="icon"]')
+    if (!favicon) {
+      favicon = document.createElement('link')
+      favicon.setAttribute('rel', 'icon')
+      document.head.appendChild(favicon)
+    }
+    favicon.setAttribute('type', 'image/svg+xml')
+    favicon.setAttribute('href', APP_FAVICON_PATH)
+  }, [])
+
+  useEffect(() => {
+    if (!isLoggedIn) {
+      loadCaptcha()
+    }
+  }, [isLoggedIn])
+
   const handleLogin = async (event) => {
     event.preventDefault()
     const loginAccount = account.trim()
+    const normalizedCaptchaCode = captchaCode.trim().toUpperCase()
+    if (!loginAccount || !password.trim()) {
+      setLoginError('请输入账号和密码。')
+      return
+    }
+    if (!captchaId || !normalizedCaptchaCode) {
+      setLoginError('请输入验证码。')
+      if (!captchaId) {
+        loadCaptcha()
+      }
+      return
+    }
     setLoginStatus('loading')
     setLoginError('')
     try {
-      const response = await webLogin({ account: loginAccount, password })
+      const response = await webLogin({
+        account: loginAccount,
+        password,
+        captcha_id: captchaId,
+        captcha_code: normalizedCaptchaCode,
+      })
       const data = response.data?.data || {}
       if (data.token) {
         localStorage.setItem('starhub-token', data.token)
@@ -155,9 +247,39 @@ export default function App() {
       }
       setIsLoggedIn(true)
       setLoginStatus('success')
-    } catch {
+      if (
+        location.pathname === '/users'
+        && !(data.user?.can_manage_users || data.user?.group_code === 'root' || data.user?.account === 'root')
+      ) {
+        navigate('/', { replace: true })
+      }
+    } catch (error) {
       setLoginStatus('error')
-      setLoginError('登录失败，请确认后端服务可用。')
+      throw error
+    }
+  }
+
+  const handleLoginError = async (error) => {
+    const detail = error?.response?.data?.detail || ''
+    if (detail === 'Invalid captcha') {
+      setLoginError('验证码错误，请重新输入。')
+      await loadCaptcha()
+      return
+    }
+    if (detail === 'Invalid account or password') {
+      setLoginError('账号或密码错误，请重新输入。')
+      await loadCaptcha()
+      return
+    }
+    setLoginError('登录失败，请确认后端服务可用。')
+    await loadCaptcha()
+  }
+
+  const handleLoginSubmit = async (event) => {
+    try {
+      await handleLogin(event)
+    } catch (error) {
+      await handleLoginError(error)
     }
   }
 
@@ -168,18 +290,23 @@ export default function App() {
         onAccountChange={setAccount}
         password={password}
         onPasswordChange={setPassword}
-        onLogin={handleLogin}
+        captchaCode={captchaCode}
+        onCaptchaCodeChange={setCaptchaCode}
+        captchaImage={captchaImage}
+        onRefreshCaptcha={loadCaptcha}
+        captchaLoading={captchaLoading}
+        onLogin={handleLoginSubmit}
         loginStatus={loginStatus}
         loginError={loginError}
       />
     )
   }
 
-  const currentTitle = location.pathname.startsWith('/show/')
+  const currentTitle = effectivePath.startsWith('/show/')
     ? '演出详情'
-    : location.pathname.startsWith('/projects/')
+    : effectivePath.startsWith('/projects/')
       ? '项目详情'
-    : routeTitles[location.pathname] || roleMeta[activeRole].title
+    : routeTitles[effectivePath] || roleMeta[activeRole].title
 
   return (
     <div className="app-shell">
@@ -206,6 +333,7 @@ export default function App() {
                 clearReadableCookies()
                 setCurrentUser(null)
                 setIsLoggedIn(false)
+                navigate('/', { replace: true })
               }}
             >
               退出
@@ -218,7 +346,7 @@ export default function App() {
             <Route path="/" element={<Home role={activeRole} currentUser={currentUser} />} />
             <Route path="/artist" element={<Artist role={activeRole} />} />
             <Route path="/generate" element={<Generate role={activeRole} />} />
-            <Route path="/users" element={<UserManagement currentUser={currentUser} />} />
+            <Route path="/users" element={canManageUsers ? <UserManagement currentUser={currentUser} /> : <Navigate replace to="/" />} />
             <Route path="/show/:id" element={<ShowDetail role={activeRole} />} />
             <Route path="/projects/:id" element={<ProjectDetail />} />
             <Route path="*" element={<Navigate replace to="/" />} />

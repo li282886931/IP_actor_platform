@@ -1,5 +1,6 @@
 import hashlib
 import math
+from typing import Optional
 
 from sqlalchemy import func, inspect, text
 from sqlalchemy.orm import Session
@@ -424,17 +425,20 @@ def serialize_version(version):
     }
 
 
-def serialize_task(task: Task):
+def serialize_task(task: Task, *, project_name: Optional[str] = None, assignee_name: Optional[str] = None):
     return {
         "id": task.id,
         "project_id": task.project_id,
+        "project_name": project_name,
         "assignee_id": task.assignee_id,
+        "assignee_name": assignee_name,
         "title": task.title,
         "description": task.description,
         "due_date": task.due_date,
         "status": task.status,
         "result": task.result,
         "evidence_ids": task.evidence_ids or [],
+        "evidence_count": len(task.evidence_ids or []),
     }
 
 

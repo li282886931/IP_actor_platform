@@ -59,3 +59,14 @@ def redis_set_json(key: str, value: dict, ttl_seconds: Optional[int] = None):
         return True
     except Exception:
         return False
+
+
+def redis_delete(key: str):
+    client = get_redis_client()
+    if not client:
+        return False
+    try:
+        client.delete(key)
+        return True
+    except Exception:
+        return False

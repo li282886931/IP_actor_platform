@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { BrowserRouter } from 'react-router-dom'
 
 import App from './App'
-import { webLogin } from './api'
+import { getAuthCaptcha, webLogin } from './api'
 
 vi.mock('./api', () => ({
   agentChat: vi.fn(),
@@ -62,6 +62,15 @@ vi.mock('./api', () => ({
   runExternalDataJob: vi.fn(),
   submitTask: vi.fn(),
   generateAI: vi.fn(),
+  getAuthCaptcha: vi.fn().mockResolvedValue({
+    data: {
+      data: {
+        captcha_id: 'captcha-1',
+        captcha_image: 'data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22/%3E',
+        expires_in_seconds: 300,
+      },
+    },
+  }),
   getShow: vi.fn(),
   mockOrder: vi.fn(),
   updateUser: vi.fn(),
@@ -71,6 +80,7 @@ vi.mock('./api', () => ({
 
 describe('App workbench shell', () => {
   beforeEach(() => {
+    vi.clearAllMocks()
     localStorage.setItem('starhub-login', 'true')
     localStorage.setItem('starhub-role', 'B')
     localStorage.setItem('starhub-user', JSON.stringify({ account: 'root', role: 'B', group_code: 'root', can_manage_users: true }))
@@ -95,6 +105,18 @@ describe('App workbench shell', () => {
     expect(screen.queryByText(/Demo|MVP/i)).not.toBeInTheDocument()
     expect(document.querySelector('.showcase')).not.toBeInTheDocument()
     expect(document.querySelector('.phone-frame')).not.toBeInTheDocument()
+  })
+
+  it('registers the platform favicon in the browser tab', () => {
+    render(
+      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <App />
+      </BrowserRouter>,
+    )
+
+    const favicon = document.head.querySelector('link[rel="icon"]')
+    expect(favicon).toBeInTheDocument()
+    expect(favicon?.getAttribute('href')).toBe('/favicon.svg')
   })
 
   it('keeps sidebar workspace entries clickable after login', async () => {
@@ -135,6 +157,38 @@ describe('App workbench shell', () => {
     expect(screen.queryByLabelText('当前角色')).not.toBeInTheDocument()
   })
 
+  it('returns to the main workbench when logging in with a non-root account after leaving user management', async () => {
+    window.history.pushState({}, '', '/users')
+    webLogin.mockResolvedValue({
+      data: {
+        data: {
+          token: 'dev-token-2-1',
+          user: { account: 'b_user', name: '主办方用户', role: 'B', group_code: 'B', can_manage_users: false },
+          current_tenant: { id: 1, name: '锐音场默认空间' },
+        },
+      },
+    })
+    const user = userEvent.setup()
+
+    render(
+      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <App />
+      </BrowserRouter>,
+    )
+
+    expect(await screen.findByText('维护平台账号，并按固定业务用户组管理页面权限。')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '退出' }))
+    expect(screen.getByRole('heading', { name: '登录工作台' })).toBeInTheDocument()
+
+    await user.type(screen.getByPlaceholderText('输入邮箱或手机号'), 'b_user')
+    await user.type(screen.getByPlaceholderText('输入登录密码'), '123456')
+    await user.type(screen.getByPlaceholderText('输入图形验证码'), 'AB12')
+    await user.click(screen.getByRole('button', { name: /登录/ }))
+
+    expect(await screen.findByRole('heading', { name: '项目决策工作台' })).toBeInTheDocument()
+    expect(screen.queryByText('无权访问用户管理')).not.toBeInTheDocument()
+  })
+
   it('clears readable cookies when logging out', async () => {
     document.cookie = 'session_token=abc123; path=/'
     document.cookie = 'tenant_id=1; path=/'
@@ -171,16 +225,64 @@ describe('App workbench shell', () => {
       </BrowserRouter>,
     )
 
+    expect(await screen.findByRole('img', { name: '登录验证码' })).toBeInTheDocument()
     await user.type(screen.getByPlaceholderText('输入邮箱或手机号'), 'operator@ruiyinchang.com')
     await user.type(screen.getByPlaceholderText('输入登录密码'), '123456')
+    await user.type(screen.getByPlaceholderText('输入图形验证码'), 'AB12')
     await user.click(screen.getByRole('button', { name: /登录/ }))
 
     expect(webLogin).toHaveBeenCalledWith({
       account: 'operator@ruiyinchang.com',
       password: '123456',
+      captcha_id: 'captcha-1',
+      captcha_code: 'AB12',
     })
     expect(await screen.findByRole('navigation', { name: '主导航' })).toBeInTheDocument()
     expect(localStorage.getItem('starhub-token')).toBe('dev-token-1-1')
+  })
+
+  it('loads and refreshes backend captcha on the login screen', async () => {
+    localStorage.clear()
+    const user = userEvent.setup()
+
+    render(
+      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <App />
+      </BrowserRouter>,
+    )
+
+    expect(await screen.findByRole('img', { name: '登录验证码' })).toBeInTheDocument()
+    expect(getAuthCaptcha).toHaveBeenCalledTimes(1)
+
+    await user.click(screen.getByRole('button', { name: '换一张验证码' }))
+
+    expect(getAuthCaptcha).toHaveBeenCalledTimes(2)
+  })
+
+  it('shows the backend captcha error when login verification fails', async () => {
+    localStorage.clear()
+    webLogin.mockRejectedValue({
+      response: {
+        data: {
+          detail: 'Invalid captcha',
+        },
+      },
+    })
+    const user = userEvent.setup()
+
+    render(
+      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <App />
+      </BrowserRouter>,
+    )
+
+    expect(await screen.findByRole('img', { name: '登录验证码' })).toBeInTheDocument()
+    await user.type(screen.getByPlaceholderText('输入邮箱或手机号'), 'root')
+    await user.type(screen.getByPlaceholderText('输入登录密码'), '123456')
+    await user.type(screen.getByPlaceholderText('输入图形验证码'), 'AB12')
+    await user.click(screen.getByRole('button', { name: /登录/ }))
+
+    expect(await screen.findByText('验证码错误，请重新输入。')).toBeInTheDocument()
   })
 
   it('does not expose role selection on the login screen', () => {

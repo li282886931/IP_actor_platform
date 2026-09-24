@@ -1187,10 +1187,7 @@ def test_root_login_and_user_management(monkeypatch):
     client, session_factory = make_test_client(monkeypatch)
 
     try:
-        login_response = client.post(
-            "/auth/web-login",
-            json={"account": "root", "password": "123456"},
-        )
+        login_response = login_with_captcha(client, monkeypatch, "root", "123456")
         assert login_response.status_code == 200
         login_data = login_response.json()["data"]
         assert login_data["user"]["account"] == "root"
@@ -1215,10 +1212,7 @@ def test_root_login_and_user_management(monkeypatch):
         assert created_user["group_code"] == "Brand"
         assert "password" not in created_user
 
-        brand_login = client.post(
-            "/auth/web-login",
-            json={"account": "brand-user", "password": "abc123"},
-        )
+        brand_login = login_with_captcha(client, monkeypatch, "brand-user", "abc123")
         assert brand_login.status_code == 200
         assert brand_login.json()["data"]["user"]["group_code"] == "Brand"
 
@@ -1235,16 +1229,10 @@ def test_root_login_and_user_management(monkeypatch):
         assert updated_user["name"] == "文旅用户"
         assert updated_user["group_code"] == "G"
 
-        old_password_login = client.post(
-            "/auth/web-login",
-            json={"account": "brand-user", "password": "abc123"},
-        )
+        old_password_login = login_with_captcha(client, monkeypatch, "brand-user", "abc123")
         assert old_password_login.status_code == 401
 
-        new_password_login = client.post(
-            "/auth/web-login",
-            json={"account": "brand-user", "password": "newpass123"},
-        )
+        new_password_login = login_with_captcha(client, monkeypatch, "brand-user", "newpass123")
         assert new_password_login.status_code == 200
         assert new_password_login.json()["data"]["user"]["group_code"] == "G"
 
@@ -1277,10 +1265,7 @@ def test_default_business_group_users_can_login(monkeypatch):
 
     try:
         for account, (group_code, role) in expected_users.items():
-            response = client.post(
-                "/auth/web-login",
-                json={"account": account, "password": "123456"},
-            )
+            response = login_with_captcha(client, monkeypatch, account, "123456")
             assert response.status_code == 200
             user = response.json()["data"]["user"]
             assert user["account"] == account
@@ -1316,13 +1301,69 @@ def make_test_client(monkeypatch):
     return TestClient(app_module.app), session_factory
 
 
+def fetch_login_captcha(client, monkeypatch, code="AB12"):
+    monkeypatch.setattr(routes_module, "generate_captcha_code", lambda length=4: code)
+    response = client.get("/auth/captcha")
+    assert response.status_code == 200
+    payload = response.json()["data"]
+    assert payload["captcha_id"]
+    assert payload["captcha_image"].startswith("data:image/svg+xml")
+    assert payload["expires_in_seconds"] == 300
+    return payload
+
+
+def login_with_captcha(client, monkeypatch, account, password, *, generated_code="AB12", captcha_code=None, headers=None):
+    captcha = fetch_login_captcha(client, monkeypatch, generated_code)
+    response = client.post(
+        "/auth/web-login",
+        json={
+            "account": account,
+            "password": password,
+            "captcha_id": captcha["captcha_id"],
+            "captcha_code": captcha_code or generated_code,
+        },
+        headers=headers or {},
+    )
+    return response
+
+
+def test_web_login_requires_valid_backend_captcha(monkeypatch):
+    client, _ = make_test_client(monkeypatch)
+
+    try:
+        invalid_captcha_login = login_with_captcha(
+            client,
+            monkeypatch,
+            "root",
+            "123456",
+            generated_code="Z9K2",
+            captcha_code="WRNG",
+        )
+        assert invalid_captcha_login.status_code == 401
+        assert invalid_captcha_login.json()["detail"] == "Invalid captcha"
+
+        valid_captcha_login = login_with_captcha(
+            client,
+            monkeypatch,
+            "root",
+            "123456",
+            generated_code="Z9K2",
+        )
+        assert valid_captcha_login.status_code == 200
+        assert valid_captcha_login.json()["data"]["user"]["account"] == "root"
+    finally:
+        app_module.app.dependency_overrides.clear()
+
+
 def test_phase1_project_decision_flow(monkeypatch):
     client, session_factory = make_test_client(monkeypatch)
 
     try:
-        login_response = client.post(
-            "/auth/web-login",
-            json={"account": "root", "password": "123456"},
+        login_response = login_with_captcha(
+            client,
+            monkeypatch,
+            "root",
+            "123456",
             headers={"X-Client-Source": "web"},
         )
         assert login_response.status_code == 200
@@ -1405,10 +1446,15 @@ def test_phase1_project_decision_flow(monkeypatch):
         assert task_response.status_code == 200
         task = task_response.json()["data"]
         assert task["status"] == "pending"
+        assert task["project_name"] == "北京大型演唱会测算"
+        assert task["assignee_name"] is None
+        assert task["evidence_count"] == 0
 
         tasks_response = client.get(f"/tasks?project_id={project['id']}")
         assert tasks_response.status_code == 200
         assert tasks_response.json()["data"][0]["title"] == "确认场地安全资料"
+        assert tasks_response.json()["data"][0]["project_name"] == "北京大型演唱会测算"
+        assert tasks_response.json()["data"][0]["evidence_count"] == 0
     finally:
         app_module.app.dependency_overrides.clear()
 
@@ -1669,6 +1715,8 @@ def test_full_backend_plan_api_flow(monkeypatch):
         submitted_task = submit_response.json()["data"]
         assert submitted_task["status"] == "submitted"
         assert submitted_task["evidence_ids"] == [evidence["id"]]
+        assert submitted_task["project_name"] == "杭州音乐节"
+        assert submitted_task["evidence_count"] == 1
 
         agent_response = client.post(
             "/agent/chat",

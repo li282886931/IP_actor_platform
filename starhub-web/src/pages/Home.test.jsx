@@ -107,6 +107,9 @@ describe('Home', () => {
             title: '确认场地安全资料',
             status: 'pending',
             due_date: '2026-08-01',
+            description: '补齐场地方安全承诺与消防批复',
+            result: '',
+            evidence_ids: [9, 10],
           },
         ],
       },
@@ -120,6 +123,12 @@ describe('Home', () => {
 
     expect(await screen.findByText('北京大型演唱会测算')).toBeInTheDocument()
     expect(screen.getByText('确认场地安全资料')).toBeInTheDocument()
+    expect(document.querySelector('.task-panel-icon')).not.toBeInTheDocument()
+    expect(screen.getByText('北京大型演唱会测算 · 截止 2026-08-01')).toBeInTheDocument()
+    expect(screen.getByText('补齐场地方安全承诺与消防批复')).toBeInTheDocument()
+    expect(screen.getByText('待处理')).toBeInTheDocument()
+    expect(screen.getByText('证据 2 份')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: '查看项目' })).toHaveAttribute('href', '/projects/1')
     expect(listProjects).toHaveBeenCalled()
     expect(listTasks).toHaveBeenCalled()
     expect(getDashboardAnalytics).toHaveBeenCalled()
@@ -160,6 +169,41 @@ describe('Home', () => {
     expect(await screen.findByText('北京大型演唱会测算')).toBeInTheDocument()
     expect(screen.queryByText('项目数据暂时不可用')).not.toBeInTheDocument()
     expect(screen.getByText('票务预约汇总')).toBeInTheDocument()
+  })
+
+  it('renders task project name from the task API payload instead of relying on the project list', async () => {
+    listProjects.mockResolvedValue({ data: { data: [] } })
+    listTasks.mockResolvedValue({
+      data: {
+        data: [
+          {
+            id: 9,
+            project_id: 88,
+            project_name: '数据库真实项目',
+            assignee_name: '超级管理员',
+            title: '确认艺人授权',
+            description: '补齐授权书与宣发素材许可范围',
+            due_date: '2026-09-30',
+            status: 'pending',
+            result: '',
+            evidence_ids: [1, 2, 3],
+            evidence_count: 3,
+          },
+        ],
+      },
+    })
+
+    render(
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <Home role="B" />
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByText('确认艺人授权')).toBeInTheDocument()
+    expect(screen.getByText('数据库真实项目 · 截止 2026-09-30')).toBeInTheDocument()
+    expect(screen.getByText('补齐授权书与宣发素材许可范围')).toBeInTheDocument()
+    expect(screen.getByText('证据 3 份')).toBeInTheDocument()
+    expect(screen.getByText('负责人：超级管理员')).toBeInTheDocument()
   })
 
   it('creates a Phase 1 project from the business workbench', async () => {
