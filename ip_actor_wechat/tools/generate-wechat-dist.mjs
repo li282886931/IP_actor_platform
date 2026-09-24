@@ -5,6 +5,20 @@ import { routeFor, screens } from './blueprint-manifest.mjs'
 const root = resolve(import.meta.dirname, '..')
 const dist = resolve(root, 'dist')
 
+const runtimeConfig = {
+  DEFAULT_API_BASE: 'http://127.0.0.1:8000',
+  REQUEST_TIMEOUT_MS: 300000,
+  CLIENT_SOURCE: 'mp',
+  STORAGE_KEYS: {
+    apiBase: 'starhub-api-base',
+    token: 'starhub-token',
+    tenant: 'starhub-tenant',
+    user: 'starhub-user',
+    projectId: 'starhub-project-id',
+    taskId: 'starhub-task-id',
+  },
+}
+
 const tabItems = [
   ['S04', '发现', 'discover'],
   ['S10', '项目', 'project'],
@@ -124,7 +138,7 @@ writeFileSync(resolve(dist, 'app.json'), `${JSON.stringify({
 
 writeFileSync(resolve(dist, 'app.js'), `App({
   globalData: {
-    apiBase: 'http://127.0.0.1:8000'
+    apiBase: ${JSON.stringify(runtimeConfig.DEFAULT_API_BASE)}
   }
 })
 `)
@@ -154,9 +168,13 @@ const tabs = ${JSON.stringify(tabItems.map(([id]) => id), null, 2)}
 module.exports = { screens, fixtures, nextScreen, tabs }
 `)
 
-writeFileSync(resolve(dist, 'common/runtime.js'), `const { screens, fixtures, nextScreen, tabs } = require('./screens')
+writeFileSync(resolve(dist, 'common/config.js'), `module.exports = ${JSON.stringify(runtimeConfig, null, 2)}
+`)
 
-const apiBase = () => wx.getStorageSync('starhub-api-base') || 'http://127.0.0.1:8000'
+writeFileSync(resolve(dist, 'common/runtime.js'), `const { screens, fixtures, nextScreen, tabs } = require('./screens')
+const { DEFAULT_API_BASE, REQUEST_TIMEOUT_MS, CLIENT_SOURCE, STORAGE_KEYS } = require('./config')
+
+const apiBase = () => wx.getStorageSync(STORAGE_KEYS.apiBase) || DEFAULT_API_BASE
 const routeFor = (screenId) => '/pages/' + screenId.toLowerCase() + '/index'
 const fixtureItems = (group) => (fixtures[group] || fixtures['项目']).map((item, index) => ({
   id: group + '-' + index,
@@ -177,11 +195,11 @@ const normalizeItems = (values, group) => {
 }
 
 const request = (path, method = 'GET', data) => new Promise((resolve, reject) => {
-  const token = wx.getStorageSync('starhub-token')
-  const tenant = wx.getStorageSync('starhub-tenant') || {}
+  const token = wx.getStorageSync(STORAGE_KEYS.token)
+  const tenant = wx.getStorageSync(STORAGE_KEYS.tenant) || {}
   const header = {
     'Content-Type': 'application/json',
-    'X-Client-Source': 'mp'
+    'X-Client-Source': CLIENT_SOURCE
   }
   if (token) header.Authorization = 'Bearer ' + token
   if (tenant.id) header['X-Tenant-Id'] = String(tenant.id)
@@ -189,7 +207,7 @@ const request = (path, method = 'GET', data) => new Promise((resolve, reject) =>
     url: apiBase() + path,
     method,
     data,
-    timeout: 300000,
+    timeout: REQUEST_TIMEOUT_MS,
     header,
     success: (response) => {
       if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -222,7 +240,7 @@ const createScreenPage = (screenId) => {
       loadState: 'idle',
       message: '',
       keyword: '',
-      placeholder: screenId === 'S82' ? 'http://127.0.0.1:8000' : '输入关键词或补充信息',
+      placeholder: screenId === 'S82' ? DEFAULT_API_BASE : '输入关键词或补充信息',
       apiBase: apiBase(),
       isForm: ['S09','S13','S14','S15','S16','S17','S25','S36','S37','S41','S45','S47','S51','S54','S57','S65','S72','S79','S82'].includes(screenId)
     },
@@ -237,8 +255,8 @@ const createScreenPage = (screenId) => {
     },
     fetchRemote() {
       this.setData({ loadState: 'loading', message: '' })
-      const projectId = Number(wx.getStorageSync('starhub-project-id') || 1)
-      const taskId = Number(wx.getStorageSync('starhub-task-id') || 1)
+      const projectId = Number(wx.getStorageSync(STORAGE_KEYS.projectId) || 1)
+      const taskId = Number(wx.getStorageSync(STORAGE_KEYS.taskId) || 1)
       let promise
       switch (screenId) {
         case 'S02': promise = request('/tenants'); break
@@ -279,9 +297,9 @@ const createScreenPage = (screenId) => {
     onPrimaryTap() {
       if (screenId === 'S01') {
         request('/auth/wechat-login', 'POST', { code: 'local-devtools', name: '小程序用户', group_code: 'B' }).then((session) => {
-          wx.setStorageSync('starhub-token', session.token)
-          wx.setStorageSync('starhub-user', session.user)
-          wx.setStorageSync('starhub-tenant', session.current_tenant)
+          wx.setStorageSync(STORAGE_KEYS.token, session.token)
+          wx.setStorageSync(STORAGE_KEYS.user, session.user)
+          wx.setStorageSync(STORAGE_KEYS.tenant, session.current_tenant)
           this.goNext()
         }).catch((error) => {
           console.error('[MiniApp] login failed', error)
@@ -291,7 +309,7 @@ const createScreenPage = (screenId) => {
       }
       if (screenId === 'S82') {
         const value = this.data.keyword && this.data.keyword.trim()
-        if (value) wx.setStorageSync('starhub-api-base', value.replace(/\\/+$/, ''))
+        if (value) wx.setStorageSync(STORAGE_KEYS.apiBase, value.replace(/\\/+$/, ''))
         this.fetchRemote()
         return
       }
