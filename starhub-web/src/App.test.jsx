@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { BrowserRouter } from 'react-router-dom'
@@ -253,10 +253,29 @@ describe('App workbench shell', () => {
 
     expect(await screen.findByRole('img', { name: '登录验证码' })).toBeInTheDocument()
     expect(getAuthCaptcha).toHaveBeenCalledTimes(1)
+    expect(screen.queryByRole('button', { name: '换一张验证码' })).not.toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: '换一张验证码' }))
+    await user.click(screen.getByRole('button', { name: '点击刷新验证码' }))
 
     expect(getAuthCaptcha).toHaveBeenCalledTimes(2)
+  })
+
+  it('refreshes the captcha after logging out to the login screen', async () => {
+    const user = userEvent.setup()
+
+    render(
+      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <App />
+      </BrowserRouter>,
+    )
+
+    expect(screen.getByRole('button', { name: '退出' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '退出' }))
+
+    expect(await screen.findByRole('img', { name: '登录验证码' })).toBeInTheDocument()
+    await waitFor(() => {
+      expect(getAuthCaptcha).toHaveBeenCalledTimes(1)
+    })
   })
 
   it('shows the backend captcha error when login verification fails', async () => {

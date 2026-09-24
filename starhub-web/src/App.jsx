@@ -121,13 +121,18 @@ function LoginView({
             </label>
             <div className="captcha-preview">
               {captchaImage ? (
-                <img alt="登录验证码" className="captcha-image" src={captchaImage} />
+                <button
+                  aria-label="点击刷新验证码"
+                  className="captcha-image-button"
+                  type="button"
+                  onClick={onRefreshCaptcha}
+                  disabled={captchaLoading}
+                >
+                  <img alt="登录验证码" className="captcha-image" src={captchaImage} />
+                </button>
               ) : (
                 <div aria-hidden="true" className="captcha-image captcha-image-placeholder">加载中</div>
               )}
-              <button className="button button-secondary" type="button" onClick={onRefreshCaptcha} disabled={captchaLoading}>
-                换一张验证码
-              </button>
             </div>
           </div>
           <button className="button button-primary button-block" type="submit">
@@ -331,6 +336,11 @@ export default function App() {
                 localStorage.removeItem('starhub-user')
                 localStorage.removeItem('starhub-tenant')
                 clearReadableCookies()
+                setCaptchaId('')
+                setCaptchaCode('')
+                setCaptchaImage('')
+                setLoginError('')
+                setLoginStatus('idle')
                 setCurrentUser(null)
                 setIsLoggedIn(false)
                 navigate('/', { replace: true })
