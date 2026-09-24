@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 
 import { generateAIStream } from '../api'
@@ -8,51 +8,123 @@ const contentTypes = [
   { value: 'video_script', label: '短视频脚本', description: '生成分镜节奏与口播内容' },
 ]
 
+const GENERATION_STORAGE_KEY = 'starhub-ai-generation-state'
+const defaultForm = { type: 'poster', show_name: '', artist: '', city: '' }
+
 const cleanFinalResult = (value = '') => value
   .replace(/<think\b[^>]*>[\s\S]*?<\/think>/gi, '')
   .replace(/^\s*<\/?think>\s*$/gim, '')
   .trim()
 
+const canUseLocalStorage = () => typeof window !== 'undefined' && Boolean(window.localStorage)
+
+const readGenerationState = () => {
+  if (!canUseLocalStorage()) return {}
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(GENERATION_STORAGE_KEY) || '{}')
+    return parsed && typeof parsed === 'object' ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
+const persistGenerationState = (patch) => {
+  if (!canUseLocalStorage()) return
+  const current = readGenerationState()
+  window.localStorage.setItem(
+    GENERATION_STORAGE_KEY,
+    JSON.stringify({
+      ...current,
+      ...patch,
+      updated_at: new Date().toISOString(),
+    }),
+  )
+}
+
+const initialGenerationState = () => {
+  const stored = readGenerationState()
+  return {
+    form: { ...defaultForm, ...(stored.form || {}) },
+    result: cleanFinalResult(stored.result || ''),
+    status: ['idle', 'loading', 'success', 'error'].includes(stored.status) ? stored.status : 'idle',
+    progressMessages: Array.isArray(stored.progressMessages) ? stored.progressMessages : [],
+    thoughts: stored.thoughts || '',
+  }
+}
+
 export default function Generate({ role = 'B' }) {
-  const [form, setForm] = useState({ type: 'poster', show_name: '', artist: '', city: '' })
-  const [result, setResult] = useState('')
-  const [status, setStatus] = useState('idle')
+  const [initialState] = useState(initialGenerationState)
+  const [form, setForm] = useState(initialState.form)
+  const [result, setResult] = useState(initialState.result)
+  const [status, setStatus] = useState(initialState.status)
   const [copyStatus, setCopyStatus] = useState('')
-  const [progressMessages, setProgressMessages] = useState([])
-  const [thoughts, setThoughts] = useState('')
+  const [progressMessages, setProgressMessages] = useState(initialState.progressMessages)
+  const [thoughts, setThoughts] = useState(initialState.thoughts)
+
+  useEffect(() => {
+    persistGenerationState({ form, result, status, progressMessages, thoughts })
+  }, [form, result, status, progressMessages, thoughts])
 
   const updateField = (field, value) => {
-    setForm((current) => ({ ...current, [field]: value }))
+    setForm((current) => {
+      const next = { ...current, [field]: value }
+      persistGenerationState({ form: next })
+      return next
+    })
   }
 
   const handleGenerate = async (event) => {
     event?.preventDefault()
+    const generationNonce = `${Date.now()}-${Math.random().toString(36).slice(2)}`
     setStatus('loading')
     setCopyStatus('')
     setResult('')
     setProgressMessages(['已提交创作需求'])
     setThoughts('')
+    persistGenerationState({
+      form,
+      result: '',
+      status: 'loading',
+      progressMessages: ['已提交创作需求'],
+      thoughts: '',
+      generation_nonce: generationNonce,
+    })
     try {
       const finalResult = await generateAIStream(
         {
           ...form,
-          generation_nonce: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          generation_nonce: generationNonce,
         },
         {
           onProgress: (message) => {
-            if (message) setProgressMessages((current) => [...current, message])
+            if (message) setProgressMessages((current) => {
+              const next = [...current, message]
+              persistGenerationState({ progressMessages: next, status: 'loading' })
+              return next
+            })
           },
           onThought: (content) => {
-            if (content) setThoughts((current) => `${current}${content}`)
+            if (content) setThoughts((current) => {
+              const next = `${current}${content}`
+              persistGenerationState({ thoughts: next, status: 'loading' })
+              return next
+            })
           },
-          onFinal: (value) => setResult(cleanFinalResult(value)),
+          onFinal: (value) => {
+            const cleaned = cleanFinalResult(value)
+            setResult(cleaned)
+            persistGenerationState({ result: cleaned, status: 'success' })
+          },
         },
       )
-      setResult(cleanFinalResult(finalResult))
+      const cleanedFinalResult = cleanFinalResult(finalResult)
+      setResult(cleanedFinalResult)
       setStatus('success')
+      persistGenerationState({ result: cleanedFinalResult, status: 'success' })
     } catch {
       setResult('')
       setStatus('error')
+      persistGenerationState({ result: '', status: 'error' })
     }
   }
 

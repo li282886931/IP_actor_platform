@@ -13,6 +13,7 @@ describe('Generate', () => {
   afterEach(() => {
     cleanup()
     vi.clearAllMocks()
+    localStorage.clear()
   })
 
   it('renders the generated copy from the API response payload', async () => {
@@ -130,5 +131,61 @@ describe('Generate', () => {
       expect(screen.queryByText(/hidden reasoning/)).not.toBeInTheDocument()
       expect(screen.queryByText(/<think>/)).not.toBeInTheDocument()
     })
+  })
+
+  it('restores completed generated content from local storage when returning to the page', async () => {
+    localStorage.setItem('starhub-ai-generation-state', JSON.stringify({
+      form: {
+        type: 'poster',
+        show_name: '周杰伦·北京演唱会',
+        artist: '周杰伦',
+        city: '北京',
+      },
+      result: '## 已完成文案\n\n最终内容',
+      status: 'success',
+      progressMessages: ['内容已整理完成'],
+      thoughts: '已完成分析',
+    }))
+
+    render(<Generate />)
+
+    expect(screen.getByDisplayValue('周杰伦·北京演唱会')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('周杰伦')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('北京')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '已完成文案' })).toBeInTheDocument()
+    expect(screen.getByText('已完成分析')).toBeInTheDocument()
+  })
+
+  it('restores in-progress generation state when returning to the page', async () => {
+    let finishStream
+    generateAIStream.mockImplementation(async (_payload, handlers) => {
+      handlers.onProgress('模型正在生成内容')
+      handlers.onThought('正在分析城市受众')
+      await new Promise((resolve) => {
+        finishStream = resolve
+      })
+      handlers.onFinal('最终生成内容')
+      return '最终生成内容'
+    })
+
+    const { unmount } = render(<Generate />)
+    const user = userEvent.setup()
+
+    await user.type(screen.getByPlaceholderText('例如：周杰伦嘉年华世界巡回演唱会'), '周杰伦·北京演唱会')
+    await user.type(screen.getByPlaceholderText('输入艺人名称'), '周杰伦')
+    await user.type(screen.getByPlaceholderText('输入演出城市'), '北京')
+    await user.click(screen.getByRole('button', { name: /一键生成/ }))
+
+    expect(await screen.findByText('模型正在生成内容')).toBeInTheDocument()
+    unmount()
+
+    render(<Generate />)
+
+    expect(screen.getByDisplayValue('周杰伦·北京演唱会')).toBeInTheDocument()
+    expect(screen.getByText('模型正在生成内容')).toBeInTheDocument()
+    expect(screen.getByText('正在分析城市受众')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /AI 生成中/ })).toBeDisabled()
+
+    finishStream()
   })
 })
