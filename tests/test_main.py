@@ -267,6 +267,83 @@ def test_oss_upload_reservation_creates_evidence_after_completion(monkeypatch):
         db.close()
 
 
+def test_oss_upload_initiate_uses_minio_presigned_url_when_enabled(monkeypatch):
+    client, session_factory = make_test_client(monkeypatch)
+    monkeypatch.setenv("OSS_PROVIDER", "minio")
+    monkeypatch.setenv("MINIO_ENDPOINT", "127.0.0.1:9000")
+    monkeypatch.setenv("MINIO_ACCESS_KEY", "root")
+    monkeypatch.setenv("MINIO_SECRET_KEY", "123456789")
+    monkeypatch.setenv("MINIO_BUCKET", "ip-actor-test")
+
+    calls = []
+
+    class FakeMinioClient:
+        def bucket_exists(self, bucket):
+            calls.append(("bucket_exists", bucket))
+            return False
+
+        def make_bucket(self, bucket):
+            calls.append(("make_bucket", bucket))
+
+        def presigned_put_object(self, bucket, object_key, expires):
+            calls.append(("presigned_put_object", bucket, object_key, int(expires.total_seconds())))
+            return f"http://127.0.0.1:9000/{bucket}/{object_key}?signature=fake"
+
+        def stat_object(self, bucket, object_key):
+            calls.append(("stat_object", bucket, object_key))
+
+    monkeypatch.setattr(routes_module, "create_minio_client", lambda: FakeMinioClient())
+
+    try:
+        project_response = client.post(
+            "/projects",
+            json={"name": "MinIO 上传项目", "artist_name": "测试艺人", "city": "北京"},
+        )
+        assert project_response.status_code == 200
+        project = project_response.json()["data"]
+
+        initiate_response = client.post(
+            "/oss/uploads/initiate",
+            json={
+                "project_id": project["id"],
+                "file_name": "minio-contract.pdf",
+                "content_type": "application/pdf",
+                "evidence_type": "contract",
+                "source": "venue",
+            },
+        )
+        assert initiate_response.status_code == 200
+        upload = initiate_response.json()["data"]
+        assert upload["provider"] == "minio"
+        assert upload["bucket"] == "ip-actor-test"
+        assert upload["method"] == "PUT"
+        assert upload["upload_url"].startswith("http://127.0.0.1:9000/ip-actor-test/")
+        assert upload["headers"]["Content-Type"] == "application/pdf"
+        assert calls[0] == ("bucket_exists", "ip-actor-test")
+        assert calls[1] == ("make_bucket", "ip-actor-test")
+        assert calls[2][0] == "presigned_put_object"
+
+        complete_response = client.post(
+            f"/oss/uploads/{upload['id']}/complete",
+            json={"size": 2048, "checksum": "sha256-minio"},
+        )
+        assert complete_response.status_code == 200
+        completed = complete_response.json()["data"]
+        assert completed["upload"]["file_url"] == f"minio://ip-actor-test/{upload['object_key']}"
+        assert completed["evidence"]["file_url"] == completed["upload"]["file_url"]
+        assert calls[-1] == ("stat_object", "ip-actor-test", upload["object_key"])
+    finally:
+        app_module.app.dependency_overrides.clear()
+
+    db = session_factory()
+    try:
+        saved_upload = db.query(app_module.OSSUpload).one()
+        assert saved_upload.provider == "minio"
+        assert saved_upload.bucket == "ip-actor-test"
+    finally:
+        db.close()
+
+
 def test_external_data_async_job_can_be_run_and_queried(monkeypatch):
     client, session_factory = make_test_client(monkeypatch)
 

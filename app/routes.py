@@ -2,14 +2,14 @@ import os
 import random
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import requests
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from .config import LLAMA_SERVER_MODEL, LLAMA_SERVER_TIMEOUT_SECONDS, LLAMA_SERVER_URL
+from .config import LLAMA_SERVER_MODEL, LLAMA_SERVER_TIMEOUT_SECONDS, LLAMA_SERVER_URL, MINIO_BUCKET, MINIO_ENDPOINT, MINIO_SECURE, OSS_PROVIDER
 from .database import get_db
 from .models import (
     AIGeneration,
@@ -93,6 +93,77 @@ from .services import (
 
 
 router = APIRouter()
+
+
+def current_oss_provider():
+    return os.environ.get('OSS_PROVIDER', OSS_PROVIDER).strip().lower()
+
+
+def minio_bucket_name():
+    return os.environ.get('MINIO_BUCKET', MINIO_BUCKET).strip()
+
+
+def minio_secure_enabled():
+    value = os.environ.get('MINIO_SECURE')
+    if value is None:
+        return bool(MINIO_SECURE)
+    return value.strip().lower() in {'1', 'true', 'yes', 'on'}
+
+
+def create_minio_client():
+    try:
+        from minio import Minio
+    except ImportError as exc:
+        raise RuntimeError('MinIO SDK is not installed') from exc
+
+    access_key = os.environ.get('MINIO_ACCESS_KEY') or ''
+    secret_key = os.environ.get('MINIO_SECRET_KEY') or ''
+    if not access_key or not secret_key:
+        raise RuntimeError('MINIO_ACCESS_KEY and MINIO_SECRET_KEY are required')
+
+    return Minio(
+        os.environ.get('MINIO_ENDPOINT', MINIO_ENDPOINT),
+        access_key=access_key,
+        secret_key=secret_key,
+        secure=minio_secure_enabled(),
+    )
+
+
+def ensure_minio_bucket(client, bucket: str):
+    if not client.bucket_exists(bucket):
+        client.make_bucket(bucket)
+
+
+def create_upload_target(provider: str, object_key: str, content_type: str):
+    if provider != 'minio':
+        return {
+            "provider": "local-placeholder",
+            "bucket": "",
+            "upload_url": f"/oss/local-placeholder/{object_key}",
+            "method": "PUT",
+            "headers": {"Content-Type": content_type},
+            "expires_in_seconds": 900,
+        }
+
+    bucket = minio_bucket_name()
+    if not bucket:
+        raise HTTPException(status_code=500, detail='MINIO_BUCKET is required')
+    try:
+        client = create_minio_client()
+        ensure_minio_bucket(client, bucket)
+        expires = timedelta(seconds=900)
+        upload_url = client.presigned_put_object(bucket, object_key, expires=expires)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f'MinIO upload URL generation failed: {exc}') from exc
+
+    return {
+        "provider": "minio",
+        "bucket": bucket,
+        "upload_url": upload_url,
+        "method": "PUT",
+        "headers": {"Content-Type": content_type},
+        "expires_in_seconds": 900,
+    }
 
 
 def safe_object_name(file_name: str):
@@ -787,11 +858,16 @@ def initiate_oss_upload(payload: OSSUploadInitiateIn, db: Session = Depends(get_
 
     file_name = safe_object_name(payload.file_name)
     object_key = f"projects/{project.id}/{uuid.uuid4().hex}/{file_name}"
+    upload_target = create_upload_target(
+        current_oss_provider(),
+        object_key,
+        payload.content_type or 'application/octet-stream',
+    )
     upload = OSSUpload(
         project_id=project.id,
         fact_id=payload.fact_id,
-        provider='local-placeholder',
-        bucket='',
+        provider=upload_target["provider"],
+        bucket=upload_target["bucket"],
         object_key=object_key,
         file_name=file_name,
         content_type=payload.content_type or 'application/octet-stream',
@@ -806,10 +882,10 @@ def initiate_oss_upload(payload: OSSUploadInitiateIn, db: Session = Depends(get_
     db.refresh(upload)
     return json_ok({
         **serialize_oss_upload(upload),
-        "upload_url": f"/oss/local-placeholder/{object_key}",
-        "method": "PUT",
-        "headers": {"Content-Type": upload.content_type},
-        "expires_in_seconds": 900,
+        "upload_url": upload_target["upload_url"],
+        "method": upload_target["method"],
+        "headers": upload_target["headers"],
+        "expires_in_seconds": upload_target["expires_in_seconds"],
     })
 
 
@@ -830,7 +906,17 @@ def complete_oss_upload(upload_id: int, payload: OSSUploadCompleteIn, db: Sessio
         if not fact:
             raise HTTPException(status_code=404, detail='Fact not found')
 
-    file_url = payload.file_url or f"oss://local-placeholder/{upload.object_key}"
+    if upload.provider == 'minio':
+        try:
+            create_minio_client().stat_object(upload.bucket, upload.object_key)
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f'MinIO object verification failed: {exc}') from exc
+
+    file_url = payload.file_url or (
+        f"minio://{upload.bucket}/{upload.object_key}"
+        if upload.provider == 'minio'
+        else f"oss://local-placeholder/{upload.object_key}"
+    )
     upload.fact_id = fact_id
     upload.file_url = file_url
     upload.size = payload.size
