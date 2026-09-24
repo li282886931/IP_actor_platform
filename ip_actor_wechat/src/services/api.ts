@@ -1,5 +1,7 @@
 import Taro from '@tarojs/taro'
 
+import { CLIENT_SOURCE, DEFAULT_API_BASE, REQUEST_TIMEOUT_MS, STORAGE_KEYS } from '@/config/runtime'
+
 export interface ApiEnvelope<T> {
   code: number
   data: T
@@ -11,28 +13,26 @@ export interface RequestOptions {
   data?: Record<string, unknown>
 }
 
-const DEFAULT_API_BASE = 'http://127.0.0.1:8000'
-
-export const getApiBase = () => Taro.getStorageSync<string>('starhub-api-base') || DEFAULT_API_BASE
+export const getApiBase = () => Taro.getStorageSync<string>(STORAGE_KEYS.apiBase) || DEFAULT_API_BASE
 
 export const setApiBase = (value: string) => {
   const normalized = value.trim().replace(/\/+$/, '')
-  Taro.setStorageSync('starhub-api-base', normalized || DEFAULT_API_BASE)
+  Taro.setStorageSync(STORAGE_KEYS.apiBase, normalized || DEFAULT_API_BASE)
 }
 
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const token = Taro.getStorageSync<string>('starhub-token')
-  const tenant = Taro.getStorageSync<{ id?: number }>('starhub-tenant')
+  const token = Taro.getStorageSync<string>(STORAGE_KEYS.token)
+  const tenant = Taro.getStorageSync<{ id?: number }>(STORAGE_KEYS.tenant)
 
   try {
     const response = await Taro.request<ApiEnvelope<T> | T>({
       url: `${getApiBase()}${path}`,
       method: options.method || 'GET',
       data: options.data,
-      timeout: 120000,
+      timeout: REQUEST_TIMEOUT_MS,
       header: {
         'Content-Type': 'application/json',
-        'X-Client-Source': 'mp',
+        'X-Client-Source': CLIENT_SOURCE,
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...(tenant?.id ? { 'X-Tenant-Id': String(tenant.id) } : {}),
       },

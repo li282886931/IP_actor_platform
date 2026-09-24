@@ -3,6 +3,7 @@ import { Button, Input, ScrollView, Text, View } from '@tarojs/components'
 import Taro, { usePullDownRefresh, useRouter } from '@tarojs/taro'
 import classNames from 'classnames'
 
+import { DEFAULT_API_BASE, STORAGE_KEYS } from '@/config/runtime'
 import { getFixtureItems } from '@/data/fixtures'
 import { screenDefinitions } from '@/data/screens'
 import { api, getApiBase, setApiBase } from '@/services/api'
@@ -93,7 +94,7 @@ const initialDraft: ProjectDraft = {
 }
 
 const getStoredDraft = (): ProjectDraft => {
-  const stored = Taro.getStorageSync<ProjectDraft>('starhub-project-draft')
+  const stored = Taro.getStorageSync<ProjectDraft>(STORAGE_KEYS.projectDraft)
   return stored && typeof stored === 'object' ? { ...initialDraft, ...stored } : initialDraft
 }
 
@@ -121,9 +122,9 @@ export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
     gateName: '',
   })
 
-  const projectId = Number(params.projectId || Taro.getStorageSync<number>('starhub-project-id') || 1)
-  const versionId = Number(Taro.getStorageSync<number>('starhub-version-id') || 1)
-  const taskId = Number(params.taskId || Taro.getStorageSync<number>('starhub-task-id') || 1)
+  const projectId = Number(params.projectId || Taro.getStorageSync<number>(STORAGE_KEYS.projectId) || 1)
+  const versionId = Number(Taro.getStorageSync<number>(STORAGE_KEYS.versionId) || 1)
+  const taskId = Number(params.taskId || Taro.getStorageSync<number>(STORAGE_KEYS.taskId) || 1)
 
   const fetchRemote = async () => {
     let values: unknown[] | null = null
@@ -147,7 +148,7 @@ export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
           const project = await api.getProject(projectId)
           const projectRecord = asRecord(project)
           if (projectRecord.current_version_id) {
-            Taro.setStorageSync('starhub-version-id', Number(projectRecord.current_version_id))
+            Taro.setStorageSync(STORAGE_KEYS.versionId, Number(projectRecord.current_version_id))
           }
           values = [project]
           break
@@ -237,7 +238,7 @@ export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
     const nextValue = numericKeys.includes(key) ? (value === '' ? undefined : Number(value)) : value
     const next = { ...draft, [key]: nextValue }
     setDraft(next)
-    Taro.setStorageSync('starhub-project-draft', next)
+    Taro.setStorageSync(STORAGE_KEYS.projectDraft, next)
   }
 
   const updateForm = (key: string, value: string) => setForm((current) => ({ ...current, [key]: value }))
@@ -253,27 +254,27 @@ export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
           code = login.code
         }
         const session = await api.wechatLogin({ code, name: '微信用户', group_code: 'B' }) as SessionData
-        if (session.token) Taro.setStorageSync('starhub-token', session.token)
-        if (session.user) Taro.setStorageSync('starhub-user', session.user)
-        if (session.current_tenant) Taro.setStorageSync('starhub-tenant', session.current_tenant)
+        if (session.token) Taro.setStorageSync(STORAGE_KEYS.token, session.token)
+        if (session.user) Taro.setStorageSync(STORAGE_KEYS.user, session.user)
+        if (session.current_tenant) Taro.setStorageSync(STORAGE_KEYS.tenant, session.current_tenant)
       } else if (screenId === 'S02') {
         const tenantId = Number(items[0]?.id || 1)
         const switched = await api.switchTenant(tenantId)
         if (switched.current_tenant) {
-          Taro.setStorageSync('starhub-tenant', switched.current_tenant)
+          Taro.setStorageSync(STORAGE_KEYS.tenant, switched.current_tenant)
         }
         if (typeof switched.token === 'string') {
-          Taro.setStorageSync('starhub-token', switched.token)
+          Taro.setStorageSync(STORAGE_KEYS.token, switched.token)
         }
       } else if (screenId === 'S17') {
         const created = await api.createProject(draft as unknown as Record<string, unknown>)
         const record = asRecord(created)
         const id = Number(record.id || 1)
-        Taro.setStorageSync('starhub-project-id', id)
+        Taro.setStorageSync(STORAGE_KEYS.projectId, id)
         if (record.current_version_id) {
-          Taro.setStorageSync('starhub-version-id', Number(record.current_version_id))
+          Taro.setStorageSync(STORAGE_KEYS.versionId, Number(record.current_version_id))
         }
-        Taro.removeStorageSync('starhub-project-draft')
+        Taro.removeStorageSync(STORAGE_KEYS.projectDraft)
       } else if (screenId === 'S25') {
         const result = await api.calculateFinance({
           project_id: projectId,
@@ -285,7 +286,7 @@ export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
           production_cost: draft.production_cost,
         })
         const record = asRecord(result)
-        if (record.version_id) Taro.setStorageSync('starhub-version-id', Number(record.version_id))
+        if (record.version_id) Taro.setStorageSync(STORAGE_KEYS.versionId, Number(record.version_id))
       } else if (screenId === 'S31') {
         await api.calculateBreakeven({
           project_id: projectId,
@@ -415,7 +416,7 @@ export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
       S65: [['result', '结算说明', '填写收入、成本与售出票数']],
       S72: [['result', '邀请对象', '填写姓名或联系方式']],
       S79: [['result', '缺失字段', '补充 0 至 100 的有效上座率']],
-      S82: [['apiBase', '决策服务地址', 'http://127.0.0.1:8000']],
+      S82: [['apiBase', '决策服务地址', DEFAULT_API_BASE]],
     }
 
     return (

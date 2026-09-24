@@ -73,6 +73,26 @@ test('maps every existing FastAPI capability in the mini program API service', (
   }
 })
 
+test('keeps mini program runtime config in a dedicated config file', () => {
+  const runtimeConfigPath = resolve(root, 'src/config/runtime.ts')
+  const apiPath = resolve(root, 'src/services/api.ts')
+  const blueprintPath = resolve(root, 'src/components/BlueprintScreen/index.tsx')
+  assert.equal(existsSync(runtimeConfigPath), true, 'src/config/runtime.ts is missing')
+
+  const runtimeConfig = readFileSync(runtimeConfigPath, 'utf8')
+  const apiSource = readFileSync(apiPath, 'utf8')
+  const blueprintSource = readFileSync(blueprintPath, 'utf8')
+
+  assert.match(runtimeConfig, /DEFAULT_API_BASE/)
+  assert.match(runtimeConfig, /REQUEST_TIMEOUT_MS/)
+  assert.match(runtimeConfig, /STORAGE_KEYS/)
+  assert.match(apiSource, /@\/config\/runtime/)
+  assert.doesNotMatch(apiSource, /const DEFAULT_API_BASE/)
+  assert.doesNotMatch(apiSource, /timeout:\s*120000/)
+  assert.match(blueprintSource, /@\/config\/runtime/)
+  assert.doesNotMatch(blueprintSource, /['"]starhub-[^'"]+['"]/)
+})
+
 test('keeps the existing AppID and points WeChat to the Taro build output', () => {
   const projectConfig = JSON.parse(readFileSync(resolve(root, 'project.config.json'), 'utf8'))
 
@@ -122,7 +142,7 @@ test('persists the initial project version after project creation', () => {
   const source = readFileSync(resolve(root, 'src/components/BlueprintScreen/index.tsx'), 'utf8')
 
   assert.match(source, /current_version_id/)
-  assert.match(source, /starhub-version-id/)
+  assert.match(source, /STORAGE_KEYS\.versionId/)
 })
 
 test('starts evidence parsing and project analysis from the blueprint runtime', () => {
