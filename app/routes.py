@@ -15,7 +15,18 @@ from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from .config import LLAMA_SERVER_MODEL, LLAMA_SERVER_TIMEOUT_SECONDS, LLAMA_SERVER_URL, MINIO_BUCKET, MINIO_ENDPOINT, MINIO_SECURE, OSS_PROVIDER
+from .config import (
+    LLAMA_SERVER_MODEL,
+    LLAMA_SERVER_TIMEOUT_SECONDS,
+    LLAMA_SERVER_URL,
+    MINIO_BUCKET,
+    MINIO_ENDPOINT,
+    MINIO_SECURE,
+    OSS_PROVIDER,
+    WECHAT_API_TIMEOUT_SECONDS,
+    WECHAT_MINIAPP_APPID,
+    WECHAT_MINIAPP_SECRET,
+)
 from .cache import redis_delete, redis_get_json, redis_set_json
 from .database import get_db
 from .models import (
@@ -104,6 +115,10 @@ from .services import (
 router = APIRouter()
 CAPTCHA_TTL_SECONDS = 300
 _captcha_fallback_store = {}
+_wechat_access_token_cache = {
+    "token": "",
+    "expires_at": datetime.now(timezone.utc) - timedelta(seconds=1),
+}
 
 
 def current_oss_provider():
@@ -334,6 +349,91 @@ def validate_captcha_challenge(captcha_id: str, captcha_code: str):
     return (captcha_code or '').strip().upper() == (payload.get('code') or '').upper()
 
 
+def wechat_credentials_configured():
+    return bool(WECHAT_MINIAPP_APPID and WECHAT_MINIAPP_SECRET)
+
+
+def exchange_wechat_login_code(login_code: str):
+    if not login_code:
+        raise HTTPException(status_code=400, detail='Missing wechat login code')
+    if not wechat_credentials_configured():
+        raise HTTPException(status_code=500, detail='WECHAT_MINIAPP_APPID and WECHAT_MINIAPP_SECRET are required')
+    try:
+        response = requests.get(
+            'https://api.weixin.qq.com/sns/jscode2session',
+            params={
+                "appid": WECHAT_MINIAPP_APPID,
+                "secret": WECHAT_MINIAPP_SECRET,
+                "js_code": login_code,
+                "grant_type": "authorization_code",
+            },
+            timeout=WECHAT_API_TIMEOUT_SECONDS,
+        )
+        response.raise_for_status()
+        payload = response.json()
+    except requests.RequestException as exc:
+        raise HTTPException(status_code=502, detail=f'WeChat login exchange failed: {exc}') from exc
+    if payload.get('errcode'):
+        raise HTTPException(status_code=502, detail=payload.get('errmsg') or 'WeChat login exchange failed')
+    return payload
+
+
+def get_wechat_access_token():
+    now = datetime.now(timezone.utc)
+    cached_token = _wechat_access_token_cache.get("token")
+    expires_at = _wechat_access_token_cache.get("expires_at") or (now - timedelta(seconds=1))
+    if cached_token and expires_at > now + timedelta(seconds=30):
+        return cached_token
+    if not wechat_credentials_configured():
+        raise HTTPException(status_code=500, detail='WECHAT_MINIAPP_APPID and WECHAT_MINIAPP_SECRET are required')
+    try:
+        response = requests.get(
+            'https://api.weixin.qq.com/cgi-bin/token',
+            params={
+                "grant_type": "client_credential",
+                "appid": WECHAT_MINIAPP_APPID,
+                "secret": WECHAT_MINIAPP_SECRET,
+            },
+            timeout=WECHAT_API_TIMEOUT_SECONDS,
+        )
+        response.raise_for_status()
+        payload = response.json()
+    except requests.RequestException as exc:
+        raise HTTPException(status_code=502, detail=f'WeChat access token request failed: {exc}') from exc
+    if payload.get('errcode'):
+        raise HTTPException(status_code=502, detail=payload.get('errmsg') or 'WeChat access token request failed')
+    token = payload.get('access_token') or ''
+    expires_in = int(payload.get('expires_in') or 0)
+    if not token:
+        raise HTTPException(status_code=502, detail='WeChat access token response is missing access_token')
+    _wechat_access_token_cache["token"] = token
+    _wechat_access_token_cache["expires_at"] = now + timedelta(seconds=max(expires_in - 60, 60))
+    return token
+
+
+def fetch_wechat_phone_number(phone_code: str):
+    if not phone_code:
+        raise HTTPException(status_code=400, detail='Missing wechat phone code')
+    access_token = get_wechat_access_token()
+    try:
+        response = requests.post(
+            f'https://api.weixin.qq.com/wxa/business/getuserphonenumber?access_token={access_token}',
+            json={"code": phone_code},
+            timeout=WECHAT_API_TIMEOUT_SECONDS,
+        )
+        response.raise_for_status()
+        payload = response.json()
+    except requests.RequestException as exc:
+        raise HTTPException(status_code=502, detail=f'WeChat phone number request failed: {exc}') from exc
+    if payload.get('errcode'):
+        raise HTTPException(status_code=502, detail=payload.get('errmsg') or 'WeChat phone number request failed')
+    phone_info = payload.get('phone_info') or {}
+    phone_number = phone_info.get('purePhoneNumber') or phone_info.get('phoneNumber') or ''
+    if not phone_number:
+        raise HTTPException(status_code=502, detail='WeChat phone number response is missing phone number')
+    return phone_number
+
+
 def extract_llama_server_text(data):
     if not isinstance(data, dict):
         return None
@@ -483,6 +583,61 @@ def serialize_order(order: Order, show_title: str = ''):
         "name": order.name,
         "phone": order.phone,
     }
+
+
+def is_image_file_url(file_url: str):
+    normalized = (file_url or '').split('?', 1)[0].lower()
+    return normalized.endswith(('.png', '.jpg', '.jpeg', '.webp'))
+
+
+def build_ai_show_poster_url(show: Show, image_size: str = 'landscape_4_3'):
+    prompt = quote(
+        (
+            f"Realistic live concert photography for {show.artist_name or show.title}, "
+            f"{show.title}, {show.city or 'major city'} {show.venue or 'concert venue'}, "
+            "wide stage, audience, professional lighting, premium editorial event poster, no text"
+        )
+    )
+    return f"https://copilot-cn.bytedance.net/api/ide/v1/text_to_image?prompt={prompt}&image_size={image_size}"
+
+
+def find_uploaded_show_poster_url(db: Session, show: Show):
+    project_ids = [
+        project_id for (project_id,) in db.query(Project.id)
+        .filter(Project.artist_name == (show.artist_name or ''), Project.city == (show.city or ''))
+        .all()
+    ]
+    if not project_ids and show.artist_name:
+        project_ids = [
+            project_id for (project_id,) in db.query(Project.id)
+            .filter(Project.artist_name == show.artist_name)
+            .all()
+        ]
+    if not project_ids:
+        return ''
+    evidences = (
+        db.query(Evidence)
+        .filter(Evidence.project_id.in_(project_ids))
+        .order_by(Evidence.id.desc())
+        .all()
+    )
+    for evidence in evidences:
+        if evidence.evidence_type == 'image' or is_image_file_url(evidence.file_url):
+            return evidence.file_url
+    return ''
+
+
+def serialize_show(show: Show, db: Session):
+    payload = ShowOut.model_validate(show).model_dump()
+    payload["poster_url"] = find_uploaded_show_poster_url(db, show) or show.poster_url or build_ai_show_poster_url(show)
+    return payload
+
+
+def serialize_show_with_recommendation(show: Show, reason: str, score: int, db: Session):
+    payload = serialize_show(show, db)
+    payload["recommendation_reason"] = reason
+    payload["recommendation_score"] = score
+    return payload
 
 
 def create_records_from_parse_result(db: Session, job: DocumentParseJob, result: dict):
@@ -653,29 +808,27 @@ def issue_auth_captcha():
 @router.post('/auth/wechat-login')
 def wechat_login(payload: WechatLoginIn, db: Session = Depends(get_db)):
     tenant, _ = get_or_create_default_context(db)
-    group_code = payload.group_code or 'C'
-    if group_code not in {group["code"] for group in GROUPS}:
-        raise HTTPException(status_code=400, detail='Invalid user group')
-    openid = f"local-wx-{payload.code}"
-    user = db.query(User).filter(User.openid == openid).first()
+    session = exchange_wechat_login_code(payload.code)
+    phone_number = fetch_wechat_phone_number(payload.phone_code)
+    user = db.query(User).filter(User.phone == phone_number, User.status == 'active').first()
     if not user:
-        user = User(
-            openid=openid,
-            account=f"wx_{payload.code}",
-            name=payload.name or '微信用户',
-            phone=payload.phone or '',
-            group_code=group_code,
-            status='active',
-        )
-        group = db.query(UserGroup).filter(UserGroup.tenant_id == tenant.id, UserGroup.name == group_code).first()
-        if group:
-            user.group_id = group.id
-        db.add(user)
-    else:
-        user.name = payload.name or user.name
-        user.phone = payload.phone or user.phone
-        user.group_code = group_code or user.group_code
-        user.status = 'active'
+        raise HTTPException(status_code=403, detail='Phone number is not linked to any account')
+
+    openid = session.get('openid') or ''
+    unionid = session.get('unionid') or ''
+    if openid:
+        existing_openid_user = db.query(User).filter(User.openid == openid).first()
+        if existing_openid_user and existing_openid_user.id != user.id:
+            raise HTTPException(status_code=409, detail='WeChat account is already linked to another user')
+        user.openid = openid
+    if unionid:
+        existing_unionid_user = db.query(User).filter(User.unionid == unionid).first()
+        if existing_unionid_user and existing_unionid_user.id != user.id:
+            raise HTTPException(status_code=409, detail='WeChat account is already linked to another user')
+        user.unionid = unionid
+
+    user.name = payload.name or user.name
+    user.status = 'active'
     db.commit()
     db.refresh(user)
     return json_ok({
@@ -713,6 +866,7 @@ def create_user(payload: UserCreateIn, db: Session = Depends(get_db)):
     user = User(
         account=payload.account,
         name=payload.name,
+        phone=payload.phone or '',
         password_hash=hash_password(payload.password),
         group_code=payload.group_code,
         status='active',
@@ -741,6 +895,8 @@ def update_user(user_id: int, payload: UserUpdateIn, db: Session = Depends(get_d
         user.group_code = payload.group_code
     if payload.name is not None:
         user.name = payload.name
+    if payload.phone is not None:
+        user.phone = payload.phone
     if payload.password:
         user.password_hash = hash_password(payload.password)
     if payload.status is not None:
@@ -2078,7 +2234,60 @@ def list_shows(city: Optional[str] = None, db: Session = Depends(get_db)):
     if city:
         query = query.filter(Show.city == city)
     shows = query.order_by(Show.id.desc()).all()
-    return json_ok([ShowOut.model_validate(show).model_dump() for show in shows])
+    return json_ok([serialize_show(show, db) for show in shows])
+
+
+@router.get('/shows/recommendations')
+def recommend_shows(phone: Optional[str] = None, limit: int = 6, db: Session = Depends(get_db)):
+    normalized_phone = (phone or '').strip()
+    order_counts = dict(
+        db.query(Order.show_id, func.count(Order.id))
+        .group_by(Order.show_id)
+        .all()
+    )
+    candidate_shows = db.query(Show).filter(Show.status == 'on_sale').all()
+
+    history_orders = []
+    history_shows = []
+    if normalized_phone:
+        history_orders = db.query(Order).filter(Order.phone == normalized_phone).all()
+        history_show_ids = [order.show_id for order in history_orders]
+        if history_show_ids:
+            history_shows = db.query(Show).filter(Show.id.in_(history_show_ids)).all()
+
+    purchased_ids = {show.id for show in history_shows}
+    history_artists = {show.artist_name for show in history_shows if show.artist_name}
+    history_cities = {show.city for show in history_shows if show.city}
+    recommendations = []
+
+    if history_orders:
+        for show in candidate_shows:
+            if show.id in purchased_ids:
+                continue
+            score = int(order_counts.get(show.id, 0))
+            reasons = []
+            if show.artist_name and show.artist_name in history_artists:
+                score += 100
+                reasons.append(f"你预约过{show.artist_name}相关演出")
+            if show.city and show.city in history_cities:
+                score += 60
+                reasons.append(f"你关注过{show.city}场次")
+            if not reasons and order_counts.get(show.id, 0):
+                reasons.append("近期预约热度较高")
+            if reasons or score > 0:
+                recommendations.append((show, reasons[0] if reasons else "近期预约热度较高", score))
+
+    if not recommendations:
+        recommendations = [
+            (show, "近期预约热度较高", int(order_counts.get(show.id, 0)))
+            for show in candidate_shows
+        ]
+
+    recommendations.sort(key=lambda item: (item[2], item[0].id), reverse=True)
+    return json_ok([
+        serialize_show_with_recommendation(show, reason, score, db)
+        for show, reason, score in recommendations[:max(1, min(limit, 20))]
+    ])
 
 
 @router.get('/shows/{show_id}')
@@ -2086,7 +2295,7 @@ def get_show(show_id: int, db: Session = Depends(get_db)):
     show = db.query(Show).filter(Show.id == show_id).first()
     if not show:
         raise HTTPException(status_code=404, detail='Show not found')
-    return json_ok(ShowOut.model_validate(show).model_dump())
+    return json_ok(serialize_show(show, db))
 
 
 @router.post('/shows/{show_id}/order')

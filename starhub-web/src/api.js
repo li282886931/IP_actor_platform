@@ -55,6 +55,7 @@ export const generateAIStream = async (data, handlers = {}) => {
   return finalResult
 }
 export const listShows = (city) => API.get(`/shows?city=${encodeURIComponent(city || '')}`)
+export const getShowRecommendations = (phone) => API.get(`/shows/recommendations?phone=${encodeURIComponent(phone || '')}`)
 export const getShow = (id) => API.get(`/shows/${id}`)
 export const mockOrder = (id, data) => API.post(`/shows/${id}/order`, data)
 export const getDashboardAnalytics = () => API.get('/analytics/dashboard')

@@ -808,6 +808,18 @@ a.module-card:hover {
   font-size: 12px;
 }
 
+.recommendation-reason {
+  display: inline-flex;
+  margin-top: 10px;
+  padding: 5px 8px;
+  color: #0f5d3f;
+  font-size: 11px;
+  font-weight: 700;
+  background: #e9f8f1;
+  border: 1px solid #bfe8d2;
+  border-radius: 4px;
+}
+
 .show-card-footer {
   display: flex;
   align-items: end;

@@ -23,11 +23,13 @@ export default function UserManagement({ currentUser }) {
   const [form, setForm] = useState({
     account: '',
     name: '',
+    phone: '',
     password: '',
     group_code: 'B',
   })
   const [editForm, setEditForm] = useState({
     name: '',
+    phone: '',
     password: '',
     group_code: 'B',
   })
@@ -83,11 +85,12 @@ export default function UserManagement({ currentUser }) {
       const response = await createUser({
         account: form.account.trim(),
         name: form.name.trim() || form.account.trim(),
+        phone: form.phone.trim(),
         password: form.password,
         group_code: form.group_code,
       })
       setUsers((current) => [...current, response.data.data])
-      setForm({ account: '', name: '', password: '', group_code: response.data.data.group_code })
+      setForm({ account: '', name: '', phone: '', password: '', group_code: response.data.data.group_code })
       setSubmitStatus('success')
       setMessage('用户已添加')
     } catch {
@@ -105,6 +108,7 @@ export default function UserManagement({ currentUser }) {
     setEditingUserId(user.id)
     setEditForm({
       name: user.name || '',
+      phone: user.phone || '',
       password: '',
       group_code: user.group_code || selectedGroup,
     })
@@ -112,13 +116,14 @@ export default function UserManagement({ currentUser }) {
 
   const cancelEditUser = () => {
     setEditingUserId(null)
-    setEditForm({ name: '', password: '', group_code: selectedGroup })
+    setEditForm({ name: '', phone: '', password: '', group_code: selectedGroup })
   }
 
   const handleUpdateUser = async (event, user) => {
     event.preventDefault()
     const payload = {
       name: editForm.name.trim() || user.account,
+      phone: editForm.phone.trim(),
       group_code: editForm.group_code,
     }
     if (editForm.password.trim()) {
@@ -187,6 +192,10 @@ export default function UserManagement({ currentUser }) {
               <span>初始密码</span>
               <input type="password" value={form.password} onChange={(event) => handleFieldChange('password', event.target.value)} />
             </label>
+            <label className="field">
+              <span>手机号</span>
+              <input value={form.phone} onChange={(event) => handleFieldChange('phone', event.target.value)} placeholder="用于小程序授权登录绑定" />
+            </label>
             <div className="field">
               <span>用户组</span>
               <output aria-label="用户组" className="readonly-field">
@@ -227,6 +236,10 @@ export default function UserManagement({ currentUser }) {
                       <input type="password" value={editForm.password} onChange={(event) => handleEditFieldChange('password', event.target.value)} />
                     </label>
                     <label className="field">
+                      <span>编辑手机号</span>
+                      <input value={editForm.phone} onChange={(event) => handleEditFieldChange('phone', event.target.value)} />
+                    </label>
+                    <label className="field">
                       <span>编辑用户组</span>
                       <select value={editForm.group_code} onChange={(event) => handleEditFieldChange('group_code', event.target.value)}>
                         {USER_GROUPS.map((group) => (
@@ -244,6 +257,7 @@ export default function UserManagement({ currentUser }) {
                     <div className="user-list-main">
                       <b>{user.account}</b>
                       <small>{user.name}</small>
+                      {user.phone ? <small>{user.phone}</small> : <small>未绑定手机号</small>}
                     </div>
                     <strong className="user-group-code">{user.group_code}</strong>
                     <div className="inline-actions user-row-actions">

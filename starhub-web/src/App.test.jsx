@@ -31,6 +31,7 @@ vi.mock('./api', () => ({
     },
   }),
   getProject: vi.fn(),
+  getShowRecommendations: vi.fn().mockResolvedValue({ data: { data: [] } }),
   getTicketingSummary: vi.fn().mockResolvedValue({
     data: {
       data: {
@@ -155,6 +156,23 @@ describe('App workbench shell', () => {
     )
 
     expect(screen.queryByLabelText('当前角色')).not.toBeInTheDocument()
+  })
+
+  it('keeps audience users away from the AI generation workspace', async () => {
+    localStorage.setItem('starhub-role', 'C')
+    localStorage.setItem('starhub-user', JSON.stringify({ account: 'c_user', role: 'C', group_code: 'C', phone: '13800000000' }))
+    window.history.pushState({}, '', '/generate')
+
+    render(
+      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <App />
+      </BrowserRouter>,
+    )
+
+    expect(screen.getByRole('link', { name: /演出发现/ })).toHaveAttribute('href', '/')
+    expect(screen.queryByRole('link', { name: /AI 推荐|AI 宣发/ })).not.toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: '发现值得到场的演出' })).toBeInTheDocument()
+    expect(screen.queryByText('AI 宣发内容生成')).not.toBeInTheDocument()
   })
 
   it('returns to the main workbench when logging in with a non-root account after leaving user management', async () => {

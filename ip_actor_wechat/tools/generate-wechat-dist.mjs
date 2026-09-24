@@ -211,7 +211,8 @@ const request = (path, method = 'GET', data) => new Promise((resolve, reject) =>
     header,
     success: (response) => {
       if (response.statusCode < 200 || response.statusCode >= 300) {
-        reject(new Error('HTTP_' + response.statusCode))
+        const detail = response.data && typeof response.data === 'object' && 'detail' in response.data ? String(response.data.detail) : ''
+        reject(new Error(detail || ('HTTP_' + response.statusCode)))
         return
       }
       const body = response.data
@@ -294,17 +295,35 @@ const createScreenPage = (screenId) => {
         this.setData({ loadState: 'example', items: fixtureItems(screen.group), message: '决策服务暂不可用，当前展示已标注的产品示例数据。' })
       })
     },
+    onGetPhoneNumber(event) {
+      if (screenId !== 'S01') return
+      if (!event.detail || !event.detail.code) {
+        this.setData({ loadState: 'error', message: '未完成手机号授权，暂不能登录。' })
+        return
+      }
+      this.setData({ loadState: 'loading', message: '' })
+      wx.login({
+        success: (loginResult) => {
+          request('/auth/wechat-login', 'POST', { code: loginResult.code || 'local-devtools', phone_code: event.detail.code, name: '小程序用户' }).then((session) => {
+            wx.setStorageSync(STORAGE_KEYS.token, session.token)
+            wx.setStorageSync(STORAGE_KEYS.user, session.user)
+            wx.setStorageSync(STORAGE_KEYS.tenant, session.current_tenant)
+            this.goNext()
+          }).catch((error) => {
+            console.error('[MiniApp] phone login failed', error)
+            const detail = String(error && error.message || '')
+            this.setData({ loadState: 'error', message: detail.includes('Phone number is not linked to any account') ? '手机号未绑定，请联系管理员分配账号。' : '登录失败，请确认后端服务可用。' })
+          })
+        },
+        fail: (error) => {
+          console.error('[MiniApp] wx.login failed', error)
+          this.setData({ loadState: 'error', message: '登录失败，请确认微信登录状态。' })
+        }
+      })
+    },
     onPrimaryTap() {
       if (screenId === 'S01') {
-        request('/auth/wechat-login', 'POST', { code: 'local-devtools', name: '小程序用户', group_code: 'B' }).then((session) => {
-          wx.setStorageSync(STORAGE_KEYS.token, session.token)
-          wx.setStorageSync(STORAGE_KEYS.user, session.user)
-          wx.setStorageSync(STORAGE_KEYS.tenant, session.current_tenant)
-          this.goNext()
-        }).catch((error) => {
-          console.error('[MiniApp] login failed', error)
-          this.setData({ message: '登录失败，请确认后端服务可用。' })
-        })
+        this.setData({ loadState: 'error', message: '请使用手机号授权登录。' })
         return
       }
       if (screenId === 'S82') {
@@ -355,7 +374,12 @@ const wxml = `<view class="page">
   </view>
 
   <view class="message" wx:if="{{message}}">{{message}}</view>
-  <button class="primary" bindtap="onPrimaryTap">{{screen.primaryAction}}</button>
+  <block wx:if="{{screen.id === 'S01'}}">
+    <button class="primary" open-type="getPhoneNumber" bindgetphonenumber="onGetPhoneNumber">{{screen.primaryAction}}</button>
+  </block>
+  <block wx:else>
+    <button class="primary" bindtap="onPrimaryTap">{{screen.primaryAction}}</button>
+  </block>
 </view>
 `
 

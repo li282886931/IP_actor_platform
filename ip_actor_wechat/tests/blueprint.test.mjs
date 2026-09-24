@@ -155,3 +155,12 @@ test('starts evidence parsing and project analysis from the blueprint runtime', 
   assert.match(source, /api\.runDocumentParseJob/)
   assert.match(source, /api\.createProjectAnalysisJob/)
 })
+
+test('uses WeChat phone authorization for mini program login', () => {
+  const source = readFileSync(resolve(root, 'src/components/BlueprintScreen/index.tsx'), 'utf8')
+
+  assert.match(source, /openType=['"]getPhoneNumber['"]/)
+  assert.match(source, /onGetPhoneNumber=/)
+  assert.match(source, /phone_code/)
+  assert.doesNotMatch(source, /wechatLogin\(\{ code, name: '微信用户', group_code: 'B' \}\)/)
+})

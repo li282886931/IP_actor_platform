@@ -4,7 +4,7 @@ export default function ShowCard({ show }) {
   const imagePrompt = encodeURIComponent(
     `Realistic live concert photography for ${show.artist_name || show.title}, wide stage, audience, professional lighting, editorial event poster, no text`,
   )
-  const imageUrl = `https://copilot-cn.bytedance.net/api/ide/v1/text_to_image?prompt=${imagePrompt}&image_size=landscape_4_3`
+  const imageUrl = show.poster_url || `https://copilot-cn.bytedance.net/api/ide/v1/text_to_image?prompt=${imagePrompt}&image_size=landscape_4_3`
 
   return (
     <Link to={`/show/${show.id}`} className="show-card">
@@ -16,6 +16,9 @@ export default function ShowCard({ show }) {
         <div className="show-date">{show.date || '日期待定'}</div>
         <h4>{show.title}</h4>
         <p>{show.city} · {show.venue}</p>
+        {show.recommendation_reason && (
+          <span className="recommendation-reason">{show.recommendation_reason}</span>
+        )}
         <div className="show-card-footer">
           <span>{show.artist_name || '演出项目'}</span>
           <strong>¥{show.price}<small> 起</small></strong>

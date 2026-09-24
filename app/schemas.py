@@ -26,6 +26,7 @@ class ShowOut(BaseModel):
     price: Optional[str]
     status: Optional[str]
     description: Optional[str]
+    poster_url: Optional[str] = ''
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -53,20 +54,21 @@ class WebLoginIn(BaseModel):
 
 class WechatLoginIn(BaseModel):
     code: str
+    phone_code: str
     name: Optional[str] = ''
-    phone: Optional[str] = ''
-    group_code: Optional[str] = 'C'
 
 
 class UserCreateIn(BaseModel):
     account: str
     name: str
+    phone: Optional[str] = ''
     password: str
     group_code: str
 
 
 class UserUpdateIn(BaseModel):
     name: Optional[str] = None
+    phone: Optional[str] = None
     password: Optional[str] = None
     group_code: Optional[str] = None
     status: Optional[str] = None

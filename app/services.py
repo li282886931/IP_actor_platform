@@ -1,6 +1,7 @@
 import hashlib
 import math
 from typing import Optional
+from urllib.parse import quote
 
 from sqlalchemy import func, inspect, text
 from sqlalchemy.orm import Session
@@ -177,6 +178,17 @@ DEFAULT_ARTISTS = [
         },
     },
 ]
+
+
+def build_show_poster_url(title: str, artist_name: str = '', city: str = '', venue: str = ''):
+    prompt = quote(
+        (
+            f"Realistic live concert photography for {artist_name or title}, "
+            f"{title}, {city or 'major city'} {venue or 'concert venue'}, "
+            "wide stage, audience, professional lighting, premium editorial event poster, no text"
+        )
+    )
+    return f"https://copilot-cn.bytedance.net/api/ide/v1/text_to_image?prompt={prompt}&image_size=landscape_4_3"
 
 
 def hash_password(password: str):
@@ -785,8 +797,16 @@ def seed_initial_data(db: Session):
         s1 = Show(title='周杰伦·北京演唱会', artist_id=a1.id, artist_name=a1.name, city='北京', date='2026-09-10', venue='鸟巢', price='380-1280', status='on_sale', description='周杰伦个人巡回演唱会 — 北京站')
         s2 = Show(title='五月天·上海演唱会', artist_id=a2.id, artist_name=a2.name, city='上海', date='2026-12-31', venue='梅赛德斯-奔驰文化中心', price='480-1280', status='on_sale', description='五月天跨年演唱会 — 上海站')
         s3 = Show(title='林俊杰小巨蛋特别场', artist_id=a3.id, artist_name=a3.name, city='台北', date='2026-10-05', venue='台北小巨蛋', price='420-980', status='on_sale', description='林俊杰抒情特别场')
+        for show in [s1, s2, s3]:
+            show.poster_url = build_show_poster_url(show.title, show.artist_name, show.city, show.venue)
         db.add_all([s1, s2, s3])
         db.commit()
+
+    seeded_titles = {'周杰伦·北京演唱会', '五月天·上海演唱会', '林俊杰小巨蛋特别场'}
+    for show in db.query(Show).filter(Show.title.in_(seeded_titles)).all():
+        if not show.poster_url:
+            show.poster_url = build_show_poster_url(show.title, show.artist_name, show.city, show.venue)
+    db.commit()
 
     seed_market_dossier_data(db)
 
@@ -812,6 +832,11 @@ def ensure_runtime_columns():
         task_columns = {column['name'] for column in inspector.get_columns('tasks')}
         if 'evidence_ids' not in task_columns:
             statements.append("ALTER TABLE tasks ADD COLUMN evidence_ids JSON")
+
+    if inspector.has_table('shows'):
+        show_columns = {column['name'] for column in inspector.get_columns('shows')}
+        if 'poster_url' not in show_columns:
+            statements.append("ALTER TABLE shows ADD COLUMN poster_url TEXT")
 
     if not statements:
         return

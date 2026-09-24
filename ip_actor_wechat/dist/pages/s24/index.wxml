@@ -26,5 +26,10 @@
   </view>
 
   <view class="message" wx:if="{{message}}">{{message}}</view>
-  <button class="primary" bindtap="onPrimaryTap">{{screen.primaryAction}}</button>
+  <block wx:if="{{screen.id === 'S01'}}">
+    <button class="primary" open-type="getPhoneNumber" bindgetphonenumber="onGetPhoneNumber">{{screen.primaryAction}}</button>
+  </block>
+  <block wx:else>
+    <button class="primary" bindtap="onPrimaryTap">{{screen.primaryAction}}</button>
+  </block>
 </view>

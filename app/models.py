@@ -29,6 +29,7 @@ class Show(Base):
     price = Column(String(64), default='')
     status = Column(String(64), default='on_sale')
     description = Column(Text, default='')
+    poster_url = Column(Text, default='')
     artist = relationship('Artist')
 
 

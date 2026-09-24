@@ -46,6 +46,7 @@ CREATE TABLE shows (
 	price VARCHAR(64),
 	status VARCHAR(64),
 	description TEXT,
+	poster_url TEXT,
 	PRIMARY KEY (id),
 	FOREIGN KEY(artist_id) REFERENCES artists (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

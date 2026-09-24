@@ -243,20 +243,53 @@ export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
 
   const updateForm = (key: string, value: string) => setForm((current) => ({ ...current, [key]: value }))
 
+  const storeSessionData = (session: SessionData) => {
+    if (session.token) Taro.setStorageSync(STORAGE_KEYS.token, session.token)
+    if (session.user) Taro.setStorageSync(STORAGE_KEYS.user, session.user)
+    if (session.current_tenant) Taro.setStorageSync(STORAGE_KEYS.tenant, session.current_tenant)
+  }
+
+  const handleWechatPhoneLogin = async (event: { detail?: { code?: string, errMsg?: string } }) => {
+    setLoadState('loading')
+    setMessage('')
+    try {
+      const phoneCode = event?.detail?.code
+      if (!phoneCode) {
+        setLoadState('error')
+        setMessage('未完成手机号授权，暂不能登录。')
+        return
+      }
+
+      let code = 'preview-code'
+      if (Taro.getEnv() === Taro.ENV_TYPE.WEAPP) {
+        const login = await Taro.login()
+        code = login.code
+      }
+
+      const session = await api.wechatLogin({ code, phone_code: phoneCode, name: '微信用户' }) as SessionData
+      storeSessionData(session)
+      setLoadState('success')
+      await replaceWithScreen(nextScreen[screenId] || 'S02')
+    } catch (error) {
+      console.error(`[${screenId}] phone login failed`, error)
+      setLoadState('error')
+      const detail = error instanceof Error ? error.message : ''
+      if (detail === 'FORBIDDEN') {
+        setMessage('手机号未绑定，请联系管理员分配账号。')
+      } else {
+        setMessage('登录失败，请确认后端服务可用。')
+      }
+    }
+  }
+
   const runPrimaryAction = async () => {
     setLoadState('loading')
     setMessage('')
     try {
       if (screenId === 'S01') {
-        let code = 'preview-code'
-        if (Taro.getEnv() === Taro.ENV_TYPE.WEAPP) {
-          const login = await Taro.login()
-          code = login.code
-        }
-        const session = await api.wechatLogin({ code, name: '微信用户', group_code: 'B' }) as SessionData
-        if (session.token) Taro.setStorageSync(STORAGE_KEYS.token, session.token)
-        if (session.user) Taro.setStorageSync(STORAGE_KEYS.user, session.user)
-        if (session.current_tenant) Taro.setStorageSync(STORAGE_KEYS.tenant, session.current_tenant)
+        setLoadState('error')
+        setMessage('请使用手机号授权登录。')
+        return
       } else if (screenId === 'S02') {
         const tenantId = Number(items[0]?.id || 1)
         const switched = await api.switchTenant(tenantId)
@@ -514,13 +547,24 @@ export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
       )}
 
       <View className={styles.actions}>
-        <Button
-          className={classNames(styles.primaryButton, destructiveScreens.has(screenId) && styles.cautionButton)}
-          disabled={loadState === 'loading'}
-          onClick={runPrimaryAction}
-        >
-          {loadState === 'loading' ? '处理中...' : screen.primaryAction}
-        </Button>
+        {screenId === 'S01' ? (
+          <Button
+            className={classNames(styles.primaryButton, destructiveScreens.has(screenId) && styles.cautionButton)}
+            disabled={loadState === 'loading'}
+            openType='getPhoneNumber'
+            onGetPhoneNumber={handleWechatPhoneLogin}
+          >
+            {loadState === 'loading' ? '处理中...' : screen.primaryAction}
+          </Button>
+        ) : (
+          <Button
+            className={classNames(styles.primaryButton, destructiveScreens.has(screenId) && styles.cautionButton)}
+            disabled={loadState === 'loading'}
+            onClick={runPrimaryAction}
+          >
+            {loadState === 'loading' ? '处理中...' : screen.primaryAction}
+          </Button>
+        )}
         {secondaryTarget && (
           <Button className={styles.secondaryButton} onClick={() => navigateToScreen(secondaryTarget)}>
             {screenId === 'S01' ? '先看看成功案例' : screenId === 'S10' ? '查看归档说明' : '返回检查依据'}

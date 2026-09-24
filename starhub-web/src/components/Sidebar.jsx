@@ -4,7 +4,6 @@ const navigationByRole = {
   C: [
     { to: '/', label: '演出发现', mark: '01' },
     { to: '/artist', label: '艺人查询', mark: '02' },
-    { to: '/generate', label: 'AI 推荐', mark: '03' },
   ],
   B: [
     { to: '/', label: '工作台', mark: '01' },

@@ -67,7 +67,7 @@ export default function ShowDetail({ role = 'C' }) {
   const imagePrompt = encodeURIComponent(
     `Realistic live concert photography for ${show.artist_name || show.title}, full stage and audience, premium editorial event photography, no text`,
   )
-  const imageUrl = `https://copilot-cn.bytedance.net/api/ide/v1/text_to_image?prompt=${imagePrompt}&image_size=landscape_16_9`
+  const imageUrl = show.poster_url || `https://copilot-cn.bytedance.net/api/ide/v1/text_to_image?prompt=${imagePrompt}&image_size=landscape_16_9`
 
   return (
     <div className="page-stack">

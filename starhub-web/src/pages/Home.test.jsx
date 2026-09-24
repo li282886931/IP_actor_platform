@@ -10,6 +10,7 @@ import {
   createProject,
   createTask,
   getDashboardAnalytics,
+  getShowRecommendations,
   getTicketingSummary,
   listProjects,
   listShows,
@@ -22,6 +23,7 @@ vi.mock('../api', () => ({
   createProject: vi.fn(),
   createTask: vi.fn(),
   getDashboardAnalytics: vi.fn(),
+  getShowRecommendations: vi.fn(),
   getTicketingSummary: vi.fn(),
   listProjects: vi.fn(),
   listShows: vi.fn(),
@@ -71,15 +73,51 @@ describe('Home', () => {
   })
 
   it('shows a visible error when show data cannot be loaded', async () => {
+    getShowRecommendations.mockRejectedValue(new Error('offline'))
     listShows.mockRejectedValue(new Error('offline'))
 
     render(
       <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-        <Home role="C" />
+        <Home role="C" currentUser={{ phone: '13800000000' }} />
       </MemoryRouter>,
     )
 
     expect(await screen.findByText('演出数据暂时不可用')).toBeInTheDocument()
+  })
+
+  it('shows personalized recommendations for audience users from order history', async () => {
+    getShowRecommendations.mockResolvedValue({
+      data: {
+        data: [
+          {
+            id: 8,
+            title: '周杰伦·上海加场',
+            artist_name: '周杰伦',
+            city: '上海',
+            venue: '上海体育场',
+            date: '2026-10-01',
+            price: '580-1580',
+            status: 'on_sale',
+            poster_url: 'https://oss.example.com/posters/jay-shanghai.jpg',
+            recommendation_reason: '你预约过周杰伦相关演出',
+          },
+        ],
+      },
+    })
+
+    render(
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <Home role="C" currentUser={{ phone: '13800000000' }} />
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByText('为你推荐')).toBeInTheDocument()
+    expect(screen.getByText('周杰伦·上海加场')).toBeInTheDocument()
+    expect(screen.getByAltText('周杰伦·上海加场现场')).toHaveAttribute('src', 'https://oss.example.com/posters/jay-shanghai.jpg')
+    expect(screen.getByText('你预约过周杰伦相关演出')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: '生成专属推荐' })).not.toBeInTheDocument()
+    expect(getShowRecommendations).toHaveBeenCalledWith('13800000000')
+    expect(listShows).not.toHaveBeenCalled()
   })
 
   it('loads Phase 1 projects and tasks for the business workbench', async () => {

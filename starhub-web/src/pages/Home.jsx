@@ -7,6 +7,7 @@ import {
   createProject,
   createTask,
   getDashboardAnalytics,
+  getShowRecommendations,
   getTicketingSummary,
   listProjects,
   listShows,
@@ -683,7 +684,7 @@ function BusinessWorkbench() {
   )
 }
 
-export default function Home({ role = 'C' }) {
+export default function Home({ role = 'C', currentUser = null }) {
   const [shows, setShows] = useState([])
   const [status, setStatus] = useState('loading')
 
@@ -695,8 +696,10 @@ export default function Home({ role = 'C' }) {
 
     let active = true
     setStatus('loading')
+    const phone = currentUser?.phone || ''
+    const request = phone ? getShowRecommendations(phone) : listShows()
 
-    listShows()
+    request
       .then((response) => {
         if (!active) return
         setShows(response.data.data || [])
@@ -709,7 +712,7 @@ export default function Home({ role = 'C' }) {
     return () => {
       active = false
     }
-  }, [role])
+  }, [role, currentUser?.phone])
 
   if (role === 'B') {
     return <BusinessWorkbench />
@@ -727,7 +730,6 @@ export default function Home({ role = 'C' }) {
           <h2>发现值得到场的演出</h2>
           <p>根据热度、城市与偏好，快速找到下一场现场体验。</p>
         </div>
-        <Link className="button button-primary" to="/generate">生成专属推荐</Link>
       </section>
 
       <section className="discovery-toolbar">
@@ -747,7 +749,7 @@ export default function Home({ role = 'C' }) {
         <div className="section-heading">
           <div>
             <span className="eyebrow">RECOMMENDED</span>
-            <h3>热门演出</h3>
+            <h3>{currentUser?.phone ? '为你推荐' : '热门演出'}</h3>
           </div>
           <span className="section-count">{shows.length} 场可选</span>
         </div>

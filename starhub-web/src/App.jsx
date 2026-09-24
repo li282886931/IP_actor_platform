@@ -355,7 +355,7 @@ export default function App() {
           <Routes>
             <Route path="/" element={<Home role={activeRole} currentUser={currentUser} />} />
             <Route path="/artist" element={<Artist role={activeRole} />} />
-            <Route path="/generate" element={<Generate role={activeRole} />} />
+            <Route path="/generate" element={activeRole === 'C' ? <Navigate replace to="/" /> : <Generate role={activeRole} />} />
             <Route path="/users" element={canManageUsers ? <UserManagement currentUser={currentUser} /> : <Navigate replace to="/" />} />
             <Route path="/show/:id" element={<ShowDetail role={activeRole} />} />
             <Route path="/projects/:id" element={<ProjectDetail />} />

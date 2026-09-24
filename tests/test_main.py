@@ -172,6 +172,12 @@ def test_init_db_seeds_empty_database(monkeypatch):
         assert liu_xiaoqing.risk_level >= 4
         assert "反面参照" in liu_xiaoqing.profile["cooperation_recommendation"]
         assert db.query(app_module.Artist).filter(app_module.Artist.name == "费玉清类").one().profile["market_positioning"] == "已封麦"
+        shows = db.query(app_module.Show).order_by(app_module.Show.id.asc()).all()
+        assert [show.title for show in shows] == ["周杰伦·北京演唱会", "五月天·上海演唱会", "林俊杰小巨蛋特别场"]
+        assert all(show.poster_url.startswith("https://copilot-cn.bytedance.net/api/ide/v1/text_to_image?") for show in shows)
+        assert len({show.poster_url for show in shows}) == 3
+        assert "image_size=landscape_4_3" in shows[0].poster_url
+        assert "%E5%91%A8%E6%9D%B0%E4%BC%A6" in shows[0].poster_url
         zhao = db.query(app_module.Artist).filter(app_module.Artist.name == "赵雅芝").one()
         assert zhao.profile["market_dossier"]["sheet_count"] == 8
         assert zhao.profile["market_dossier"]["row_count"] == 108
@@ -1584,16 +1590,33 @@ def test_project_feasibility_report_requires_complete_finance_inputs(monkeypatch
 
 def test_full_backend_plan_api_flow(monkeypatch):
     client, session_factory = make_test_client(monkeypatch)
+    monkeypatch.setattr(
+        routes_module,
+        "exchange_wechat_login_code",
+        lambda login_code: {"openid": "wx-openid-001", "unionid": "wx-union-001", "session_key": "session-key"},
+    )
+    monkeypatch.setattr(
+        routes_module,
+        "fetch_wechat_phone_number",
+        lambda phone_code: "13800000000",
+    )
 
     try:
+        db = session_factory()
+        operator = db.query(app_module.User).filter(app_module.User.account == "b_user").one()
+        operator.phone = "13800000000"
+        db.commit()
+        db.close()
+
         wechat_response = client.post(
             "/auth/wechat-login",
-            json={"code": "wx-code-001", "name": "微信用户", "phone": "13800000000"},
+            json={"code": "wx-code-001", "phone_code": "wx-phone-code-001", "name": "微信用户"},
         )
         assert wechat_response.status_code == 200
         wechat_data = wechat_response.json()["data"]
         assert wechat_data["source"] == "wechat"
         assert wechat_data["user"]["phone"] == "13800000000"
+        assert wechat_data["user"]["account"] == "b_user"
 
         project_response = client.post(
             "/projects",
@@ -1751,3 +1774,135 @@ def test_full_backend_plan_api_flow(monkeypatch):
         assert db.query(app_module.ReportShare).filter(app_module.ReportShare.project_id == project["id"]).count() == 1
     finally:
         db.close()
+
+
+def test_show_recommendations_use_user_order_history(monkeypatch):
+    client, session_factory = make_test_client(monkeypatch)
+
+    db = session_factory()
+    try:
+        jay_beijing = db.query(app_module.Show).filter(app_module.Show.title == "周杰伦·北京演唱会").one()
+        jay_shanghai = app_module.Show(
+            title="周杰伦·上海加场",
+            artist_name="周杰伦",
+            city="上海",
+            date="2026-10-01",
+            venue="上海体育场",
+            price="580-1580",
+            status="on_sale",
+            description="周杰伦巡演上海加场",
+        )
+        mayday_beijing = app_module.Show(
+            title="五月天·北京演唱会",
+            artist_name="五月天",
+            city="北京",
+            date="2026-11-01",
+            venue="国家体育馆",
+            price="480-1280",
+            status="on_sale",
+            description="五月天北京站",
+        )
+        db.add_all([jay_shanghai, mayday_beijing])
+        db.flush()
+        db.add(app_module.Order(show_id=jay_beijing.id, name="观众A", phone="13800000000"))
+        db.commit()
+    finally:
+        db.close()
+
+    try:
+        response = client.get("/shows/recommendations?phone=13800000000")
+        assert response.status_code == 200
+        recommendations = response.json()["data"]
+        assert recommendations[0]["title"] == "周杰伦·上海加场"
+        assert "你预约过周杰伦相关演出" in recommendations[0]["recommendation_reason"]
+        assert all(item["title"] != "周杰伦·北京演唱会" for item in recommendations)
+        assert any(item["title"] == "五月天·北京演唱会" and "你关注过北京场次" in item["recommendation_reason"] for item in recommendations)
+    finally:
+        app_module.app.dependency_overrides.clear()
+
+
+def test_show_recommendations_fall_back_to_popular_shows_without_history(monkeypatch):
+    client, session_factory = make_test_client(monkeypatch)
+
+    db = session_factory()
+    try:
+        mayday = db.query(app_module.Show).filter(app_module.Show.title == "五月天·上海演唱会").one()
+        db.add_all([
+            app_module.Order(show_id=mayday.id, name="观众A", phone="13800000001"),
+            app_module.Order(show_id=mayday.id, name="观众B", phone="13800000002"),
+        ])
+        db.commit()
+    finally:
+        db.close()
+
+    try:
+        response = client.get("/shows/recommendations?phone=13999999999")
+        assert response.status_code == 200
+        recommendations = response.json()["data"]
+        assert recommendations[0]["title"] == "五月天·上海演唱会"
+        assert recommendations[0]["recommendation_reason"] == "近期预约热度较高"
+    finally:
+        app_module.app.dependency_overrides.clear()
+
+
+def test_show_poster_prefers_uploaded_image_evidence_and_falls_back_to_ai(monkeypatch):
+    client, _ = make_test_client(monkeypatch)
+
+    try:
+        project_response = client.post(
+            "/projects",
+            json={
+                "name": "周杰伦北京站资料",
+                "artist_name": "周杰伦",
+                "city": "北京",
+                "venue": "鸟巢",
+            },
+        )
+        assert project_response.status_code == 200
+        project = project_response.json()["data"]
+        evidence_response = client.post(
+            "/evidences/upload",
+            json={
+                "project_id": project["id"],
+                "name": "用户上传海报",
+                "file_url": "https://oss.example.com/posters/jay-beijing.jpg",
+                "evidence_type": "image",
+                "source": "user_upload",
+            },
+        )
+        assert evidence_response.status_code == 200
+
+        response = client.get("/shows")
+        assert response.status_code == 200
+        shows = response.json()["data"]
+        jay = next(show for show in shows if show["title"] == "周杰伦·北京演唱会")
+        mayday = next(show for show in shows if show["title"] == "五月天·上海演唱会")
+        assert jay["poster_url"] == "https://oss.example.com/posters/jay-beijing.jpg"
+        assert mayday["poster_url"].startswith("https://copilot-cn.bytedance.net/api/ide/v1/text_to_image?")
+        assert "landscape_4_3" in mayday["poster_url"]
+    finally:
+        app_module.app.dependency_overrides.clear()
+
+
+def test_wechat_login_rejects_unbound_phone_number(monkeypatch):
+    client, _ = make_test_client(monkeypatch)
+    monkeypatch.setattr(
+        routes_module,
+        "exchange_wechat_login_code",
+        lambda login_code: {"openid": "wx-openid-unbound", "unionid": "wx-union-unbound", "session_key": "session-key"},
+    )
+    monkeypatch.setattr(
+        routes_module,
+        "fetch_wechat_phone_number",
+        lambda phone_code: "13911112222",
+    )
+
+    try:
+        response = client.post(
+            "/auth/wechat-login",
+            json={"code": "wx-code-unbound", "phone_code": "wx-phone-unbound", "name": "未绑定用户"},
+        )
+        assert response.status_code == 403
+        assert response.json()["detail"] == "Phone number is not linked to any account"
+    finally:
+        app_module.app.dependency_overrides.clear()

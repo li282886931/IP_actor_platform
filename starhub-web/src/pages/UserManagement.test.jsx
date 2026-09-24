@@ -23,10 +23,10 @@ describe('UserManagement', () => {
     listUsers.mockResolvedValue({
       data: {
         data: [
-          { id: 1, account: 'b_user', name: '主办方用户', group_code: 'B' },
-          { id: 2, account: 'brand_user', name: '品牌用户', group_code: 'Brand' },
-          { id: 3, account: 'g_user', name: '文旅用户', group_code: 'G' },
-          { id: 4, account: 'c_user', name: '观众用户', group_code: 'C' },
+          { id: 1, account: 'b_user', name: '主办方用户', phone: '13800000000', group_code: 'B' },
+          { id: 2, account: 'brand_user', name: '品牌用户', phone: '13800000001', group_code: 'Brand' },
+          { id: 3, account: 'g_user', name: '文旅用户', phone: '13800000002', group_code: 'G' },
+          { id: 4, account: 'c_user', name: '观众用户', phone: '13800000003', group_code: 'C' },
         ],
       },
     })
@@ -44,6 +44,7 @@ describe('UserManagement', () => {
     expect(createForm).not.toHaveClass('generator-form')
 
     expect(await screen.findByText('b_user')).toBeInTheDocument()
+    expect(screen.getByText('13800000000')).toBeInTheDocument()
     expect(screen.getByText('brand_user')).toBeInTheDocument()
     expect(screen.getByText('g_user')).toBeInTheDocument()
     expect(screen.getByText('c_user')).toBeInTheDocument()
@@ -64,7 +65,7 @@ describe('UserManagement', () => {
     listUsers.mockResolvedValue({ data: { data: [] } })
     createUser.mockResolvedValue({
       data: {
-        data: { id: 5, account: 'brand_new', name: '新品牌用户', group_code: 'Brand' },
+        data: { id: 5, account: 'brand_new', name: '新品牌用户', phone: '13900000000', group_code: 'Brand' },
       },
     })
     deleteUser.mockResolvedValue({ data: { data: { deleted: true } } })
@@ -74,6 +75,7 @@ describe('UserManagement', () => {
     await user.click(screen.getByRole('button', { name: /品牌方/ }))
     await user.type(screen.getByLabelText('用户账号'), 'brand_new')
     await user.type(screen.getByLabelText('用户姓名'), '新品牌用户')
+    await user.type(screen.getByLabelText('手机号'), '13900000000')
     await user.type(screen.getByLabelText('初始密码'), '123456')
     await user.click(screen.getByRole('button', { name: '添加用户' }))
 
@@ -81,6 +83,7 @@ describe('UserManagement', () => {
       expect(createUser).toHaveBeenCalledWith({
         account: 'brand_new',
         name: '新品牌用户',
+        phone: '13900000000',
         password: '123456',
         group_code: 'Brand',
       })
@@ -97,13 +100,13 @@ describe('UserManagement', () => {
     listUsers.mockResolvedValue({
       data: {
         data: [
-          { id: 6, account: 'brand_edit', name: '品牌用户', group_code: 'Brand' },
+          { id: 6, account: 'brand_edit', name: '品牌用户', phone: '13700000000', group_code: 'Brand' },
         ],
       },
     })
     updateUser.mockResolvedValue({
       data: {
-        data: { id: 6, account: 'brand_edit', name: '文旅用户', group_code: 'G' },
+        data: { id: 6, account: 'brand_edit', name: '文旅用户', phone: '13600000000', group_code: 'G' },
       },
     })
 
@@ -115,6 +118,8 @@ describe('UserManagement', () => {
     await user.click(screen.getByRole('button', { name: '修改' }))
     await user.clear(screen.getByLabelText('编辑用户姓名'))
     await user.type(screen.getByLabelText('编辑用户姓名'), '文旅用户')
+    await user.clear(screen.getByLabelText('编辑手机号'))
+    await user.type(screen.getByLabelText('编辑手机号'), '13600000000')
     await user.type(screen.getByLabelText('新密码'), 'newpass123')
     await user.selectOptions(screen.getByLabelText('编辑用户组'), 'G')
     await user.click(screen.getByRole('button', { name: '保存修改' }))
@@ -122,6 +127,7 @@ describe('UserManagement', () => {
     await waitFor(() => {
       expect(updateUser).toHaveBeenCalledWith(6, {
         name: '文旅用户',
+        phone: '13600000000',
         password: 'newpass123',
         group_code: 'G',
       })
