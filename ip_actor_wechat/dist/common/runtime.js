@@ -97,9 +97,6 @@ const createScreenPage = (screenId) => {
       keyword: '',
       placeholder: screenId === 'S82' ? DEFAULT_API_BASE : screenId === 'S13' ? '输入艺人、IP 或项目名称' : '输入关键词或补充信息',
       apiBase: apiBase(),
-      projectSearchSections: [],
-      projectSearchOpen: false,
-      projectSearchLoading: false,
       candidateGroups: [],
       candidateSearchGroups: [],
       candidateSearchOpen: false,
@@ -225,12 +222,6 @@ const createScreenPage = (screenId) => {
           this.setData({ candidateSearchGroups: [], candidateSearchLoading: false })
         })
       }, 300)
-    },
-    onProjectSearchInput(keyword) {
-      this.onCandidateSearchInput(keyword)
-    },
-    onProjectSearchSelect(event) {
-      this.onCandidateSearchTap(event)
     },
     fetchRemote() {
       this.setData({ items: [], loadState: 'loading', message: '' })

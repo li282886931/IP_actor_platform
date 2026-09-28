@@ -765,7 +765,7 @@ test('provides database-backed candidates and fuzzy search for project creation'
   assert.match(searchStyles, /\.dropdown/)
   assert.match(searchStyles, /\.option/)
 
-  assert.match(generator, /projectSearchSections/)
+  assert.doesNotMatch(generator, /projectSearchSections|onProjectSearchInput|onProjectSearchSelect/)
   assert.match(generator, /candidateGroups/)
   assert.match(generator, /request\('\/miniapp\/search'/)
   assert.doesNotMatch(generator, /request\('\/artists'[^]*request\('\/cases\/search'/)
