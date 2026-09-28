@@ -100,6 +100,10 @@ const createScreenPage = (screenId) => {
       projectSearchSections: [],
       projectSearchOpen: false,
       projectSearchLoading: false,
+      candidateGroups: [],
+      candidateSearchGroups: [],
+      candidateSearchOpen: false,
+      candidateSearchLoading: false,
       selectedTaskIds: screenId === 'S56' && initialTaskId ? [initialTaskId] : [],
       expandedTaskIds: screenId === 'S56' && initialTaskId ? [initialTaskId] : [],
       isForm: ['S09','S13','S14','S15','S16','S17','S25','S36','S37','S41','S45','S47','S51','S54','S57','S65','S72','S79','S82'].includes(screenId)
@@ -113,68 +117,119 @@ const createScreenPage = (screenId) => {
     onInput(event) {
       const keyword = event.detail.value
       this.setData({ keyword })
-      if (screenId === 'S13') this.onProjectSearchInput(keyword)
+      if (['S13', 'S14', 'S15', 'S16'].includes(screenId)) this.onCandidateSearchInput(keyword)
     },
-    onProjectSearchInput(keyword) {
-      clearTimeout(this.projectSearchTimer)
+    applyCandidate(candidate) {
+      const patch = candidate && candidate.patch
+      if (!patch || typeof patch !== 'object') return
+      const draft = wx.getStorageSync(STORAGE_KEYS.projectDraft) || {}
+      wx.setStorageSync(STORAGE_KEYS.projectDraft, Object.assign({}, draft, patch))
+      this.setData({ keyword: candidate.label || this.data.keyword, candidateSearchOpen: false })
+    },
+    onCandidateTap(event) {
+      const groupIndex = Number(event.currentTarget.dataset.groupIndex)
+      const itemIndex = Number(event.currentTarget.dataset.itemIndex)
+      const group = this.data.candidateGroups[groupIndex]
+      const candidate = group && group.items && group.items[itemIndex]
+      this.applyCandidate(candidate)
+    },
+    onCandidateSearchTap(event) {
+      const groupIndex = Number(event.currentTarget.dataset.groupIndex)
+      const itemIndex = Number(event.currentTarget.dataset.itemIndex)
+      const group = this.data.candidateSearchGroups[groupIndex]
+      const candidate = group && group.items && group.items[itemIndex]
+      this.applyCandidate(candidate)
+    },
+    candidateFromSearchItem(item) {
+      const value = item && item.value || {}
+      if (item.entity_type === 'artist') {
+        return {
+          key: 'artist-' + item.entity_id,
+          label: item.label,
+          description: item.description || '',
+          patch: { artist_id: Number(item.entity_id), artist_name: item.label }
+        }
+      }
+      if (item.entity_type === 'project') {
+        return {
+          key: 'project-' + item.entity_id,
+          label: item.label,
+          description: item.description || '',
+          patch: Object.assign({}, value, { source_project_id: Number(item.entity_id) })
+        }
+      }
+      if (item.entity_type === 'venue') {
+        return {
+          key: 'venue-' + item.entity_id,
+          label: item.label,
+          description: item.description || '',
+          patch: {
+            venue_id: Number(item.entity_id),
+            venue: item.label,
+            city: value.city || '',
+            venue_capacity: Number(value.capacity) || undefined
+          }
+        }
+      }
+      return {
+        key: 'city-' + item.label,
+        label: item.label,
+        description: item.description || '',
+        patch: { city: item.label }
+      }
+    },
+    onCandidateSearchInput(keyword) {
+      clearTimeout(this.candidateSearchTimer)
       const normalized = String(keyword || '').trim()
       if (!normalized) {
-        this.setData({ projectSearchSections: [], projectSearchOpen: false, projectSearchLoading: false })
+        this.setData({
+          candidateSearchGroups: [],
+          candidateSearchOpen: false,
+          candidateSearchLoading: false
+        })
         return
       }
-      this.setData({ projectSearchOpen: true, projectSearchLoading: true })
-      this.projectSearchTimer = setTimeout(() => {
+      const localGroups = (this.data.candidateGroups || []).map((group) => Object.assign({}, group, {
+        items: (group.items || []).filter((item) => (
+          String(item.label || '').toLowerCase().includes(normalized.toLowerCase())
+          || String(item.description || '').toLowerCase().includes(normalized.toLowerCase())
+        ))
+      })).filter((group) => group.items.length)
+      if (['S15', 'S16'].includes(screenId)) {
+        this.setData({
+          candidateSearchGroups: localGroups,
+          candidateSearchOpen: true,
+          candidateSearchLoading: false
+        })
+        return
+      }
+      const allowedTypes = screenId === 'S13' ? ['artist', 'project'] : ['city', 'venue']
+      this.setData({ candidateSearchOpen: true, candidateSearchLoading: true })
+      this.candidateSearchTimer = setTimeout(() => {
         request('/miniapp/search' + query({ q: normalized })).then((result) => {
-          const sections = (result.groups || [])
-            .filter((group) => ['artist', 'project'].includes(group.entity_type))
+          const groups = (result.groups || [])
+            .filter((group) => allowedTypes.includes(group.entity_type))
             .map((group) => ({
               key: group.entity_type,
               label: group.label,
-              items: (group.items || []).map((item) => ({
-                id: item.entity_type + '-' + item.entity_id,
-                sourceId: item.entity_id,
-                kind: item.entity_type,
-                title: item.label,
-                description: item.description || '',
-                artistName: item.entity_type === 'artist'
-                  ? item.label
-                  : item.value && item.value.artist_name || ''
-              }))
+              items: (group.items || []).map((item) => this.candidateFromSearchItem(item))
             }))
+            .filter((group) => group.items.length)
           this.setData({
-            projectSearchSections: sections.filter((section) => section.items.length),
-            projectSearchLoading: false
+            candidateSearchGroups: groups,
+            candidateSearchLoading: false
           })
         }).catch((error) => {
-          console.error('[S13] fuzzy search failed', normalized, error)
-          this.setData({ projectSearchSections: [], projectSearchLoading: false })
+          console.error('[CandidateSearch] fuzzy search failed', normalized, error)
+          this.setData({ candidateSearchGroups: [], candidateSearchLoading: false })
         })
       }, 300)
     },
+    onProjectSearchInput(keyword) {
+      this.onCandidateSearchInput(keyword)
+    },
     onProjectSearchSelect(event) {
-      const suggestion = event.currentTarget.dataset
-      const draft = wx.getStorageSync(STORAGE_KEYS.projectDraft) || {}
-      this.setData({ keyword: suggestion.title, projectSearchOpen: false })
-      if (suggestion.kind === 'artist') {
-        wx.setStorageSync(STORAGE_KEYS.projectDraft, Object.assign({}, draft, {
-          artist_id: Number(suggestion.sourceId),
-          artist_name: suggestion.artistName
-        }))
-        return
-      }
-      request('/projects/' + suggestion.sourceId).then((project) => {
-        wx.setStorageSync(STORAGE_KEYS.projectDraft, Object.assign({}, draft, {
-          name: project.name,
-          type: project.type,
-          artist_name: project.artist_name
-        }))
-      }).catch((error) => {
-        console.error('[S13] project detail load failed', suggestion.sourceId, error)
-        wx.setStorageSync(STORAGE_KEYS.projectDraft, Object.assign({}, draft, {
-          name: suggestion.title,
-          artist_name: suggestion.artistName
-        }))
-      })
+      this.onCandidateSearchTap(event)
     },
     fetchRemote() {
       this.setData({ items: [], loadState: 'loading', message: '' })
@@ -215,6 +270,9 @@ const createScreenPage = (screenId) => {
         this.setData({
           screen: Object.assign({}, screen, data.summary || {}),
           items,
+          candidateGroups: data && data.options && Array.isArray(data.options.candidate_groups)
+            ? data.options.candidate_groups
+            : [],
           loadState: items.length ? 'success' : 'empty',
           message: !items.length && emptyState ? String(emptyState.title || emptyState.description || '') : ''
         })

@@ -950,6 +950,110 @@ def test_project_create_screens_restore_current_user_draft_and_real_artist_optio
     assert {"id": artist_id, "name": "真实候选艺人"} in options["artists"]
 
 
+@pytest.mark.parametrize("screen_id", ["S13", "S14", "S15", "S16"])
+def test_project_create_screens_offer_scoped_database_candidates(monkeypatch, screen_id):
+    client, session_factory = make_screen_client(monkeypatch)
+    db = session_factory()
+    try:
+        tenant, user = services.get_or_create_default_context(db)
+        other_tenant = models.Tenant(name="其他候选租户", status="active")
+        artist = models.Artist(name="候选艺人", heat_score=92)
+        db.add_all([other_tenant, artist])
+        db.flush()
+        venue = models.Venue(
+            tenant_id=tenant.id,
+            name="真实候选场馆",
+            city="南京",
+            capacity=12000,
+        )
+        foreign_venue = models.Venue(
+            tenant_id=other_tenant.id,
+            name="其他租户场馆",
+            city="上海",
+            capacity=9000,
+        )
+        project = models.Project(
+            tenant_id=tenant.id,
+            name="真实历史项目",
+            type="concert",
+            artist_id=artist.id,
+            artist_name=artist.name,
+            city="南京",
+            venue_id=venue.id,
+            venue=venue.name,
+            schedule="2026-11-01",
+            expected_attendance=10000,
+            available_funds=5000000,
+            avg_ticket_price=680,
+            artist_fee=2000000,
+            venue_cost=600000,
+            marketing_cost=300000,
+            production_cost=800000,
+            created_by=user.id,
+        )
+        foreign_project = models.Project(
+            tenant_id=other_tenant.id,
+            name="其他租户项目",
+            city="上海",
+            venue=foreign_venue.name,
+        )
+        db.add_all([venue, foreign_venue])
+        db.flush()
+        project.venue_id = venue.id
+        db.add_all([project, foreign_project])
+        db.commit()
+        artist_id = artist.id
+        venue_id = venue.id
+        project_id = project.id
+        token = f"dev-token-{user.id}-{tenant.id}"
+    finally:
+        db.close()
+
+    try:
+        response = client.get(
+            f"/miniapp/screens/{screen_id}",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+    finally:
+        app_module.app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    groups = response.json()["data"]["options"]["candidate_groups"]
+    expected_group_keys = {
+        "S13": {"projects", "artists", "project_types"},
+        "S14": {"cities", "venues", "schedules"},
+        "S15": {"expected_attendance", "available_funds", "avg_ticket_price"},
+        "S16": {"artist_fee", "venue_cost", "marketing_cost", "production_cost"},
+    }
+    assert {group["key"] for group in groups} == expected_group_keys[screen_id]
+    candidates = {
+        item["key"]: item
+        for group in groups
+        for item in group["items"]
+    }
+    assert "其他租户项目" not in str(groups)
+    assert "其他租户场馆" not in str(groups)
+    if screen_id == "S13":
+        assert candidates["project-%s" % project_id]["entity_id"] == project_id
+        assert candidates["artist-%s" % artist_id]["patch"] == {
+            "artist_id": artist_id,
+            "artist_name": "候选艺人",
+        }
+    if screen_id == "S14":
+        assert candidates["venue-%s" % venue_id]["patch"] == {
+            "venue_id": venue_id,
+            "venue": "真实候选场馆",
+            "city": "南京",
+            "venue_capacity": 12000,
+        }
+    if screen_id == "S15":
+        assert candidates["expected_attendance-10000"]["patch"] == {
+            "expected_attendance": 10000,
+        }
+    if screen_id == "S16":
+        assert candidates["artist_fee-2000000"]["patch"] == {"artist_fee": 2000000}
+
+
 def test_project_draft_screen_returns_only_current_users_tenant_drafts(monkeypatch):
     client, session_factory = make_screen_client(monkeypatch)
     db = session_factory()

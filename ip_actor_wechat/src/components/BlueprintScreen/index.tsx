@@ -13,6 +13,8 @@ import { screenDefinitions } from '@/data/screens'
 import { api, ApiError, getApiBase, setApiBase } from '@/services/api'
 import type {
   DisplayItem,
+  MiniappCandidateGroup,
+  MiniappCandidateItem,
   MiniappScreenContext,
   MiniappScreenData,
   ProjectDraft,
@@ -93,6 +95,12 @@ const getStoredDraft = (): ProjectDraft => {
 }
 
 const inputValue = (value: string | number | undefined) => value === undefined ? '' : String(value)
+const candidatePatchKeys = new Set<keyof ProjectDraft>([
+  'name', 'type', 'artist_id', 'artist_name', 'city', 'venue_id', 'venue',
+  'source_project_id', 'schedule', 'expected_attendance', 'available_funds',
+  'avg_ticket_price', 'artist_fee', 'venue_cost', 'marketing_cost',
+  'production_cost', 'venue_capacity',
+])
 
 export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
   const screen = screenDefinitions[screenId]
@@ -223,7 +231,57 @@ export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
     Taro.setStorageSync(STORAGE_KEYS.projectDraft, next)
   }
 
-  const searchProjectOptions = useCallback(async (keyword: string): Promise<Array<SearchSelectSection<Record<string, unknown>>>> => {
+  const candidateGroups = (): MiniappCandidateGroup[] => {
+    const rawGroups = screenData?.options.candidate_groups
+    return Array.isArray(rawGroups) ? rawGroups as MiniappCandidateGroup[] : []
+  }
+
+  const initialCandidateSections = (
+    fields: Array<keyof ProjectDraft>,
+  ): Array<SearchSelectSection<MiniappCandidateItem>> => (
+    candidateGroups()
+      .filter((group) => fields.includes(group.field))
+      .map((group) => ({
+        entityType: group.key,
+        label: group.label,
+        options: group.items.map((item) => ({
+          entityType: item.entity_type || group.key,
+          entityId: item.entity_id || item.key,
+          label: item.label,
+          description: item.description || '',
+          value: item,
+        })),
+      }))
+  )
+
+  const applyCandidate = (suggestion: SearchSelectOption<MiniappCandidateItem>) => {
+    const patch = suggestion.value.patch
+    const nextPatch = Object.fromEntries(
+      Object.entries(patch).filter(([key, value]) => (
+        candidatePatchKeys.has(key as keyof ProjectDraft)
+        && (typeof value === 'string' || typeof value === 'number')
+      )),
+    ) as Partial<ProjectDraft>
+    const next = { ...draft, ...nextPatch }
+    setDraft(next)
+    Taro.setStorageSync(STORAGE_KEYS.projectDraft, next)
+  }
+
+  const localCandidateSearch = (
+    fields: Array<keyof ProjectDraft>,
+  ) => async (keyword: string): Promise<Array<SearchSelectSection<MiniappCandidateItem>>> => {
+    const normalized = keyword.trim().toLowerCase()
+    return initialCandidateSections(fields)
+      .map((section) => ({
+        ...section,
+        options: section.options.filter((option) => (
+          `${option.label} ${option.description || ''}`.toLowerCase().includes(normalized)
+        )),
+      }))
+      .filter((section) => section.options.length > 0)
+  }
+
+  const searchProjectOptions = useCallback(async (keyword: string): Promise<Array<SearchSelectSection<MiniappCandidateItem>>> => {
     const result = await api.searchMiniappEntities(keyword)
     return result.groups
       .filter((group) => ['artist', 'project'].includes(group.entity_type))
@@ -235,12 +293,29 @@ export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
           entityId: item.entity_id,
           label: item.label,
           description: item.description || '',
-          value: asRecord(item.value),
+          value: group.entity_type === 'artist'
+            ? {
+                key: `artist-${item.entity_id}`,
+                label: item.label,
+                patch: { artist_id: Number(item.entity_id), artist_name: item.label },
+                entity_type: 'artist',
+                entity_id: Number(item.entity_id),
+              }
+            : {
+                key: `project-${item.entity_id}`,
+                label: item.label,
+                patch: {
+                  ...asRecord(item.value),
+                  source_project_id: Number(item.entity_id),
+                },
+                entity_type: 'project',
+                entity_id: Number(item.entity_id),
+              },
         })),
       }))
   }, [])
 
-  const searchCityOptions = useCallback(async (keyword: string): Promise<Array<SearchSelectSection<Record<string, unknown>>>> => {
+  const searchCityOptions = useCallback(async (keyword: string): Promise<Array<SearchSelectSection<MiniappCandidateItem>>> => {
     const result = await api.searchMiniappEntities(keyword)
     return result.groups
       .filter((group) => group.entity_type === 'city')
@@ -252,12 +327,16 @@ export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
           entityId: item.entity_id,
           label: item.label,
           description: item.description || '',
-          value: asRecord(item.value),
+          value: {
+            key: `city-${item.label}`,
+            label: item.label,
+            patch: { city: item.label },
+          },
         })),
       }))
   }, [])
 
-  const searchVenueOptions = useCallback(async (keyword: string): Promise<Array<SearchSelectSection<Record<string, unknown>>>> => {
+  const searchVenueOptions = useCallback(async (keyword: string): Promise<Array<SearchSelectSection<MiniappCandidateItem>>> => {
     const result = await api.searchMiniappEntities(keyword)
     return result.groups
       .filter((group) => group.entity_type === 'venue')
@@ -269,62 +348,21 @@ export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
           entityId: item.entity_id,
           label: item.label,
           description: item.description || '',
-          value: asRecord(item.value),
+          value: {
+            key: `venue-${item.entity_id}`,
+            label: item.label,
+            patch: {
+              venue_id: Number(item.entity_id),
+              venue: item.label,
+              city: textValue(asRecord(item.value), ['city']),
+              venue_capacity: Number(asRecord(item.value).capacity) || undefined,
+            },
+            entity_type: 'venue',
+            entity_id: Number(item.entity_id),
+          },
         })),
       }))
   }, [])
-
-  const selectProjectSearchSuggestion = async (
-    suggestion: SearchSelectOption<Record<string, unknown>>,
-  ) => {
-    setProjectSearchKeyword(suggestion.label)
-    if (suggestion.entityType === 'artist') {
-      const next = {
-        ...draft,
-        artist_id: Number(suggestion.entityId),
-        artist_name: suggestion.label,
-        source_project_id: undefined,
-      }
-      setDraft(next)
-      Taro.setStorageSync(STORAGE_KEYS.projectDraft, next)
-      return
-    }
-
-    const projectIdValue = Number(suggestion.entityId)
-    let project = suggestion.value
-    if (projectIdValue) {
-      try {
-        project = asRecord(await api.getProject(projectIdValue))
-      } catch (error) {
-        console.error('[S13] project detail load failed', { projectId: projectIdValue, error })
-      }
-    }
-    const next = {
-      ...draft,
-      name: textValue(project, ['name'], suggestion.label),
-      type: textValue(project, ['type'], draft.type),
-      artist_id: Number(project.artist_id) || undefined,
-      artist_name: textValue(project, ['artist_name'], draft.artist_name),
-      city: textValue(project, ['city'], draft.city),
-      venue_id: Number(project.venue_id) || undefined,
-      venue: textValue(project, ['venue'], draft.venue),
-      source_project_id: Number(suggestion.entityId),
-    }
-    setDraft(next)
-    Taro.setStorageSync(STORAGE_KEYS.projectDraft, next)
-  }
-
-  const selectVenue = (suggestion: SearchSelectOption<Record<string, unknown>>) => {
-    const venue = suggestion.value
-    const next = {
-      ...draft,
-      venue_id: Number(suggestion.entityId),
-      venue: suggestion.label,
-      city: textValue(venue, ['city'], draft.city),
-    }
-    setDraft(next)
-    Taro.setStorageSync(STORAGE_KEYS.projectDraft, next)
-  }
 
   const updateForm = (key: string, value: string) => setForm((current) => ({ ...current, [key]: value }))
 
@@ -576,13 +614,27 @@ export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
             <SearchSelect
               value={projectSearchKeyword}
               placeholder='输入艺人、IP 或项目名称'
+              initialSections={initialCandidateSections(['source_project_id', 'artist_name'])}
               onInput={setProjectSearchKeyword}
               onSearch={searchProjectOptions}
-              onSelect={(suggestion) => void selectProjectSearchSuggestion(suggestion)}
+              onSelect={(suggestion) => {
+                setProjectSearchKeyword(suggestion.label)
+                applyCandidate(suggestion)
+              }}
             />
           </View>
           <Field label='项目名称' value={draft.name} onInput={(value) => updateDraft('name', value)} />
-          <Field label='项目类型' value={draft.type} onInput={(value) => updateDraft('type', value)} />
+          <View className={styles.field}>
+            <Text className={styles.fieldLabel}>项目类型</Text>
+            <SearchSelect
+              value={draft.type}
+              placeholder='输入或选择项目类型'
+              initialSections={initialCandidateSections(['type'])}
+              onInput={(value) => updateDraft('type', value)}
+              onSearch={localCandidateSearch(['type'])}
+              onSelect={applyCandidate}
+            />
+          </View>
           <Field label='核心艺人 / IP' value={draft.artist_name} onInput={(value) => updateDraft('artist_name', value)} />
         </View>
       )
@@ -595,20 +647,32 @@ export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
             <SearchSelect
               value={draft.city}
               placeholder='搜索已有场馆城市'
+              initialSections={initialCandidateSections(['city'])}
               onInput={(value) => updateDraft('city', value)}
               onSearch={searchCityOptions}
-              onSelect={(suggestion) => updateDraft('city', suggestion.label)}
+              onSelect={applyCandidate}
             />
           </View>
-          <Field label='计划时间' value={draft.schedule} onInput={(value) => updateDraft('schedule', value)} />
+          <View className={styles.field}>
+            <Text className={styles.fieldLabel}>计划时间</Text>
+            <SearchSelect
+              value={draft.schedule}
+              placeholder='输入或选择计划时间'
+              initialSections={initialCandidateSections(['schedule'])}
+              onInput={(value) => updateDraft('schedule', value)}
+              onSearch={localCandidateSearch(['schedule'])}
+              onSelect={applyCandidate}
+            />
+          </View>
           <View className={styles.field}>
             <Text className={styles.fieldLabel}>候选场馆</Text>
             <SearchSelect
               value={draft.venue}
               placeholder='搜索场馆名称或城市'
+              initialSections={initialCandidateSections(['venue'])}
               onInput={(value) => updateDraft('venue', value)}
               onSearch={searchVenueOptions}
-              onSelect={selectVenue}
+              onSelect={applyCandidate}
             />
           </View>
         </View>
@@ -617,19 +681,19 @@ export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
     if (screenId === 'S15') {
       return (
         <View className={styles.formGrid}>
-          <Field label='可售规模 / 人' type='number' value={inputValue(draft.expected_attendance)} onInput={(value) => updateDraft('expected_attendance', value)} />
-          <Field label='可用资金 / 元' type='number' value={inputValue(draft.available_funds)} onInput={(value) => updateDraft('available_funds', value)} />
-          <Field label='平均实收票价 / 元' type='number' value={inputValue(draft.avg_ticket_price)} onInput={(value) => updateDraft('avg_ticket_price', value)} />
+          <CandidateNumberField label='可售规模 / 人' field='expected_attendance' draft={draft} initialSections={initialCandidateSections(['expected_attendance'])} onInput={updateDraft} onSearch={localCandidateSearch(['expected_attendance'])} onSelect={applyCandidate} />
+          <CandidateNumberField label='可用资金 / 元' field='available_funds' draft={draft} initialSections={initialCandidateSections(['available_funds'])} onInput={updateDraft} onSearch={localCandidateSearch(['available_funds'])} onSelect={applyCandidate} />
+          <CandidateNumberField label='平均实收票价 / 元' field='avg_ticket_price' draft={draft} initialSections={initialCandidateSections(['avg_ticket_price'])} onInput={updateDraft} onSearch={localCandidateSearch(['avg_ticket_price'])} onSelect={applyCandidate} />
         </View>
       )
     }
     if (screenId === 'S16' || screenId === 'S25') {
       return (
         <View className={styles.formGrid}>
-          <Field label='艺人费用 / 元' type='number' value={inputValue(draft.artist_fee)} onInput={(value) => updateDraft('artist_fee', value)} />
-          <Field label='场馆费用 / 元' type='number' value={inputValue(draft.venue_cost)} onInput={(value) => updateDraft('venue_cost', value)} />
-          <Field label='宣发费用 / 元' type='number' value={inputValue(draft.marketing_cost)} onInput={(value) => updateDraft('marketing_cost', value)} />
-          <Field label='制作费用 / 元' type='number' value={inputValue(draft.production_cost)} onInput={(value) => updateDraft('production_cost', value)} />
+          <CandidateNumberField label='艺人费用 / 元' field='artist_fee' draft={draft} initialSections={initialCandidateSections(['artist_fee'])} onInput={updateDraft} onSearch={localCandidateSearch(['artist_fee'])} onSelect={applyCandidate} />
+          <CandidateNumberField label='场馆费用 / 元' field='venue_cost' draft={draft} initialSections={initialCandidateSections(['venue_cost'])} onInput={updateDraft} onSearch={localCandidateSearch(['venue_cost'])} onSelect={applyCandidate} />
+          <CandidateNumberField label='宣发费用 / 元' field='marketing_cost' draft={draft} initialSections={initialCandidateSections(['marketing_cost'])} onInput={updateDraft} onSearch={localCandidateSearch(['marketing_cost'])} onSelect={applyCandidate} />
+          <CandidateNumberField label='制作费用 / 元' field='production_cost' draft={draft} initialSections={initialCandidateSections(['production_cost'])} onInput={updateDraft} onSearch={localCandidateSearch(['production_cost'])} onSelect={applyCandidate} />
         </View>
       )
     }
@@ -886,6 +950,49 @@ function Field({ label, value, placeholder, type = 'text', onInput }: FieldProps
         value={value}
         placeholder={placeholder}
         onInput={(event) => onInput(event.detail.value)}
+      />
+    </View>
+  )
+}
+
+interface CandidateNumberFieldProps {
+  label: string
+  field: keyof Pick<
+    ProjectDraft,
+    'expected_attendance'
+    | 'available_funds'
+    | 'avg_ticket_price'
+    | 'artist_fee'
+    | 'venue_cost'
+    | 'marketing_cost'
+    | 'production_cost'
+  >
+  draft: ProjectDraft
+  initialSections: Array<SearchSelectSection<MiniappCandidateItem>>
+  onInput: (key: keyof ProjectDraft, value: string) => void
+  onSearch: (keyword: string) => Promise<Array<SearchSelectSection<MiniappCandidateItem>>>
+  onSelect: (option: SearchSelectOption<MiniappCandidateItem>) => void
+}
+
+function CandidateNumberField({
+  label,
+  field,
+  draft,
+  initialSections,
+  onInput,
+  onSearch,
+  onSelect,
+}: CandidateNumberFieldProps) {
+  return (
+    <View className={styles.field}>
+      <Text className={styles.fieldLabel}>{label}</Text>
+      <SearchSelect
+        value={inputValue(draft[field])}
+        placeholder='输入或选择数据库候选'
+        initialSections={initialSections}
+        onInput={(value) => onInput(field, value)}
+        onSearch={onSearch}
+        onSelect={onSelect}
       />
     </View>
   )

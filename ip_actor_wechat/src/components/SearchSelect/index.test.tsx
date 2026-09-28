@@ -70,6 +70,25 @@ describe('SearchSelect', () => {
     expect(onSearch).toHaveBeenCalledWith('周杰')
   })
 
+  it('shows database candidates on focus before a keyword is entered', () => {
+    const onSelect = vi.fn()
+    render(
+      <SearchSelect
+        value=''
+        initialSections={[sections[0]]}
+        onInput={vi.fn()}
+        onSearch={vi.fn().mockResolvedValue(sections)}
+        onSelect={onSelect}
+      />,
+    )
+
+    fireEvent.focus(screen.getByRole('textbox'))
+    expect(screen.getByText('艺人 / IP')).toBeInTheDocument()
+    fireEvent.click(screen.getByText('周杰伦'))
+
+    expect(onSelect).toHaveBeenCalledWith(sections[0].options[0])
+  })
+
   it('groups results by entity type', async () => {
     const onSearch = vi.fn().mockResolvedValue(sections)
     render(<SearchSelect value='' onInput={vi.fn()} onSearch={onSearch} onSelect={vi.fn()} />)

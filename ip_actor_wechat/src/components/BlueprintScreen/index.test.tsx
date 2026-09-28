@@ -137,6 +137,47 @@ describe('BlueprintScreen aggregated loading', () => {
     expect(taroMocks.getMiniappScreen).toHaveBeenLastCalledWith('S11', { project_id: 42 })
   })
 
+  it('applies a database venue candidate patch to the project draft', async () => {
+    taroMocks.getMiniappScreen.mockResolvedValue(response({
+      screen_id: 'S14',
+      summary: { title: '地点与时间' },
+      items: [],
+      options: {
+        candidate_groups: [{
+          key: 'venues',
+          label: '高频场馆',
+          field: 'venue',
+          search_mode: 'remote',
+          items: [{
+            key: 'venue-12',
+            label: '南京奥体中心',
+            description: '南京 · 容量 12000',
+            entity_type: 'venue',
+            entity_id: 12,
+            patch: {
+              venue_id: 12,
+              venue: '南京奥体中心',
+              city: '南京',
+              venue_capacity: 12000,
+            },
+          }],
+        }],
+      },
+    }))
+
+    render(<BlueprintScreen screenId='S14' />)
+    const input = await screen.findByPlaceholderText('搜索场馆名称或城市')
+    fireEvent.focus(input)
+    fireEvent.click(await screen.findByText('南京奥体中心'))
+
+    expect(taroMocks.storage.get('starhub-project-draft')).toMatchObject({
+      venue_id: 12,
+      venue: '南京奥体中心',
+      city: '南京',
+      venue_capacity: 12000,
+    })
+  })
+
   it('clears items from the previous screen before the next request resolves', async () => {
     let resolveNext: ((value: MiniappScreenData) => void) | undefined
     taroMocks.getMiniappScreen

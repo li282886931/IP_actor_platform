@@ -279,6 +279,78 @@ test('generated runtime opens and loads the unified entity detail page', async (
   }
 })
 
+test('generated runtime applies a database venue candidate patch to the project draft', async () => {
+  const runtimePath = resolve(root, 'dist/common/runtime.js')
+  const storage = new Map()
+  let page
+  globalThis.wx = {
+    getStorageSync: (key) => storage.get(key),
+    setStorageSync: (key, value) => storage.set(key, value),
+    request: (options) => {
+      options.success({
+        statusCode: 200,
+        data: {
+          code: 0,
+          data: {
+            screen_id: 'S14',
+            summary: { title: '地点与时间' },
+            items: [],
+            options: {
+              candidate_groups: [{
+                key: 'venues',
+                label: '高频场馆',
+                field: 'venue',
+                items: [{
+                  key: 'venue-12',
+                  label: '南京奥体中心',
+                  patch: {
+                    venue_id: 12,
+                    venue: '南京奥体中心',
+                    city: '南京',
+                    venue_capacity: 12000,
+                  },
+                }],
+              }],
+            },
+            context: {},
+            empty_state: null,
+          },
+        },
+      })
+    },
+    stopPullDownRefresh: () => {},
+  }
+  globalThis.Page = (definition) => {
+    page = {
+      ...definition,
+      data: { ...definition.data },
+      setData(next, callback) {
+        this.data = { ...this.data, ...next }
+        callback?.()
+      },
+    }
+  }
+
+  const require = createRequire(import.meta.url)
+  delete require.cache[runtimePath]
+  try {
+    require(runtimePath).createScreenPage('S14')
+    await page.fetchRemote()
+    page.onCandidateTap({ currentTarget: { dataset: { groupIndex: 0, itemIndex: 0 } } })
+
+    assert.deepEqual(storage.get('starhub-project-draft'), {
+      venue_id: 12,
+      venue: '南京奥体中心',
+      city: '南京',
+      venue_capacity: 12000,
+    })
+  } finally {
+    delete globalThis.wx
+    delete globalThis.Page
+    delete require.cache[runtimePath]
+  }
+})
+
 test('stores the tenant and refreshed token returned by tenant switching', () => {
   const source = readFileSync(resolve(root, 'src/components/BlueprintScreen/index.tsx'), 'utf8')
 
@@ -631,7 +703,7 @@ test('uses WeChat phone authorization for mini program login', () => {
   assert.doesNotMatch(source, /wechatLogin\(\{ code, name: '微信用户', group_code: 'B' \}\)/)
 })
 
-test('provides debounced artist and project fuzzy search on project creation step one', () => {
+test('provides database-backed candidates and fuzzy search for project creation', () => {
   const source = readFileSync(resolve(root, 'src/components/BlueprintScreen/index.tsx'), 'utf8')
   const searchSource = readFileSync(resolve(root, 'src/components/SearchSelect/index.tsx'), 'utf8')
   const searchStyles = readFileSync(resolve(root, 'src/components/SearchSelect/index.module.scss'), 'utf8')
@@ -640,22 +712,24 @@ test('provides debounced artist and project fuzzy search on project creation ste
   assert.match(source, /@\/components\/SearchSelect/)
   assert.match(source, /<SearchSelect/)
   assert.match(source, /projectSearchKeyword/)
+  assert.match(source, /candidate_groups/)
+  assert.match(source, /applyCandidate/)
+  assert.match(source, /initialCandidateSections/)
   assert.match(source, /api\.searchMiniappEntities\(keyword\)/)
   assert.doesNotMatch(source, /Promise\.all\(\[api\.listArtists\(keyword\), api\.searchCases\(keyword\)\]\)/)
-  assert.match(source, /selectProjectSearchSuggestion/)
-  assert.match(source, /artist_id: Number\(suggestion\.entityId\)/)
-  assert.match(source, /source_project_id: Number\(suggestion\.entityId\)/)
-  assert.match(source, /venue_id: Number\(suggestion\.entityId\)/)
+  assert.match(source, /venue_capacity/)
   assert.match(searchSource, /setTimeout\([^]*300\)/)
+  assert.match(searchSource, /initialSections/)
   assert.match(searchSource, /onSelect\(option\)/)
   assert.match(searchStyles, /\.dropdown/)
   assert.match(searchStyles, /\.option/)
 
   assert.match(generator, /projectSearchSections/)
+  assert.match(generator, /candidateGroups/)
   assert.match(generator, /request\('\/miniapp\/search'/)
   assert.doesNotMatch(generator, /request\('\/artists'[^]*request\('\/cases\/search'/)
-  assert.match(generator, /onProjectSearchInput/)
-  assert.match(generator, /onProjectSearchSelect/)
+  assert.match(generator, /onCandidateSearchInput/)
+  assert.match(generator, /onCandidateTap/)
   assert.match(generator, /search-dropdown/)
 })
 

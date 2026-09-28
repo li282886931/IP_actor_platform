@@ -26,6 +26,7 @@ export interface ProjectDraft {
   venue_cost?: number
   marketing_cost?: number
   production_cost?: number
+  venue_capacity?: number
 }
 
 export interface SessionData {
@@ -107,6 +108,23 @@ export interface MiniappScreenData {
   options: Record<string, unknown>
   context: Record<string, unknown>
   empty_state?: MiniappScreenEmptyState | null
+}
+
+export interface MiniappCandidateItem {
+  key: string
+  label: string
+  description?: string
+  patch: Partial<ProjectDraft>
+  entity_type?: string
+  entity_id?: number
+}
+
+export interface MiniappCandidateGroup {
+  key: string
+  label: string
+  field: keyof ProjectDraft
+  search_mode: 'local' | 'remote'
+  items: MiniappCandidateItem[]
 }
 
 export interface MiniappScreenContext {
