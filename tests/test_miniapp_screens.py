@@ -1589,6 +1589,83 @@ def test_agent_screens_aggregate_current_user_tasks_and_analysis_jobs(monkeypatc
     assert data_by_screen["S60"]["empty_state"]["title"] == "暂无 Agent 权限配置"
 
 
+def test_agent_dashboard_returns_latest_tenant_project_as_default_context(monkeypatch):
+    client, session_factory = make_screen_client(monkeypatch)
+    db = session_factory()
+    try:
+        tenant, user = services.get_or_create_default_context(db)
+        db.query(models.Project).delete()
+        active_projects = [
+            models.Project(
+                tenant_id=tenant.id,
+                name=name,
+                status="pending_confirmation",
+                created_by=user.id,
+            )
+            for name in ("较早项目", "最新项目")
+        ]
+        archived_project = models.Project(
+            tenant_id=tenant.id,
+            name="已归档项目",
+            status="archived",
+            created_by=user.id,
+        )
+        other_tenant = models.Tenant(name="其他 Agent 客户空间", status="active")
+        db.add_all([*active_projects, archived_project, other_tenant])
+        db.flush()
+        db.add(models.Project(
+            tenant_id=other_tenant.id,
+            name="其他租户最新项目",
+            status="pending_confirmation",
+            created_by=user.id,
+        ))
+        db.commit()
+        expected_project_id = active_projects[-1].id
+        token = f"dev-token-{user.id}-{tenant.id}"
+    finally:
+        db.close()
+
+    try:
+        response = client.get(
+            "/miniapp/screens/S52",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+    finally:
+        app_module.app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    options = response.json()["data"]["options"]
+    assert options["default_project_id"] == expected_project_id
+    assert [project["name"] for project in options["available_projects"]] == [
+        "最新项目",
+        "较早项目",
+    ]
+
+
+def test_agent_dashboard_has_no_default_project_when_tenant_has_no_projects(monkeypatch):
+    client, session_factory = make_screen_client(monkeypatch)
+    db = session_factory()
+    try:
+        tenant, user = services.get_or_create_default_context(db)
+        db.query(models.Project).filter(models.Project.tenant_id == tenant.id).delete()
+        db.commit()
+        token = f"dev-token-{user.id}-{tenant.id}"
+    finally:
+        db.close()
+
+    try:
+        response = client.get(
+            "/miniapp/screens/S52",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+    finally:
+        app_module.app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["data"]["options"]["default_project_id"] is None
+    assert response.json()["data"]["options"]["available_projects"] == []
+
+
 def test_agent_change_screen_only_reports_real_version_changes(monkeypatch):
     client, session_factory = make_screen_client(monkeypatch)
     db = session_factory()
@@ -2511,7 +2588,7 @@ def test_core_screen_providers_stay_within_query_budgets(monkeypatch):
             budgets = {
                 "S10": 1,
                 "S34": 6,
-                "S52": 1,
+                "S52": 2,
                 "S61": 2,
                 "S67": 2,
             }

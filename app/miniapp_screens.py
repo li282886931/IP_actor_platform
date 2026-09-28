@@ -1834,6 +1834,10 @@ def _agent_dashboard_screen(db: Session, context: ScreenRequestContext) -> dict:
         and row[0].status not in {"submitted", "completed"}
     ]
     items = [_task_item(*row) for row in rows]
+    projects = db.query(Project).filter(
+        Project.tenant_id == context.tenant_id,
+        Project.status != "archived",
+    ).order_by(Project.id.desc()).all()
     return {
         "screen_id": "S52",
         "summary": {
@@ -1842,7 +1846,17 @@ def _agent_dashboard_screen(db: Session, context: ScreenRequestContext) -> dict:
             "highlight": str(len(items)),
         },
         "items": items,
-        "options": {},
+        "options": {
+            "default_project_id": projects[0].id if projects else None,
+            "available_projects": [
+                {
+                    "id": project.id,
+                    "name": project.name,
+                    "status": project.status,
+                }
+                for project in projects
+            ],
+        },
         "context": _screen_context(context),
         "empty_state": _empty_state("暂无待办", "当前没有分配给你的未完成任务") if not items else None,
     }

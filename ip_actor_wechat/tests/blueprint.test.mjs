@@ -289,6 +289,116 @@ test('returns from S74 to the project list when no project id exists', () => {
   }
 })
 
+test('stores the S52 default project before opening the generated agent plan', async () => {
+  const runtimePath = resolve(root, 'dist/common/runtime.js')
+  const storage = new Map()
+  const navigations = []
+  let page
+  globalThis.wx = {
+    getStorageSync: (key) => storage.get(key),
+    setStorageSync: (key, value) => storage.set(key, value),
+    request: (options) => options.success({
+      statusCode: 200,
+      data: {
+        code: 0,
+        data: {
+          screen_id: 'S52',
+          summary: { title: '今日工作' },
+          items: [],
+          options: {
+            default_project_id: 42,
+            available_projects: [{ id: 42, name: '真实项目', status: 'active' }],
+          },
+          context: {},
+          empty_state: null,
+        },
+        message: 'ok',
+      },
+    }),
+    stopPullDownRefresh: () => {},
+    redirectTo: ({ url }) => navigations.push(url),
+    switchTab: ({ url }) => navigations.push(url),
+  }
+  globalThis.Page = (definition) => {
+    page = {
+      ...definition,
+      data: { ...definition.data },
+      setData(next, callback) {
+        this.data = { ...this.data, ...next }
+        callback?.()
+      },
+    }
+  }
+
+  const require = createRequire(import.meta.url)
+  delete require.cache[runtimePath]
+  try {
+    require(runtimePath).createScreenPage('S52')
+    await page.fetchRemote()
+    page.onPrimaryTap()
+
+    assert.equal(storage.get('starhub-project-id'), 42)
+    assert.deepEqual(navigations, ['/pages/s53/index'])
+  } finally {
+    delete globalThis.wx
+    delete globalThis.Page
+    delete require.cache[runtimePath]
+  }
+})
+
+test('returns generated S52 to the project list when no project exists', async () => {
+  const runtimePath = resolve(root, 'dist/common/runtime.js')
+  const navigations = []
+  let page
+  globalThis.wx = {
+    getStorageSync: () => undefined,
+    request: (options) => options.success({
+      statusCode: 200,
+      data: {
+        code: 0,
+        data: {
+          screen_id: 'S52',
+          summary: { title: '今日工作' },
+          items: [],
+          options: { default_project_id: null, available_projects: [] },
+          context: {},
+          empty_state: null,
+        },
+        message: 'ok',
+      },
+    }),
+    stopPullDownRefresh: () => {},
+    redirectTo: ({ url }) => navigations.push({ method: 'redirectTo', url }),
+    switchTab: ({ url }) => navigations.push({ method: 'switchTab', url }),
+  }
+  globalThis.Page = (definition) => {
+    page = {
+      ...definition,
+      data: { ...definition.data },
+      setData(next, callback) {
+        this.data = { ...this.data, ...next }
+        callback?.()
+      },
+    }
+  }
+
+  const require = createRequire(import.meta.url)
+  delete require.cache[runtimePath]
+  try {
+    require(runtimePath).createScreenPage('S52')
+    await page.fetchRemote()
+    page.onPrimaryTap()
+
+    assert.deepEqual(navigations, [
+      { method: 'switchTab', url: '/pages/s10/index' },
+    ])
+  } finally {
+    delete globalThis.wx
+    delete globalThis.Page
+    delete require.cache[runtimePath]
+  }
+})
+
 test('supports partial batch acceptance and rejection from the task detail screen', () => {
   const source = readFileSync(resolve(root, 'src/components/BlueprintScreen/index.tsx'), 'utf8')
   const styles = readFileSync(resolve(root, 'src/components/BlueprintScreen/index.module.scss'), 'utf8')

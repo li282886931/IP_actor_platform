@@ -218,4 +218,60 @@ describe('BlueprintScreen aggregated loading', () => {
     expect(taroMocks.storage.get('starhub-task-id')).toBe(42)
     expect(taroMocks.redirectTo).toHaveBeenCalledWith({ url: '/pages/s56/index' })
   })
+
+  it('stores the S52 default project before opening the agent plan', async () => {
+    taroMocks.getMiniappScreen.mockResolvedValue(response({
+      screen_id: 'S52',
+      summary: { title: '今日工作' },
+      items: [],
+      options: {
+        default_project_id: 42,
+        available_projects: [{ id: 42, name: '真实项目', status: 'active' }],
+      },
+    }))
+
+    render(<BlueprintScreen screenId='S52' />)
+    await screen.findByText('今日工作')
+    fireEvent.click(screen.getByRole('button', { name: '查看今日计划' }))
+
+    expect(taroMocks.storage.get('starhub-project-id')).toBe(42)
+    expect(taroMocks.redirectTo).toHaveBeenCalledWith({ url: '/pages/s53/index' })
+  })
+
+  it('does not replace an existing project selection with the S52 default', async () => {
+    taroMocks.storage.set('starhub-project-id', 99)
+    taroMocks.getMiniappScreen.mockResolvedValue(response({
+      screen_id: 'S52',
+      summary: { title: '今日工作' },
+      items: [],
+      options: {
+        default_project_id: 42,
+        available_projects: [{ id: 42, name: '真实项目', status: 'active' }],
+      },
+    }))
+
+    render(<BlueprintScreen screenId='S52' />)
+    await screen.findByText('今日工作')
+
+    expect(taroMocks.storage.get('starhub-project-id')).toBe(99)
+  })
+
+  it('returns from S52 to the project list when no project is available', async () => {
+    taroMocks.getMiniappScreen.mockResolvedValue(response({
+      screen_id: 'S52',
+      summary: { title: '今日工作' },
+      items: [],
+      options: {
+        default_project_id: null,
+        available_projects: [],
+      },
+    }))
+
+    render(<BlueprintScreen screenId='S52' />)
+    await screen.findByText('今日工作')
+    fireEvent.click(screen.getByRole('button', { name: '查看今日计划' }))
+
+    expect(taroMocks.switchTab).toHaveBeenCalledWith({ url: '/pages/s10/index' })
+    expect(taroMocks.redirectTo).not.toHaveBeenCalledWith({ url: '/pages/s53/index' })
+  })
 })

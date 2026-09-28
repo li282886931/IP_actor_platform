@@ -150,6 +150,13 @@ export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
         details: item.details || '',
         context: item.context,
       }))
+      if (screenId === 'S52') {
+        const cachedProjectId = Number(Taro.getStorageSync<number>(STORAGE_KEYS.projectId) || 0)
+        const defaultProjectId = Number(data.options.default_project_id || 0)
+        if (!cachedProjectId && defaultProjectId) {
+          Taro.setStorageSync(STORAGE_KEYS.projectId, defaultProjectId)
+        }
+      }
       setScreenData(data)
       setItems(displayItems)
       if (displayItems.length) {
@@ -447,6 +454,17 @@ export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
           Taro.setStorageSync(STORAGE_KEYS.versionId, Number(record.current_version_id))
         }
         Taro.removeStorageSync(STORAGE_KEYS.projectDraft)
+      } else if (screenId === 'S52') {
+        const selectedProjectId = Number(
+          Taro.getStorageSync<number>(STORAGE_KEYS.projectId)
+            || screenData?.options.default_project_id
+            || 0,
+        )
+        if (!selectedProjectId) {
+          setLoadState('success')
+          await replaceWithScreen('S10')
+          return
+        }
       } else if (screenId === 'S25') {
         const result = await api.calculateFinance({
           project_id: projectId,

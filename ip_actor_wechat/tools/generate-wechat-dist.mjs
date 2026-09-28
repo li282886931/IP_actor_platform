@@ -284,6 +284,13 @@ const createScreenPage = (screenId) => {
       }
       return request('/miniapp/screens/' + screenId + query(context)).then((data) => {
         let items = normalizeItems(data && data.items)
+        if (screenId === 'S52') {
+          const cachedProjectId = Number(wx.getStorageSync(STORAGE_KEYS.projectId) || 0)
+          const defaultProjectId = Number(data && data.options && data.options.default_project_id || 0)
+          if (!cachedProjectId && defaultProjectId) {
+            wx.setStorageSync(STORAGE_KEYS.projectId, defaultProjectId)
+          }
+        }
         if (['S55', 'S56', 'S57', 'S58'].includes(screenId) && items.length) {
           const storedTaskId = Number(wx.getStorageSync(STORAGE_KEYS.taskId) || 0)
           const selectedTask = items.find((task) => task.entityId === storedTaskId) || items[0]
@@ -457,7 +464,7 @@ const createScreenPage = (screenId) => {
     },
     goNext() {
       const hasProject = Number(wx.getStorageSync(STORAGE_KEYS.projectId) || 0) > 0
-      const target = screenId === 'S74' && !hasProject
+      const target = ['S52', 'S74'].includes(screenId) && !hasProject
         ? 'S10'
         : nextScreen[screenId] || 'S04'
       const url = routeFor(target)
