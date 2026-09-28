@@ -18,6 +18,7 @@ import type {
   ProjectDraft,
   SessionData,
 } from '@/types/domain'
+import { statusLabel } from '@/utils/status'
 import styles from './index.module.scss'
 
 interface BlueprintScreenProps {
@@ -93,37 +94,6 @@ const getStoredDraft = (): ProjectDraft => {
 
 const inputValue = (value: string | number | undefined) => value === undefined ? '' : String(value)
 
-const statusLabels: Record<string, string> = {
-  active: '进行中',
-  archived: '已归档',
-  available: '可用',
-  blocked: '已阻塞',
-  calculated: '已测算',
-  closed: '已关闭',
-  completed: '已完成',
-  confirmed: '已确认',
-  disabled: '已停用',
-  draft: '草稿',
-  enabled: '已启用',
-  failed: '失败',
-  in_progress: '进行中',
-  on_sale: '售票中',
-  open: '待处理',
-  pending: '待处理',
-  pending_confirmation: '待确认',
-  queued: '排队中',
-  read: '已读',
-  revoked: '已撤回',
-  running: '处理中',
-  settled: '已结算',
-  submitted: '待验收',
-  unread: '未读',
-  unverified: '待核验',
-  verified: '已核验',
-}
-
-const statusLabel = (status: string) => statusLabels[status] || status
-
 export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
   const screen = screenDefinitions[screenId]
   const router = useRouter()
@@ -180,6 +150,7 @@ export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
         value: item.value || '',
         details: item.details || '',
         context: item.context,
+        detailRef: item.detail_ref,
       }))
       if (screenId === 'S52') {
         const cachedProjectId = Number(Taro.getStorageSync<number>(STORAGE_KEYS.projectId) || 0)
@@ -371,6 +342,17 @@ export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
         ? current.filter((id) => id !== taskId)
         : [...current, taskId]
     ))
+  }
+
+  const openItemDetail = (item: DisplayItem) => {
+    if (!item.detailRef) return
+    if (item.detailRef.entity_type === 'task') {
+      Taro.setStorageSync(STORAGE_KEYS.taskId, item.detailRef.entity_id)
+      setActiveTaskId(item.detailRef.entity_id)
+    }
+    void Taro.navigateTo({
+      url: `/pages/entity-detail/index?entityType=${encodeURIComponent(item.detailRef.entity_type)}&entityId=${item.detailRef.entity_id}`,
+    })
   }
 
   const runBatchTaskAction = async (action: 'accept' | 'reject') => {
@@ -766,15 +748,13 @@ export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
           const isTaskExpanded = expandedTaskIds.includes(taskId)
           return (
           <View
-            className={classNames(styles.listItem, screenId === 'S56' && styles.taskItem)}
+            className={classNames(
+              styles.listItem,
+              screenId === 'S56' && styles.taskItem,
+              item.detailRef && styles.clickableItem,
+            )}
             key={item.id}
-            onClick={screenId === 'S55' ? () => {
-              const selectedTaskId = Number(item.context?.task_id || 0)
-              if (!selectedTaskId) return
-              setActiveTaskId(selectedTaskId)
-              Taro.setStorageSync(STORAGE_KEYS.taskId, selectedTaskId)
-              void replaceWithScreen('S56')
-            } : undefined}
+            onClick={screenId !== 'S56' && item.detailRef ? () => openItemDetail(item) : undefined}
           >
             {screenId === 'S56' && (
               <View
@@ -804,6 +784,17 @@ export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
             <View className={styles.itemAside}>
               {item.value && <Text className={styles.itemValue}>{item.value}</Text>}
               <Text className={styles.status}>{item.status}</Text>
+              {item.detailRef && (
+                <Text
+                  className={styles.detailChevron}
+                  onClick={screenId === 'S56' ? (event) => {
+                    event.stopPropagation()
+                    openItemDetail(item)
+                  } : undefined}
+                >
+                  ›
+                </Text>
+              )}
             </View>
           </View>
           )

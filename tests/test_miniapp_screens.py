@@ -89,6 +89,117 @@ def test_miniapp_screen_data_contract_preserves_optional_values():
     assert data["options"] == {}
 
 
+def test_miniapp_screen_item_contract_preserves_optional_detail_reference():
+    payload = {
+        "screen_id": "S04",
+        "summary": {"title": "发现演出"},
+        "items": [{
+            "id": "show-3",
+            "entity_type": "show",
+            "title": "真实演出",
+            "context": {"show_id": 3},
+            "detail_ref": {"entity_type": "show", "entity_id": 3},
+        }],
+    }
+
+    data = schemas.MiniappScreenData.model_validate(payload).model_dump()
+
+    assert data["items"][0]["detail_ref"] == {
+        "entity_type": "show",
+        "entity_id": 3,
+    }
+
+
+def test_miniapp_screen_item_infers_detail_reference_only_for_persisted_entities():
+    data = schemas.MiniappScreenData.model_validate({
+        "screen_id": "S25",
+        "summary": {"title": "详情引用"},
+        "items": [
+            {
+                "id": "task-9",
+                "entity_type": "task",
+                "title": "真实任务",
+                "context": {"task_id": 9},
+            },
+            {
+                "id": "finance-profit",
+                "entity_type": "finance_metric",
+                "title": "预计利润",
+                "context": {"metric": "profit"},
+            },
+        ],
+    }).model_dump()
+
+    assert data["items"][0]["detail_ref"] == {
+        "entity_type": "task",
+        "entity_id": 9,
+    }
+    assert data["items"][1]["detail_ref"] is None
+
+
+def test_miniapp_entity_detail_contract_preserves_structured_sections():
+    payload = {
+        "entity_type": "show",
+        "entity_id": 3,
+        "title": "真实演出",
+        "subtitle": "艺人 · 城市",
+        "status": "on_sale",
+        "media_url": "https://assets.example.com/show.jpg",
+        "fields": [
+            {"key": "date", "label": "演出日期", "value": "2026-10-05"},
+        ],
+        "sections": [
+            {"key": "description", "title": "演出介绍", "content": "完整介绍"},
+        ],
+        "related_items": [
+            {
+                "title": "关联艺人",
+                "subtitle": "艺人资料",
+                "detail_ref": {"entity_type": "artist", "entity_id": 2},
+            },
+        ],
+        "actions": [],
+    }
+
+    data = schemas.MiniappEntityDetail.model_validate(payload).model_dump()
+
+    assert data["entity_id"] == 3
+    assert data["fields"][0]["label"] == "演出日期"
+    assert data["related_items"][0]["detail_ref"]["entity_type"] == "artist"
+
+
+def test_entity_detail_registry_covers_all_persisted_list_entity_types():
+    module = importlib.import_module("app.miniapp_entity_details")
+
+    assert set(module.ENTITY_DETAIL_CONFIGS) == {
+        "show",
+        "artist",
+        "project",
+        "project_version",
+        "fact",
+        "assumption",
+        "evidence",
+        "risk",
+        "gate",
+        "decision",
+        "task",
+        "document_parse_job",
+        "project_analysis_job",
+        "report_share",
+        "venue",
+        "tour_plan",
+        "tour_stop",
+        "ticketing_snapshot",
+        "project_actual",
+        "tenant",
+        "tenant_member",
+        "notification",
+        "member_invitation",
+        "agent_permission",
+        "privacy_consent",
+    }
+
+
 def test_miniapp_screen_data_rejects_unknown_screen_id():
     with pytest.raises(ValidationError):
         schemas.MiniappScreenData.model_validate({
@@ -272,6 +383,341 @@ def test_public_discovery_screen_allows_anonymous_access(monkeypatch):
 
     assert response.status_code == 200
     assert response.json()["data"]["context"]["user_id"] is None
+
+
+def test_public_show_detail_returns_complete_database_fields(monkeypatch):
+    client, session_factory = make_screen_client(monkeypatch)
+    db = session_factory()
+    try:
+        artist = models.Artist(name="详情艺人", tags="现场")
+        db.add(artist)
+        db.flush()
+        show = models.Show(
+            title="详情演出",
+            artist_id=artist.id,
+            artist_name=artist.name,
+            city="南京",
+            date="2026-12-01",
+            venue="南京体育中心",
+            price="380-1280",
+            status="on_sale",
+            description="数据库中的完整演出介绍",
+            poster_url="https://assets.example.com/detail.jpg",
+        )
+        db.add(show)
+        db.commit()
+        show_id = show.id
+        artist_id = artist.id
+    finally:
+        db.close()
+
+    try:
+        response = client.get(f"/miniapp/entities/show/{show_id}")
+    finally:
+        app_module.app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    detail = response.json()["data"]
+    assert detail["title"] == "详情演出"
+    assert detail["status"] == "on_sale"
+    assert detail["media_url"] == "https://assets.example.com/detail.jpg"
+    assert {field["label"]: field["value"] for field in detail["fields"]} == {
+        "艺人": "详情艺人",
+        "城市": "南京",
+        "日期": "2026-12-01",
+        "场馆": "南京体育中心",
+        "票价": "380-1280",
+    }
+    assert detail["sections"][0]["content"] == "数据库中的完整演出介绍"
+    assert detail["related_items"][0]["detail_ref"] == {
+        "entity_type": "artist",
+        "entity_id": artist_id,
+    }
+
+
+def test_project_entity_details_are_tenant_scoped_and_hide_share_tokens(monkeypatch):
+    client, session_factory = make_screen_client(monkeypatch)
+    db = session_factory()
+    try:
+        tenant, user = services.get_or_create_default_context(db)
+        project = models.Project(
+            tenant_id=tenant.id,
+            name="详情项目",
+            status="pending_confirmation",
+            created_by=user.id,
+        )
+        db.add(project)
+        db.flush()
+        version = models.ProjectVersion(
+            project_id=project.id,
+            version_no=2,
+            input_snapshot={"city": "南京"},
+            finance_result={"status": "calculated"},
+            created_by=user.id,
+        )
+        fact = models.Fact(
+            project_id=project.id,
+            title="详情事实",
+            content="事实完整内容",
+            source="manual",
+        )
+        assumption = models.Assumption(
+            project_id=project.id,
+            title="详情假设",
+            content="假设完整内容",
+            confidence=70,
+            created_by=user.id,
+        )
+        db.add_all([version, fact, assumption])
+        db.flush()
+        project.current_version_id = version.id
+        evidence = models.Evidence(
+            project_id=project.id,
+            fact_id=fact.id,
+            name="详情依据",
+            file_url="https://assets.example.com/evidence.pdf",
+            source="upload",
+            uploaded_by=user.id,
+        )
+        risk = models.Risk(
+            project_id=project.id,
+            title="详情风险",
+            level="high",
+            mitigation="风险应对措施",
+        )
+        gate = models.Gate(
+            project_id=project.id,
+            name="详情门禁",
+            required_evidence="审批文件",
+        )
+        decision = models.Decision(
+            project_id=project.id,
+            version_id=version.id,
+            decision_type="conditional_advance",
+            conditions="完成审批",
+            decided_by=user.id,
+        )
+        task = models.Task(
+            project_id=project.id,
+            title="详情任务",
+            description="任务完整说明",
+        )
+        db.add_all([evidence, risk, gate, decision, task])
+        db.flush()
+        parse_job = models.DocumentParseJob(
+            tenant_id=tenant.id,
+            project_id=project.id,
+            evidence_id=evidence.id,
+            file_name="evidence.pdf",
+            purpose="project_evidence",
+            created_by=user.id,
+        )
+        analysis_job = models.ProjectAnalysisJob(
+            tenant_id=tenant.id,
+            project_id=project.id,
+            version_id=version.id,
+            purpose="项目分析",
+            requested_by=user.id,
+        )
+        share = models.ReportShare(
+            project_id=project.id,
+            version_id=version.id,
+            token="must-not-leak",
+            created_by=user.id,
+        )
+        db.add_all([parse_job, analysis_job, share])
+        db.commit()
+        entity_ids = {
+            "project": project.id,
+            "project_version": version.id,
+            "fact": fact.id,
+            "assumption": assumption.id,
+            "evidence": evidence.id,
+            "risk": risk.id,
+            "gate": gate.id,
+            "decision": decision.id,
+            "task": task.id,
+            "document_parse_job": parse_job.id,
+            "project_analysis_job": analysis_job.id,
+            "report_share": share.id,
+        }
+        token = f"dev-token-{user.id}-{tenant.id}"
+    finally:
+        db.close()
+
+    try:
+        details = {}
+        for entity_type, entity_id in entity_ids.items():
+            response = client.get(
+                f"/miniapp/entities/{entity_type}/{entity_id}",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert response.status_code == 200, entity_type
+            details[entity_type] = response.json()["data"]
+    finally:
+        app_module.app.dependency_overrides.clear()
+
+    assert details["project"]["title"] == "详情项目"
+    assert details["project_version"]["title"] == "项目版本 V2"
+    assert details["task"]["sections"][0]["content"] == "任务完整说明"
+    assert "must-not-leak" not in str(details["report_share"])
+
+
+def test_tenant_and_user_entity_details_enforce_scope(monkeypatch):
+    client, session_factory = make_screen_client(monkeypatch)
+    db = session_factory()
+    try:
+        tenant, user = services.get_or_create_default_context(db)
+        member = models.User(account="detail-member", name="详情成员", status="active")
+        db.add(member)
+        db.flush()
+        membership = models.TenantMember(
+            tenant_id=tenant.id,
+            user_id=member.id,
+            role="editor",
+        )
+        venue = models.Venue(
+            tenant_id=tenant.id,
+            name="详情场馆",
+            city="南京",
+            capacity=12000,
+            quote=800000,
+        )
+        plan = models.TourPlan(
+            tenant_id=tenant.id,
+            name="详情巡演",
+            created_by=user.id,
+        )
+        project = models.Project(
+            tenant_id=tenant.id,
+            name="详情复盘项目",
+            created_by=user.id,
+        )
+        notification = models.Notification(
+            tenant_id=tenant.id,
+            user_id=user.id,
+            business_key="detail-notice",
+            title="详情通知",
+            content="通知完整内容",
+        )
+        invitation = models.MemberInvitation(
+            tenant_id=tenant.id,
+            invitee="detail@example.com",
+            token="invitation-secret",
+            invited_by=user.id,
+            expires_at=datetime(2026, 10, 8),
+        )
+        permission = models.AgentPermission(
+            tenant_id=tenant.id,
+            user_id=user.id,
+            capability="project_analysis",
+            enabled=1,
+        )
+        consent = models.PrivacyConsent(
+            tenant_id=tenant.id,
+            user_id=user.id,
+            scope="profile",
+            granted=1,
+        )
+        db.add_all([
+            membership,
+            venue,
+            plan,
+            project,
+            notification,
+            invitation,
+            permission,
+            consent,
+        ])
+        db.flush()
+        stop = models.TourStop(
+            tour_plan_id=plan.id,
+            project_id=project.id,
+            venue_id=venue.id,
+            city="南京",
+            sequence=1,
+        )
+        snapshot = models.TicketingSnapshot(
+            project_id=project.id,
+            captured_at=datetime(2026, 9, 28, 12, 0),
+            sold_count=5000,
+            source="ticketing",
+        )
+        actual = models.ProjectActual(
+            project_id=project.id,
+            actual_attendance=4800,
+            status="settled",
+        )
+        db.add_all([stop, snapshot, actual])
+        db.commit()
+        entity_ids = {
+            "tenant": tenant.id,
+            "tenant_member": membership.id,
+            "venue": venue.id,
+            "tour_plan": plan.id,
+            "tour_stop": stop.id,
+            "ticketing_snapshot": snapshot.id,
+            "project_actual": actual.id,
+            "notification": notification.id,
+            "member_invitation": invitation.id,
+            "agent_permission": permission.id,
+            "privacy_consent": consent.id,
+        }
+        artist_id = db.query(models.Artist.id).first()[0]
+        token = f"dev-token-{user.id}-{tenant.id}"
+    finally:
+        db.close()
+
+    try:
+        for entity_type, entity_id in entity_ids.items():
+            response = client.get(
+                f"/miniapp/entities/{entity_type}/{entity_id}",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert response.status_code == 200, entity_type
+            assert "invitation-secret" not in response.text
+        assert client.get(f"/miniapp/entities/artist/{artist_id}").status_code == 401
+    finally:
+        app_module.app.dependency_overrides.clear()
+
+
+def test_entity_detail_hides_other_tenant_and_other_user_records(monkeypatch):
+    client, session_factory = make_screen_client(monkeypatch)
+    db = session_factory()
+    try:
+        tenant, user = services.get_or_create_default_context(db)
+        other_tenant = models.Tenant(name="详情隔离租户", status="active")
+        other_user = models.User(account="detail-outsider", name="详情外部用户", status="active")
+        db.add_all([other_tenant, other_user])
+        db.flush()
+        hidden_project = models.Project(tenant_id=other_tenant.id, name="隐藏详情项目")
+        hidden_venue = models.Venue(tenant_id=other_tenant.id, name="隐藏详情场馆", city="上海")
+        hidden_notification = models.Notification(
+            tenant_id=tenant.id,
+            user_id=other_user.id,
+            business_key="hidden-detail-notice",
+            title="隐藏详情通知",
+        )
+        db.add_all([hidden_project, hidden_venue, hidden_notification])
+        db.commit()
+        hidden_ids = {
+            "project": hidden_project.id,
+            "venue": hidden_venue.id,
+            "notification": hidden_notification.id,
+        }
+        token = f"dev-token-{user.id}-{tenant.id}"
+    finally:
+        db.close()
+
+    try:
+        for entity_type, entity_id in hidden_ids.items():
+            response = client.get(
+                f"/miniapp/entities/{entity_type}/{entity_id}",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert response.status_code == 404, entity_type
+    finally:
+        app_module.app.dependency_overrides.clear()
 
 
 def test_request_context_rejects_tenant_without_membership(monkeypatch):

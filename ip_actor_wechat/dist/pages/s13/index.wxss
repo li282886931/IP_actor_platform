@@ -108,6 +108,12 @@
   background: #edf4ff;
   font-size: 22rpx;
 }
+.detail-chevron {
+  flex: 0 0 auto;
+  color: #8893a7;
+  font-size: 40rpx;
+  line-height: 1;
+}
 .message {
   margin-top: 24rpx;
   padding: 20rpx 24rpx;

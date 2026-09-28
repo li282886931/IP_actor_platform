@@ -1,7 +1,12 @@
 import Taro from '@tarojs/taro'
 
 import { CLIENT_SOURCE, DEFAULT_API_BASE, REQUEST_TIMEOUT_MS, STORAGE_KEYS } from '@/config/runtime'
-import type { MiniappScreenContext, MiniappScreenData, MiniappSearchResult } from '@/types/domain'
+import type {
+  MiniappEntityDetail,
+  MiniappScreenContext,
+  MiniappScreenData,
+  MiniappSearchResult,
+} from '@/types/domain'
 
 export interface ApiEnvelope<T> {
   code: number
@@ -77,6 +82,11 @@ const query = (params: Record<string, string | number | undefined>) => {
 }
 
 export const api = {
+  getMiniappEntityDetail: (entityType: string, entityId: number) => (
+    request<MiniappEntityDetail>(
+      `/miniapp/entities/${encodeURIComponent(entityType)}/${encodeURIComponent(String(entityId))}`,
+    )
+  ),
   searchMiniappEntities: (keyword: string) => (
     request<MiniappSearchResult>(`/miniapp/search${query({ q: keyword.trim() })}`)
   ),

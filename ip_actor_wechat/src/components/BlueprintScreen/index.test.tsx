@@ -216,7 +216,7 @@ describe('BlueprintScreen aggregated loading', () => {
     expect(taroMocks.redirectTo).not.toHaveBeenCalled()
   })
 
-  it('uses the task id from aggregated item context for task navigation', async () => {
+  it('uses the task detail reference for task navigation', async () => {
     taroMocks.getMiniappScreen.mockResolvedValue(response({
       screen_id: 'S55',
       summary: { title: '任务列表' },
@@ -227,6 +227,7 @@ describe('BlueprintScreen aggregated loading', () => {
         description: '来自聚合接口',
         status: 'pending',
         context: { task_id: 42 },
+        detail_ref: { entity_type: 'task', entity_id: 42 },
       }],
     }))
 
@@ -234,7 +235,51 @@ describe('BlueprintScreen aggregated loading', () => {
     fireEvent.click(await screen.findByText('真实任务'))
 
     expect(taroMocks.storage.get('starhub-task-id')).toBe(42)
-    expect(taroMocks.redirectTo).toHaveBeenCalledWith({ url: '/pages/s56/index' })
+    expect(taroMocks.navigateTo).toHaveBeenCalledWith({
+      url: '/pages/entity-detail/index?entityType=task&entityId=42',
+    })
+  })
+
+  it('opens the unified detail page for a persisted list entity', async () => {
+    taroMocks.getMiniappScreen.mockResolvedValue(response({
+      screen_id: 'S04',
+      summary: { title: '发现演出' },
+      items: [{
+        id: 'show-3',
+        entity_type: 'show',
+        title: '真实演出',
+        description: '数据库演出',
+        status: 'on_sale',
+        context: { show_id: 3 },
+        detail_ref: { entity_type: 'show', entity_id: 3 },
+      }],
+    }))
+
+    render(<BlueprintScreen screenId='S04' />)
+    fireEvent.click(await screen.findByText('真实演出'))
+
+    expect(taroMocks.navigateTo).toHaveBeenCalledWith({
+      url: '/pages/entity-detail/index?entityType=show&entityId=3',
+    })
+  })
+
+  it('does not navigate when a derived list item has no detail reference', async () => {
+    taroMocks.getMiniappScreen.mockResolvedValue(response({
+      screen_id: 'S25',
+      summary: { title: '财务指标' },
+      items: [{
+        id: 'finance-profit',
+        entity_type: 'finance_metric',
+        title: '预计利润',
+        status: 'calculated',
+        context: { metric: 'profit' },
+      }],
+    }))
+
+    render(<BlueprintScreen screenId='S25' />)
+    fireEvent.click(await screen.findByText('预计利润'))
+
+    expect(taroMocks.navigateTo).not.toHaveBeenCalled()
   })
 
   it('stores the S52 default project before opening the agent plan', async () => {

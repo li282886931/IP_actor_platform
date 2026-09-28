@@ -10,6 +10,7 @@ const appConfigPath = resolve(root, 'src/app.config.ts')
 
 const screenIds = Array.from({ length: 84 }, (_, index) => `S${String(index + 1).padStart(2, '0')}`)
 const apiPaths = [
+  '/miniapp/entities/',
   '/auth/web-login',
   '/auth/wechat-login',
   '/user-groups',
@@ -157,7 +158,8 @@ test('provides a WeChat devtools dist app and all declared page entries', () => 
   assert.equal(existsSync(appJsonPath), true, 'dist/app.json is missing')
 
   const appJson = JSON.parse(readFileSync(appJsonPath, 'utf8'))
-  assert.equal(appJson.pages.length, 84)
+  assert.equal(appJson.pages.length, 85)
+  assert.equal(appJson.pages.includes('pages/entity-detail/index'), true)
 
   for (const pagePath of appJson.pages) {
     const pageDir = resolve(root, 'dist', pagePath)
@@ -165,6 +167,91 @@ test('provides a WeChat devtools dist app and all declared page entries', () => 
     assert.equal(existsSync(`${pageDir}.wxml`), true, `${pagePath}.wxml is missing`)
     assert.equal(existsSync(`${pageDir}.wxss`), true, `${pagePath}.wxss is missing`)
     assert.equal(existsSync(`${pageDir}.js`), true, `${pagePath}.js is missing`)
+  }
+})
+
+test('generated runtime opens and loads the unified entity detail page', async () => {
+  const runtimePath = resolve(root, 'dist/common/runtime.js')
+  const requests = []
+  const navigations = []
+  let listPage
+  let detailPage
+  globalThis.wx = {
+    getStorageSync: () => undefined,
+    request: (options) => {
+      requests.push(options)
+      const isDetail = options.url.endsWith('/miniapp/entities/show/3')
+      options.success({
+        statusCode: 200,
+        data: {
+          code: 0,
+          message: 'ok',
+          data: isDetail
+            ? {
+                entity_type: 'show',
+                entity_id: 3,
+                title: '真实演出',
+                status: 'on_sale',
+                fields: [{ key: 'venue', label: '场馆', value: '真实场馆' }],
+                sections: [],
+                related_items: [],
+                actions: [],
+              }
+            : {
+                screen_id: 'S04',
+                summary: { title: '发现演出' },
+                items: [{
+                  id: 'show-3',
+                  title: '真实演出',
+                  status: 'on_sale',
+                  context: { show_id: 3 },
+                  detail_ref: { entity_type: 'show', entity_id: 3 },
+                }],
+                options: {},
+                context: {},
+                empty_state: null,
+              },
+        },
+      })
+    },
+    navigateTo: ({ url }) => navigations.push(url),
+    navigateBack: () => {},
+    stopPullDownRefresh: () => {},
+  }
+  globalThis.Page = (definition) => {
+    const page = {
+      ...definition,
+      data: { ...definition.data },
+      setData(next, callback) {
+        this.data = { ...this.data, ...next }
+        callback?.()
+      },
+    }
+    if (definition.fetchDetail) detailPage = page
+    else listPage = page
+  }
+
+  const require = createRequire(import.meta.url)
+  delete require.cache[runtimePath]
+  try {
+    const runtime = require(runtimePath)
+    runtime.createScreenPage('S04')
+    await listPage.fetchRemote()
+    listPage.onBusinessItemTap({
+      currentTarget: { dataset: { entityType: 'show', entityId: 3 } },
+    })
+    assert.deepEqual(navigations, ['/pages/entity-detail/index?entityType=show&entityId=3'])
+
+    runtime.createEntityDetailPage()
+    detailPage.onLoad({ entityType: 'show', entityId: '3' })
+    await detailPage.fetchDetail()
+    assert.equal(detailPage.data.detail.title, '真实演出')
+    assert.equal(detailPage.data.detail.status, '售票中')
+    assert.equal(requests.some((item) => item.url.endsWith('/miniapp/entities/show/3')), true)
+  } finally {
+    delete globalThis.wx
+    delete globalThis.Page
+    delete require.cache[runtimePath]
   }
 })
 

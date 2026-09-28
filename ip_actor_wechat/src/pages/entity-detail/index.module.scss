@@ -1,0 +1,258 @@
+@use '@/styles/variables.scss' as *;
+
+.page {
+  min-height: 100vh;
+  color: $color-text-primary;
+  background: $color-bg-page;
+}
+
+.safeTop {
+  height: env(safe-area-inset-top);
+}
+
+.safeBottom {
+  height: calc(env(safe-area-inset-bottom) + 48rpx);
+}
+
+.topbar {
+  display: grid;
+  grid-template-columns: 72rpx 1fr 72rpx;
+  align-items: center;
+  min-height: 96rpx;
+  padding: 0 $page-padding;
+  background: $color-bg-card;
+  border-bottom: 1rpx solid $color-divider;
+}
+
+.backButton {
+  @include button-reset;
+  width: 64rpx;
+  height: 64rpx;
+  color: $color-text-primary;
+  background: transparent;
+}
+
+.backIcon {
+  font-size: 56rpx;
+  line-height: 1;
+}
+
+.pageTitle {
+  text-align: center;
+  font-size: $font-size-md;
+  font-weight: $font-weight-semibold;
+}
+
+.topbarSpacer {
+  width: 64rpx;
+}
+
+.media {
+  display: block;
+  width: 100%;
+  height: 420rpx;
+  background: #e9edf4;
+}
+
+.hero,
+.section,
+.statePanel {
+  width: calc(100% - 64rpx);
+  max-width: $max-content-width;
+  margin-right: auto;
+  margin-left: auto;
+  box-sizing: border-box;
+}
+
+.hero {
+  padding: 40rpx 0 32rpx;
+  border-bottom: 1rpx solid $color-border;
+}
+
+.entityType {
+  display: block;
+  color: $color-primary;
+  font-size: $font-size-xs;
+  font-weight: $font-weight-bold;
+  text-transform: uppercase;
+}
+
+.title {
+  display: block;
+  margin-top: 12rpx;
+  font-size: 42rpx;
+  font-weight: $font-weight-bold;
+  line-height: $line-height-tight;
+}
+
+.subtitle {
+  display: block;
+  margin-top: 14rpx;
+  color: $color-text-secondary;
+  font-size: $font-size-md;
+  line-height: $line-height-normal;
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 48rpx;
+  padding: 0 18rpx;
+  margin-top: 24rpx;
+  color: $color-primary-dark;
+  font-size: $font-size-xs;
+  font-weight: $font-weight-semibold;
+  background: #e8f0ff;
+  border-radius: $radius-round;
+}
+
+.section {
+  padding: 32rpx 0;
+  border-bottom: 1rpx solid $color-border;
+}
+
+.sectionTitle {
+  display: block;
+  margin-bottom: 24rpx;
+  font-size: $font-size-lg;
+  font-weight: $font-weight-bold;
+}
+
+.fieldGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24rpx 32rpx;
+}
+
+.field {
+  min-width: 0;
+}
+
+.fieldLabel,
+.fieldValue {
+  display: block;
+}
+
+.fieldLabel {
+  color: $color-text-tertiary;
+  font-size: $font-size-xs;
+}
+
+.fieldValue {
+  margin-top: 8rpx;
+  overflow-wrap: anywhere;
+  font-size: $font-size-md;
+  font-weight: $font-weight-medium;
+  line-height: $line-height-normal;
+  white-space: pre-wrap;
+}
+
+.sectionContent {
+  display: block;
+  color: $color-text-secondary;
+  font-size: $font-size-md;
+  line-height: $line-height-loose;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.relatedList {
+  border-top: 1rpx solid $color-divider;
+}
+
+.relatedItem {
+  display: flex;
+  gap: 24rpx;
+  align-items: center;
+  min-height: 112rpx;
+  border-bottom: 1rpx solid $color-divider;
+}
+
+.relatedText {
+  min-width: 0;
+  flex: 1;
+}
+
+.relatedTitle,
+.relatedSubtitle {
+  display: block;
+}
+
+.relatedTitle {
+  font-size: $font-size-md;
+  font-weight: $font-weight-semibold;
+}
+
+.relatedSubtitle {
+  margin-top: 6rpx;
+  color: $color-text-tertiary;
+  font-size: $font-size-sm;
+}
+
+.chevron {
+  color: $color-text-tertiary;
+  font-size: 44rpx;
+}
+
+.statePanel {
+  padding: 96rpx 0;
+  text-align: center;
+}
+
+.loadingBar {
+  width: 96rpx;
+  height: 8rpx;
+  margin: 0 auto 32rpx;
+  background: $color-primary;
+  border-radius: $radius-round;
+}
+
+.stateTitle,
+.stateDescription {
+  display: block;
+}
+
+.stateTitle {
+  font-size: $font-size-lg;
+  font-weight: $font-weight-bold;
+}
+
+.stateDescription {
+  margin-top: 16rpx;
+  color: $color-text-secondary;
+  font-size: $font-size-sm;
+}
+
+.stateActions {
+  display: flex;
+  gap: 16rpx;
+  justify-content: center;
+  margin-top: 32rpx;
+}
+
+.primaryButton,
+.secondaryButton {
+  @include button-reset;
+  min-width: 180rpx;
+  height: $button-height-md;
+  padding: 0 28rpx;
+  border-radius: $radius-button;
+  font-size: $font-size-sm;
+  font-weight: $font-weight-semibold;
+}
+
+.primaryButton {
+  color: $color-text-white;
+  background: $color-primary;
+}
+
+.secondaryButton {
+  color: $color-primary;
+  background: #e8f0ff;
+}
+
+@media (max-width: 360px) {
+  .fieldGrid {
+    grid-template-columns: 1fr;
+  }
+}

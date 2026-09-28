@@ -1,0 +1,64 @@
+<scroll-view class="detail-page" scroll-y>
+  <view class="detail-topbar">
+    <button class="detail-back" bindtap="onBack">‹</button>
+    <view class="detail-page-title">业务详情</view>
+    <view class="detail-spacer"></view>
+  </view>
+
+  <view wx:if="{{loadState === 'loading'}}" class="detail-state">
+    <view class="detail-loading-bar"></view>
+    <view class="detail-state-title">正在加载详情</view>
+  </view>
+
+  <view wx:elif="{{loadState === 'error'}}" class="detail-state">
+    <view class="detail-state-title">{{message}}</view>
+    <view class="detail-state-desc">返回上一页或重新读取最新数据。</view>
+    <view class="detail-state-actions">
+      <button class="detail-secondary" bindtap="onBack">返回</button>
+      <button class="detail-primary" bindtap="onRetry">重新加载</button>
+    </view>
+  </view>
+
+  <block wx:elif="{{detail}}">
+    <image wx:if="{{detail.media_url}}" class="detail-media" src="{{detail.media_url}}" mode="aspectFill" lazy-load />
+    <view class="detail-hero">
+      <view class="detail-type">{{detail.entity_type}}</view>
+      <view class="detail-title">{{detail.title}}</view>
+      <view wx:if="{{detail.subtitle}}" class="detail-subtitle">{{detail.subtitle}}</view>
+      <view wx:if="{{detail.status}}" class="detail-status">{{detail.status}}</view>
+    </view>
+
+    <view wx:if="{{detail.fields.length}}" class="detail-section">
+      <view class="detail-section-title">关键信息</view>
+      <view class="detail-fields">
+        <view wx:for="{{detail.fields}}" wx:key="key" class="detail-field">
+          <view class="detail-label">{{item.label}}</view>
+          <view class="detail-value">{{item.value}}</view>
+        </view>
+      </view>
+    </view>
+
+    <view wx:for="{{detail.sections}}" wx:key="key" class="detail-section">
+      <view class="detail-section-title">{{item.title}}</view>
+      <view class="detail-content">{{item.content}}</view>
+    </view>
+
+    <view wx:if="{{detail.related_items.length}}" class="detail-section">
+      <view class="detail-section-title">关联记录</view>
+      <view
+        wx:for="{{detail.related_items}}"
+        wx:key="title"
+        class="detail-related"
+        data-entity-type="{{item.detail_ref.entity_type}}"
+        data-entity-id="{{item.detail_ref.entity_id}}"
+        bindtap="onRelatedTap"
+      >
+        <view class="detail-related-main">
+          <view class="detail-related-title">{{item.title}}</view>
+          <view wx:if="{{item.subtitle}}" class="detail-related-subtitle">{{item.subtitle}}</view>
+        </view>
+        <view class="detail-related-chevron">›</view>
+      </view>
+    </view>
+  </block>
+</scroll-view>

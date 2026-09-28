@@ -42,12 +42,20 @@
       <view class="panel-title">业务记录</view>
       <view class="state {{loadState}}">{{loadState}}</view>
     </view>
-    <view wx:for="{{items}}" wx:key="id" class="item" data-id="{{item.entityId}}" bindtap="onBusinessItemTap">
+    <view
+      wx:for="{{items}}"
+      wx:key="id"
+      class="item"
+      data-entity-type="{{item.detailRef.entity_type}}"
+      data-entity-id="{{item.detailRef.entity_id}}"
+      bindtap="onBusinessItemTap"
+    >
       <view class="item-main">
         <view class="item-title">{{item.title}}</view>
         <view class="item-desc">{{item.description}}</view>
       </view>
       <view class="badge">{{item.status}}</view>
+      <view wx:if="{{item.detailRef}}" class="detail-chevron">›</view>
     </view>
   </view>
 

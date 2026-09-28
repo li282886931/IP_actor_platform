@@ -84,6 +84,7 @@ export default defineAppConfig({
     'pages/s82/index',
     'pages/s83/index',
     'pages/s84/index',
+    'pages/entity-detail/index',
   ],
   window: {
     backgroundTextStyle: 'light',

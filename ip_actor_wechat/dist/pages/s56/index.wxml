@@ -29,6 +29,13 @@
         <view wx:if="{{item.expanded}}" class="task-details">{{item.details || '暂无更多任务信息'}}</view>
       </view>
       <view class="badge">{{item.status}}</view>
+      <view
+        wx:if="{{item.detailRef}}"
+        class="detail-chevron"
+        data-entity-type="{{item.detailRef.entity_type}}"
+        data-entity-id="{{item.detailRef.entity_id}}"
+        catchtap="onBusinessItemTap"
+      >›</view>
     </view>
   </view>
 

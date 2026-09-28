@@ -65,7 +65,7 @@ mkdirSync(resolve(dist, 'common'), { recursive: true })
 mkdirSync(resolve(dist, 'assets/tabbar'), { recursive: true })
 
 writeFileSync(resolve(dist, 'app.json'), `${JSON.stringify({
-  pages: screens.map(([id]) => pagePath(id)),
+  pages: [...screens.map(([id]) => pagePath(id)), 'pages/entity-detail/index'],
   window: {
     backgroundTextStyle: 'light',
     navigationBarBackgroundColor: '#ffffff',
@@ -165,7 +165,8 @@ const normalizeItems = (values) => {
     description: String(value.description || ''),
     status: statusLabel(String(value.status || '')),
     value: value.value == null ? '' : String(value.value),
-    details: String(value.details || '')
+    details: String(value.details || ''),
+    detailRef: value.detail_ref || null
   }))
 }
 
@@ -485,11 +486,13 @@ const createScreenPage = (screenId) => {
       })
     },
     onBusinessItemTap(event) {
-      if (screenId !== 'S55') return
-      const taskId = Number(event.currentTarget.dataset.id || 0)
-      if (!taskId) return
-      wx.setStorageSync(STORAGE_KEYS.taskId, taskId)
-      wx.redirectTo({ url: routeFor('S56') })
+      const entityType = String(event.currentTarget.dataset.entityType || '')
+      const entityId = Number(event.currentTarget.dataset.entityId || 0)
+      if (!entityType || !entityId) return
+      if (entityType === 'task') wx.setStorageSync(STORAGE_KEYS.taskId, entityId)
+      wx.navigateTo({
+        url: '/pages/entity-detail/index?entityType=' + encodeURIComponent(entityType) + '&entityId=' + entityId
+      })
     },
     goNext() {
       const hasProject = Number(wx.getStorageSync(STORAGE_KEYS.projectId) || 0) > 0
@@ -503,7 +506,63 @@ const createScreenPage = (screenId) => {
   })
 }
 
-module.exports = { createScreenPage }
+const createEntityDetailPage = () => Page({
+  data: {
+    entityType: '',
+    entityId: 0,
+    detail: null,
+    loadState: 'loading',
+    message: ''
+  },
+  onLoad(options) {
+    this.setData({
+      entityType: String(options.entityType || ''),
+      entityId: Number(options.entityId || 0)
+    })
+    return this.fetchDetail()
+  },
+  fetchDetail() {
+    if (!this.data.entityType || !this.data.entityId) {
+      this.setData({ loadState: 'error', message: '详情参数不完整' })
+      return Promise.resolve()
+    }
+    this.setData({ loadState: 'loading', message: '' })
+    return request(
+      '/miniapp/entities/' + encodeURIComponent(this.data.entityType) + '/' + this.data.entityId
+    ).then((detail) => {
+      this.setData({
+        detail: Object.assign({}, detail, { status: statusLabel(String(detail.status || '')) }),
+        loadState: 'success'
+      })
+    }).catch((error) => {
+      console.error('[EntityDetail] load failed', error)
+      const message = String(error && error.message || '')
+      this.setData({
+        detail: null,
+        loadState: 'error',
+        message: message === 'HTTP_403' || message === 'HTTP_404'
+          ? '详情不存在或无权查看'
+          : '详情加载失败，请重试'
+      })
+    })
+  },
+  onRetry() {
+    return this.fetchDetail()
+  },
+  onBack() {
+    wx.navigateBack()
+  },
+  onRelatedTap(event) {
+    const entityType = String(event.currentTarget.dataset.entityType || '')
+    const entityId = Number(event.currentTarget.dataset.entityId || 0)
+    if (!entityType || !entityId) return
+    wx.navigateTo({
+      url: '/pages/entity-detail/index?entityType=' + encodeURIComponent(entityType) + '&entityId=' + entityId
+    })
+  }
+})
+
+module.exports = { createScreenPage, createEntityDetailPage }
 `)
 
 const wxml = `<view class="page">
@@ -532,12 +591,20 @@ const wxml = `<view class="page">
 </view>
 `
 
-const defaultBusinessItemsWxml = `<view wx:for="{{items}}" wx:key="id" class="item" data-id="{{item.entityId}}" bindtap="onBusinessItemTap">
+const defaultBusinessItemsWxml = `<view
+      wx:for="{{items}}"
+      wx:key="id"
+      class="item"
+      data-entity-type="{{item.detailRef.entity_type}}"
+      data-entity-id="{{item.detailRef.entity_id}}"
+      bindtap="onBusinessItemTap"
+    >
       <view class="item-main">
         <view class="item-title">{{item.title}}</view>
         <view class="item-desc">{{item.description}}</view>
       </view>
       <view class="badge">{{item.status}}</view>
+      <view wx:if="{{item.detailRef}}" class="detail-chevron">›</view>
     </view>`
 
 const taskBusinessItemsWxml = `<view class="task-selection">已选择 {{selectedTaskIds.length}} 项任务</view>
@@ -553,6 +620,13 @@ const taskBusinessItemsWxml = `<view class="task-selection">已选择 {{selected
         <view wx:if="{{item.expanded}}" class="task-details">{{item.details || '暂无更多任务信息'}}</view>
       </view>
       <view class="badge">{{item.status}}</view>
+      <view
+        wx:if="{{item.detailRef}}"
+        class="detail-chevron"
+        data-entity-type="{{item.detailRef.entity_type}}"
+        data-entity-id="{{item.detailRef.entity_id}}"
+        catchtap="onBusinessItemTap"
+      >›</view>
     </view>`
 
 const defaultActionsWxml = `<block wx:if="{{screen.id === 'S01'}}">
@@ -715,6 +789,12 @@ const wxss = `.page {
   background: #edf4ff;
   font-size: 22rpx;
 }
+.detail-chevron {
+  flex: 0 0 auto;
+  color: #8893a7;
+  font-size: 40rpx;
+  line-height: 1;
+}
 .message {
   margin-top: 24rpx;
   padding: 20rpx 24rpx;
@@ -866,6 +946,250 @@ const taskWxss = `.task-selection {
 }
 `
 
+const entityDetailWxml = `<scroll-view class="detail-page" scroll-y>
+  <view class="detail-topbar">
+    <button class="detail-back" bindtap="onBack">‹</button>
+    <view class="detail-page-title">业务详情</view>
+    <view class="detail-spacer"></view>
+  </view>
+
+  <view wx:if="{{loadState === 'loading'}}" class="detail-state">
+    <view class="detail-loading-bar"></view>
+    <view class="detail-state-title">正在加载详情</view>
+  </view>
+
+  <view wx:elif="{{loadState === 'error'}}" class="detail-state">
+    <view class="detail-state-title">{{message}}</view>
+    <view class="detail-state-desc">返回上一页或重新读取最新数据。</view>
+    <view class="detail-state-actions">
+      <button class="detail-secondary" bindtap="onBack">返回</button>
+      <button class="detail-primary" bindtap="onRetry">重新加载</button>
+    </view>
+  </view>
+
+  <block wx:elif="{{detail}}">
+    <image wx:if="{{detail.media_url}}" class="detail-media" src="{{detail.media_url}}" mode="aspectFill" lazy-load />
+    <view class="detail-hero">
+      <view class="detail-type">{{detail.entity_type}}</view>
+      <view class="detail-title">{{detail.title}}</view>
+      <view wx:if="{{detail.subtitle}}" class="detail-subtitle">{{detail.subtitle}}</view>
+      <view wx:if="{{detail.status}}" class="detail-status">{{detail.status}}</view>
+    </view>
+
+    <view wx:if="{{detail.fields.length}}" class="detail-section">
+      <view class="detail-section-title">关键信息</view>
+      <view class="detail-fields">
+        <view wx:for="{{detail.fields}}" wx:key="key" class="detail-field">
+          <view class="detail-label">{{item.label}}</view>
+          <view class="detail-value">{{item.value}}</view>
+        </view>
+      </view>
+    </view>
+
+    <view wx:for="{{detail.sections}}" wx:key="key" class="detail-section">
+      <view class="detail-section-title">{{item.title}}</view>
+      <view class="detail-content">{{item.content}}</view>
+    </view>
+
+    <view wx:if="{{detail.related_items.length}}" class="detail-section">
+      <view class="detail-section-title">关联记录</view>
+      <view
+        wx:for="{{detail.related_items}}"
+        wx:key="title"
+        class="detail-related"
+        data-entity-type="{{item.detail_ref.entity_type}}"
+        data-entity-id="{{item.detail_ref.entity_id}}"
+        bindtap="onRelatedTap"
+      >
+        <view class="detail-related-main">
+          <view class="detail-related-title">{{item.title}}</view>
+          <view wx:if="{{item.subtitle}}" class="detail-related-subtitle">{{item.subtitle}}</view>
+        </view>
+        <view class="detail-related-chevron">›</view>
+      </view>
+    </view>
+  </block>
+</scroll-view>`
+
+const entityDetailWxss = `.detail-page {
+  min-height: 100vh;
+  color: #172033;
+  background: #f4f6f9;
+}
+.detail-topbar {
+  display: grid;
+  grid-template-columns: 72rpx 1fr 72rpx;
+  align-items: center;
+  min-height: 96rpx;
+  padding: env(safe-area-inset-top) 32rpx 0;
+  background: #fff;
+  border-bottom: 1rpx solid #edf0f5;
+}
+.detail-back {
+  width: 64rpx;
+  height: 64rpx;
+  padding: 0;
+  margin: 0;
+  color: #172033;
+  background: transparent;
+  font-size: 56rpx;
+  line-height: 58rpx;
+}
+.detail-page-title {
+  text-align: center;
+  font-size: 28rpx;
+  font-weight: 600;
+}
+.detail-media {
+  display: block;
+  width: 100%;
+  height: 420rpx;
+  background: #e9edf4;
+}
+.detail-hero,
+.detail-section,
+.detail-state {
+  width: calc(100% - 64rpx);
+  margin: 0 auto;
+  box-sizing: border-box;
+}
+.detail-hero {
+  padding: 40rpx 0 32rpx;
+  border-bottom: 1rpx solid #dce2ec;
+}
+.detail-type {
+  color: #2864dc;
+  font-size: 22rpx;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.detail-title {
+  margin-top: 12rpx;
+  font-size: 42rpx;
+  font-weight: 700;
+  line-height: 1.3;
+}
+.detail-subtitle {
+  margin-top: 14rpx;
+  color: #566176;
+  font-size: 28rpx;
+  line-height: 1.5;
+}
+.detail-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 48rpx;
+  padding: 0 18rpx;
+  margin-top: 24rpx;
+  color: #1748a7;
+  background: #e8f0ff;
+  border-radius: 999rpx;
+  font-size: 22rpx;
+  font-weight: 600;
+}
+.detail-section {
+  padding: 32rpx 0;
+  border-bottom: 1rpx solid #dce2ec;
+}
+.detail-section-title {
+  margin-bottom: 24rpx;
+  font-size: 32rpx;
+  font-weight: 700;
+}
+.detail-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24rpx 32rpx;
+}
+.detail-label {
+  color: #8893a7;
+  font-size: 22rpx;
+}
+.detail-value {
+  margin-top: 8rpx;
+  color: #172033;
+  font-size: 28rpx;
+  font-weight: 500;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.detail-content {
+  color: #566176;
+  font-size: 28rpx;
+  line-height: 1.8;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.detail-related {
+  display: flex;
+  align-items: center;
+  min-height: 112rpx;
+  border-top: 1rpx solid #edf0f5;
+}
+.detail-related-main {
+  min-width: 0;
+  flex: 1;
+}
+.detail-related-title {
+  font-size: 28rpx;
+  font-weight: 600;
+}
+.detail-related-subtitle {
+  margin-top: 6rpx;
+  color: #8893a7;
+  font-size: 24rpx;
+}
+.detail-related-chevron {
+  color: #8893a7;
+  font-size: 44rpx;
+}
+.detail-state {
+  padding: 96rpx 0;
+  text-align: center;
+}
+.detail-loading-bar {
+  width: 96rpx;
+  height: 8rpx;
+  margin: 0 auto 32rpx;
+  background: #2864dc;
+  border-radius: 999rpx;
+}
+.detail-state-title {
+  font-size: 32rpx;
+  font-weight: 700;
+}
+.detail-state-desc {
+  margin-top: 16rpx;
+  color: #566176;
+  font-size: 24rpx;
+}
+.detail-state-actions {
+  display: flex;
+  gap: 16rpx;
+  justify-content: center;
+  margin-top: 32rpx;
+}
+.detail-primary,
+.detail-secondary {
+  min-width: 180rpx;
+  height: 80rpx;
+  padding: 0 28rpx;
+  margin: 0;
+  border-radius: 999rpx;
+  font-size: 24rpx;
+  font-weight: 600;
+}
+.detail-primary {
+  color: #fff;
+  background: #2864dc;
+}
+.detail-secondary {
+  color: #2864dc;
+  background: #e8f0ff;
+}
+`
+
 const transparentPng = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=',
   'base64',
@@ -896,4 +1220,17 @@ createScreenPage('${id}')
 `)
 }
 
-console.log(`Generated WeChat devtools dist with ${screens.length} pages.`)
+const detailPageDir = resolve(dist, 'pages/entity-detail')
+mkdirSync(detailPageDir, { recursive: true })
+writeFileSync(resolve(detailPageDir, 'index.json'), `${JSON.stringify({
+  navigationBarTitleText: '业务详情',
+  navigationStyle: 'custom',
+}, null, 2)}\n`)
+writeFileSync(resolve(detailPageDir, 'index.wxml'), entityDetailWxml)
+writeFileSync(resolve(detailPageDir, 'index.wxss'), entityDetailWxss)
+writeFileSync(resolve(detailPageDir, 'index.js'), `const { createEntityDetailPage } = require('../../common/runtime')
+
+createEntityDetailPage()
+`)
+
+console.log(`Generated WeChat devtools dist with ${screens.length} blueprint pages and one entity detail page.`)
