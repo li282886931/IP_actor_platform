@@ -429,7 +429,7 @@ export const screenDefinitions: Record<string, ScreenDefinition> = {
     title: '本周项目推进计划',
     subtitle: 'Agent 建议 / 计划 V3',
     group: 'Agent',
-    primaryAction: '确认并派发 3 项任务',
+    primaryAction: '确认派发任务',
     highlight: '待负责人确认',
   },
   S54: {

@@ -108,6 +108,16 @@ test('configures the four primary tabs from the blueprint', () => {
   }
 })
 
+test('uses concise task dispatch copy on S53', () => {
+  const screenSource = readFileSync(resolve(root, 'src/data/screens.ts'), 'utf8')
+  const generatedScreens = readFileSync(resolve(root, 'dist/common/screens.js'), 'utf8')
+
+  for (const source of [screenSource, generatedScreens]) {
+    assert.match(source, /确认派发任务/)
+    assert.doesNotMatch(source, /确认并派发 3 项任务/)
+  }
+})
+
 test('maps every existing FastAPI capability in the mini program API service', () => {
   const apiPath = resolve(root, 'src/services/api.ts')
   assert.equal(existsSync(apiPath), true, 'src/services/api.ts is missing')
