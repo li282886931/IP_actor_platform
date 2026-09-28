@@ -535,7 +535,7 @@ export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
         const analysis = await api.createProjectAnalysisJob(projectId, { purpose: 'agent_recommendation' })
         const analysisResult = asRecord(asRecord(analysis).result)
         const answer = await api.agentChat({ project_id: projectId, message: form.question || '下一步应该优先处理什么？' })
-        setMessage(`${textValue(asRecord(answer), ['answer'], 'Agent 已生成下一步建议')}｜推荐动作：${textValue(analysisResult, ['recommendation'], '待负责人核验')}`)
+        setMessage(`${textValue(asRecord(answer), ['answer'], '工作建议已生成')}｜推荐动作：${textValue(analysisResult, ['recommendation'], '待负责人核验')}`)
       } else if (screenId === 'S57') {
         if (!activeTaskId) throw new Error('TASK_NOT_SELECTED')
         await api.submitTask(activeTaskId, { result: form.result || '已提交任务结果', evidence_ids: [] })

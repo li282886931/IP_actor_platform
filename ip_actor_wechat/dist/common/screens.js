@@ -10,7 +10,7 @@ const screens = {
   "S02": {
     "id": "S02",
     "title": "选择客户空间",
-    "subtitle": "项目、资料与 Agent 均按客户隔离",
+    "subtitle": "项目、资料与工作均按客户隔离",
     "group": "认证",
     "primaryAction": "进入星河演出",
     "highlight": ""
@@ -410,24 +410,24 @@ const screens = {
   "S52": {
     "id": "S52",
     "title": "今天最值得处理的事",
-    "subtitle": "星河演出 / 专职 Agent",
-    "group": "Agent",
+    "subtitle": "星河演出 / 专职工作",
+    "group": "工作",
     "primaryAction": "查看今日计划",
     "highlight": ""
   },
   "S53": {
     "id": "S53",
     "title": "本周项目推进计划",
-    "subtitle": "Agent 建议 / 计划 V3",
-    "group": "Agent",
+    "subtitle": "工作建议 / 计划 V3",
+    "group": "工作",
     "primaryAction": "确认派发任务",
     "highlight": ""
   },
   "S54": {
     "id": "S54",
-    "title": "和项目 Agent 一起推演",
+    "title": "和项目工作一起推演",
     "subtitle": "当前范围：南京站 / V1",
-    "group": "Agent",
+    "group": "工作",
     "primaryAction": "发送问题",
     "highlight": ""
   },
@@ -467,15 +467,15 @@ const screens = {
     "id": "S59",
     "title": "场馆报价发生变化",
     "subtitle": "原 V1 确认继续作为历史记录",
-    "group": "Agent",
+    "group": "工作",
     "primaryAction": "查看新版测算与计划",
     "highlight": ""
   },
   "S60": {
     "id": "S60",
-    "title": "你的 Agent 可以做什么",
+    "title": "你的工作可以做什么",
     "subtitle": "高风险动作始终由负责人确认",
-    "group": "Agent",
+    "group": "工作",
     "primaryAction": "保存授权范围",
     "highlight": ""
   },

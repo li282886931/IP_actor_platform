@@ -112,7 +112,7 @@
       },
       {
         "pagePath": "pages/s52/index",
-        "text": "Agent",
+        "text": "工作",
         "iconPath": "assets/tabbar/agent.png",
         "selectedIconPath": "assets/tabbar/agent-selected.png"
       },

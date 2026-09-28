@@ -2032,7 +2032,9 @@ def test_agent_screens_aggregate_current_user_tasks_and_analysis_jobs(monkeypatc
     assert data_by_screen["S54"]["options"]["latest_analysis"]["id"] == analysis_id
     assert data_by_screen["S54"]["options"]["latest_analysis"]["result"]["recommendation"] == "conditional_advance"
     assert data_by_screen["S60"]["items"] == []
-    assert data_by_screen["S60"]["empty_state"]["title"] == "暂无 Agent 权限配置"
+    assert data_by_screen["S60"]["summary"]["title"] == "工作权限"
+    assert data_by_screen["S60"]["summary"]["subtitle"] == "当前用户已保存的工作授权"
+    assert data_by_screen["S60"]["empty_state"]["title"] == "暂无工作权限配置"
 
 
 def test_agent_dashboard_returns_latest_tenant_project_as_default_context(monkeypatch):
@@ -2708,6 +2710,7 @@ def test_account_collaboration_and_privacy_screens_read_scoped_saved_state(monke
     assert responses["S02"]["items"][0]["context"]["tenant_id"] == tenant.id
     assert responses["S03"]["items"][0]["context"]["scope"] == "profile"
     assert responses["S60"]["items"][0]["context"]["capability"] == "project_analysis"
+    assert responses["S71"]["summary"]["subtitle"] == "隐私授权与工作能力"
     assert responses["S67"]["options"]["user"]["id"] == user.id
     assert {item["context"]["user_id"] for item in responses["S68"]["items"]} == {
         user.id,

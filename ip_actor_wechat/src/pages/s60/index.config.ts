@@ -1,3 +1,3 @@
 export default definePageConfig({
-  navigationBarTitleText: '你的 Agent 可以做什么',
+  navigationBarTitleText: '你的工作可以做什么',
 })

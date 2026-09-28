@@ -108,6 +108,20 @@ test('configures the four primary tabs from the blueprint', () => {
   }
 })
 
+test('labels user-facing agent work areas as 工作', () => {
+  const manifest = readFileSync(resolve(root, 'tools/blueprint-manifest.mjs'), 'utf8')
+  const screenSource = readFileSync(resolve(root, 'src/data/screens.ts'), 'utf8')
+  const config = readFileSync(appConfigPath, 'utf8')
+  const generatedScreens = readFileSync(resolve(root, 'dist/common/screens.js'), 'utf8')
+  const generatedConfig = readFileSync(resolve(root, 'dist/app.json'), 'utf8')
+
+  for (const source of [manifest, screenSource, config, generatedScreens, generatedConfig]) {
+    assert.doesNotMatch(source, /Agent/)
+  }
+  assert.match(config, /text: '工作'/)
+  assert.match(generatedConfig, /"text": "工作"/)
+})
+
 test('uses concise task dispatch copy on S53', () => {
   const screenSource = readFileSync(resolve(root, 'src/data/screens.ts'), 'utf8')
   const generatedScreens = readFileSync(resolve(root, 'dist/common/screens.js'), 'utf8')

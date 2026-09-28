@@ -112,7 +112,7 @@ export default defineAppConfig({
       },
       {
         pagePath: 'pages/s52/index',
-        text: 'Agent',
+        text: '工作',
         iconPath: 'assets/tabbar/agent.svg',
         selectedIconPath: 'assets/tabbar/agent-selected.svg',
       },

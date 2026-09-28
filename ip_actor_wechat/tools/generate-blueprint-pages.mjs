@@ -64,7 +64,7 @@ const allRoutes = screens.map(([id]) => `    '${routeFor(id).slice(1)}',`).join(
 const tabItems = [
   ['S04', '发现', 'discover'],
   ['S10', '项目', 'project'],
-  ['S52', 'Agent', 'agent'],
+  ['S52', '工作', 'agent'],
   ['S67', '我的', 'profile'],
 ].map(([id, text, icon]) => `      {
         pagePath: '${routeFor(id).slice(1)}',
@@ -115,4 +115,3 @@ for (const [name, body] of Object.entries(icons)) {
 }
 
 console.log(`Generated ${screens.length} screens and ${tabScreens.length} tab pages.`)
-

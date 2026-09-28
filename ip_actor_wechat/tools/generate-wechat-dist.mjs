@@ -25,7 +25,7 @@ const runtimeConfig = {
 const tabItems = [
   ['S04', '发现', 'discover'],
   ['S10', '项目', 'project'],
-  ['S52', 'Agent', 'agent'],
+  ['S52', '工作', 'agent'],
   ['S67', '我的', 'profile'],
 ]
 

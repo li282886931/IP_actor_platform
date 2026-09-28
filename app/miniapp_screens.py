@@ -2373,7 +2373,7 @@ def _account_screen(
         ).order_by(AgentPermission.capability.asc()).all()
         return {
             "screen_id": screen_id,
-            "summary": {"title": "数据权限", "subtitle": "隐私授权与 Agent 能力", "highlight": str(len(consents) + len(permissions))},
+            "summary": {"title": "数据权限", "subtitle": "隐私授权与工作能力", "highlight": str(len(consents) + len(permissions))},
             "items": [],
             "options": {
                 "privacy_consents": [_privacy_payload(consent) for consent in consents],
@@ -2494,8 +2494,8 @@ def _agent_permissions_screen(db: Session, context: ScreenRequestContext) -> dic
     return {
         "screen_id": "S60",
         "summary": {
-            "title": "Agent 权限",
-            "subtitle": "当前用户已保存的 Agent 授权",
+            "title": "工作权限",
+            "subtitle": "当前用户已保存的工作授权",
             "highlight": str(sum(bool(permission.enabled) for permission in permissions)),
         },
         "items": [
@@ -2520,8 +2520,8 @@ def _agent_permissions_screen(db: Session, context: ScreenRequestContext) -> dic
         },
         "context": _screen_context(context),
         "empty_state": _empty_state(
-            "暂无 Agent 权限配置",
-            "配置独立 Agent 权限后将在这里展示",
+            "暂无工作权限配置",
+            "配置独立工作权限后将在这里展示",
         ) if not permissions else None,
     }
 
