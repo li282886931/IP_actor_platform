@@ -104,6 +104,7 @@ const createScreenPage = (screenId) => {
       candidateSearchGroups: [],
       candidateSearchOpen: false,
       candidateSearchLoading: false,
+      showHome: screenId !== 'S01' && !tabs.includes(screenId),
       selectedTaskIds: screenId === 'S56' && initialTaskId ? [initialTaskId] : [],
       expandedTaskIds: screenId === 'S56' && initialTaskId ? [initialTaskId] : [],
       isForm: ['S09','S13','S14','S15','S16','S17','S25','S36','S37','S41','S45','S47','S51','S54','S57','S65','S72','S79','S82'].includes(screenId)
@@ -428,6 +429,14 @@ const createScreenPage = (screenId) => {
       wx.navigateTo({
         url: '/pages/entity-detail/index?entityType=' + encodeURIComponent(entityType) + '&entityId=' + entityId
       })
+    },
+    onHomeTap() {
+      const token = String(wx.getStorageSync(STORAGE_KEYS.token) || '')
+      if (token) {
+        wx.switchTab({ url: routeFor('S04') })
+        return
+      }
+      wx.redirectTo({ url: routeFor('S01') })
     },
     goNext() {
       const hasProject = Number(wx.getStorageSync(STORAGE_KEYS.projectId) || 0) > 0

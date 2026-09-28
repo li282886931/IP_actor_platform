@@ -178,6 +178,46 @@ describe('BlueprintScreen aggregated loading', () => {
     })
   })
 
+  it('returns an authenticated non-tab page to discovery from the home control', async () => {
+    taroMocks.storage.set('starhub-token', 'session-token')
+    taroMocks.getMiniappScreen.mockResolvedValue(response({
+      screen_id: 'S14',
+      summary: { title: '地点与时间' },
+      items: [],
+    }))
+
+    render(<BlueprintScreen screenId='S14' />)
+    fireEvent.click(await screen.findByRole('button', { name: '主页' }))
+
+    expect(taroMocks.switchTab).toHaveBeenCalledWith({ url: '/pages/s04/index' })
+  })
+
+  it('routes an unauthenticated non-tab page to login from the home control', async () => {
+    taroMocks.getMiniappScreen.mockResolvedValue(response({
+      screen_id: 'S14',
+      summary: { title: '地点与时间' },
+      items: [],
+    }))
+
+    render(<BlueprintScreen screenId='S14' />)
+    fireEvent.click(await screen.findByRole('button', { name: '主页' }))
+
+    expect(taroMocks.redirectTo).toHaveBeenCalledWith({ url: '/pages/s01/index' })
+  })
+
+  it('does not show the home control on a tab page', async () => {
+    taroMocks.getMiniappScreen.mockResolvedValue(response({
+      screen_id: 'S04',
+      summary: { title: '发现演出' },
+      items: [],
+    }))
+
+    render(<BlueprintScreen screenId='S04' />)
+    await screen.findByText('发现演出')
+
+    expect(screen.queryByRole('button', { name: '主页' })).not.toBeInTheDocument()
+  })
+
   it('clears items from the previous screen before the next request resolves', async () => {
     let resolveNext: ((value: MiniappScreenData) => void) | undefined
     taroMocks.getMiniappScreen

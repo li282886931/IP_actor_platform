@@ -351,6 +351,47 @@ test('generated runtime applies a database venue candidate patch to the project 
   }
 })
 
+test('generated runtime routes the home control by session state', () => {
+  const runtimePath = resolve(root, 'dist/common/runtime.js')
+  const storage = new Map([['starhub-token', 'session-token']])
+  const navigations = []
+  let page
+  globalThis.wx = {
+    getStorageSync: (key) => storage.get(key),
+    switchTab: ({ url }) => navigations.push(['tab', url]),
+    redirectTo: ({ url }) => navigations.push(['redirect', url]),
+  }
+  globalThis.Page = (definition) => {
+    page = {
+      ...definition,
+      data: { ...definition.data },
+      setData(next, callback) {
+        this.data = { ...this.data, ...next }
+        callback?.()
+      },
+    }
+  }
+
+  const require = createRequire(import.meta.url)
+  delete require.cache[runtimePath]
+  try {
+    require(runtimePath).createScreenPage('S14')
+    assert.equal(page.data.showHome, true)
+    page.onHomeTap()
+    storage.delete('starhub-token')
+    page.onHomeTap()
+
+    assert.deepEqual(navigations, [
+      ['tab', '/pages/s04/index'],
+      ['redirect', '/pages/s01/index'],
+    ])
+  } finally {
+    delete globalThis.wx
+    delete globalThis.Page
+    delete require.cache[runtimePath]
+  }
+})
+
 test('stores the tenant and refreshed token returned by tenant switching', () => {
   const source = readFileSync(resolve(root, 'src/components/BlueprintScreen/index.tsx'), 'utf8')
 

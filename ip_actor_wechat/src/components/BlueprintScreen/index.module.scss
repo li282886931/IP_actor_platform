@@ -26,6 +26,27 @@
   box-sizing: border-box;
 }
 
+.homeButton {
+  @include button-reset;
+  min-width: 88rpx;
+  height: 64rpx;
+  padding: 0 16rpx;
+  margin: 0 16rpx 0 0;
+  color: $color-primary;
+  font-size: $font-size-sm;
+  font-weight: $font-weight-semibold;
+  line-height: 64rpx;
+  white-space: nowrap;
+  background: #e8f0ff;
+  border: 1rpx solid #d3e1ff;
+  border-radius: $radius-button;
+
+  &:active {
+    opacity: .82;
+    transform: scale(.98);
+  }
+}
+
 .brand {
   display: flex;
   gap: 16rpx;

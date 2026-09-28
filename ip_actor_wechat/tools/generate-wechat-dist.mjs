@@ -28,6 +28,7 @@ const tabItems = [
   ['S52', '工作', 'agent'],
   ['S67', '我的', 'profile'],
 ]
+const tabScreenIds = new Set(tabItems.map(([screenId]) => screenId))
 
 const nextScreen = {
   S01: 'S02', S02: 'S03', S03: 'S04', S04: 'S13', S05: 'S11', S06: 'S07',
@@ -227,6 +228,7 @@ const createScreenPage = (screenId) => {
       candidateSearchGroups: [],
       candidateSearchOpen: false,
       candidateSearchLoading: false,
+      showHome: screenId !== 'S01' && !tabs.includes(screenId),
       selectedTaskIds: screenId === 'S56' && initialTaskId ? [initialTaskId] : [],
       expandedTaskIds: screenId === 'S56' && initialTaskId ? [initialTaskId] : [],
       isForm: ['S09','S13','S14','S15','S16','S17','S25','S36','S37','S41','S45','S47','S51','S54','S57','S65','S72','S79','S82'].includes(screenId)
@@ -552,6 +554,14 @@ const createScreenPage = (screenId) => {
         url: '/pages/entity-detail/index?entityType=' + encodeURIComponent(entityType) + '&entityId=' + entityId
       })
     },
+    onHomeTap() {
+      const token = String(wx.getStorageSync(STORAGE_KEYS.token) || '')
+      if (token) {
+        wx.switchTab({ url: routeFor('S04') })
+        return
+      }
+      wx.redirectTo({ url: routeFor('S01') })
+    },
     goNext() {
       const hasProject = Number(wx.getStorageSync(STORAGE_KEYS.projectId) || 0) > 0
       const target = ['S52', 'S74'].includes(screenId) && !hasProject
@@ -623,7 +633,7 @@ const createEntityDetailPage = () => Page({
 module.exports = { createScreenPage, createEntityDetailPage }
 `)
 
-const wxml = `<view class="page">
+const wxml = `<view class="page">__HOME_BUTTON__
   <view class="hero">
     <view class="eyebrow">{{screen.group}} · {{screen.id}}</view>
     <view class="title">{{screen.title}}</view>
@@ -892,6 +902,24 @@ const wxss = `.page {
   background: linear-gradient(135deg, #2864dc 0%, #0e42a8 100%);
   font-size: 30rpx;
   font-weight: 700;
+}
+`
+
+const homeWxss = `.home-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 88rpx;
+  height: 64rpx;
+  padding: 0 16rpx;
+  margin: 24rpx 0 0 32rpx;
+  color: #2864dc;
+  font-size: 24rpx;
+  font-weight: 600;
+  line-height: 64rpx;
+  background: #e8f0ff;
+  border: 1rpx solid #d3e1ff;
+  border-radius: 32rpx;
 }
 `
 
@@ -1349,11 +1377,14 @@ for (const [id, title] of screens) {
   writeFileSync(
     resolve(pageDir, 'index.wxml'),
     wxml
+      .replace('__HOME_BUTTON__', id !== 'S01' && !tabScreenIds.has(id)
+        ? '\n  <button class="home-button" bindtap="onHomeTap">主页</button>'
+        : '')
       .replace('__PROJECT_SEARCH__', ['S13', 'S14', 'S15', 'S16'].includes(id) ? projectSearchWxml : '')
       .replace('__BUSINESS_ITEMS__', id === 'S56' ? taskBusinessItemsWxml : defaultBusinessItemsWxml)
       .replace('__PAGE_ACTIONS__', id === 'S56' ? taskActionsWxml : defaultActionsWxml),
   )
-  writeFileSync(resolve(pageDir, 'index.wxss'), `${wxss}${['S13', 'S14', 'S15', 'S16'].includes(id) ? projectSearchWxss : ''}${id === 'S56' ? taskWxss : ''}`)
+  writeFileSync(resolve(pageDir, 'index.wxss'), `${wxss}${id !== 'S01' && !tabScreenIds.has(id) ? homeWxss : ''}${['S13', 'S14', 'S15', 'S16'].includes(id) ? projectSearchWxss : ''}${id === 'S56' ? taskWxss : ''}`)
   writeFileSync(resolve(pageDir, 'index.js'), `const { createScreenPage } = require('../../common/runtime')
 
 createScreenPage('${id}')

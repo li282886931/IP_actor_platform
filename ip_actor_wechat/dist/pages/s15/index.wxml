@@ -1,4 +1,5 @@
 <view class="page">
+  <button class="home-button" bindtap="onHomeTap">主页</button>
   <view class="hero">
     <view class="eyebrow">{{screen.group}} · {{screen.id}}</view>
     <view class="title">{{screen.title}}</view>

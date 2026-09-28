@@ -727,11 +727,25 @@ export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
   }
 
   const secondaryTarget = screenId === 'S01' ? 'S06' : screenId === 'S10' ? 'S80' : screenId === 'S47' ? 'S35' : ''
+  const showHomeControl = screenId !== 'S01' && !tabIds.has(screenId)
+  const goHome = async () => {
+    const token = String(Taro.getStorageSync<string>(STORAGE_KEYS.token) || '')
+    if (token) {
+      await Taro.switchTab({ url: routeFor('S04') })
+      return
+    }
+    await Taro.redirectTo({ url: routeFor('S01') })
+  }
 
   return (
     <ScrollView className={styles.page} scrollY enhanced showScrollbar={false}>
       <View className={styles.safeTop} />
       <View className={styles.topbar}>
+        {showHomeControl && (
+          <Button className={styles.homeButton} onClick={() => void goHome()}>
+            主页
+          </Button>
+        )}
         <View className={styles.brand}>
           <View className={styles.brandMark}>R</View>
           <View>
