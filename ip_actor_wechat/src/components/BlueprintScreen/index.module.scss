@@ -183,6 +183,10 @@
   }
 }
 
+.clickableItem {
+  cursor: pointer;
+}
+
 .listMain {
   min-width: 0;
   flex: 1;
@@ -259,8 +263,11 @@
 }
 
 .itemAside {
+  display: flex;
+  gap: 10rpx;
+  align-items: center;
   flex: 0 0 auto;
-  max-width: 190rpx;
+  max-width: 240rpx;
   text-align: right;
 }
 
@@ -278,6 +285,12 @@
   white-space: nowrap;
   background: #edf3ff;
   border-radius: $radius-xs;
+}
+
+.detailChevron {
+  color: $color-text-tertiary;
+  font-size: 40rpx;
+  line-height: 1;
 }
 
 .loadingLine {

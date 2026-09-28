@@ -89,6 +89,7 @@ from .schemas import (
 )
 from .document_parsers import parse_document_evidence, parse_spreadsheet_evidence
 from .feasibility_reports import build_feasibility_calculation, build_feasibility_report_docx
+from .miniapp_entity_details import EntityRequestContext, build_miniapp_entity_detail
 from .miniapp_screens import SCREEN_PROVIDERS, ScreenRequestContext, build_miniapp_screen
 from .services import (
     GROUPS,
@@ -297,6 +298,33 @@ def get_miniapp_screen(
             artist_id=artist_id,
             keyword=keyword,
         ),
+        db,
+    )
+    return json_ok(data.model_dump())
+
+
+@router.get('/miniapp/entities/{entity_type}/{entity_id}')
+def get_miniapp_entity_detail(
+    entity_type: str,
+    entity_id: int,
+    authorization: Optional[str] = Header(default=None),
+    tenant_header: Optional[str] = Header(default=None, alias='X-Tenant-Id'),
+    db: Session = Depends(get_db),
+):
+    tenant_id = None
+    user_id = None
+    if entity_type != "show":
+        request_context = resolve_request_context(
+            db,
+            authorization=authorization or '',
+            tenant_header=tenant_header,
+        )
+        tenant_id = request_context.tenant.id
+        user_id = request_context.user.id
+    data = build_miniapp_entity_detail(
+        entity_type,
+        entity_id,
+        EntityRequestContext(tenant_id=tenant_id, user_id=user_id),
         db,
     )
     return json_ok(data.model_dump())

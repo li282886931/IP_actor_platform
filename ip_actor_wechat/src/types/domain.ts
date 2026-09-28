@@ -6,6 +6,7 @@ export interface DisplayItem {
   value?: string
   details?: string
   context?: Record<string, unknown>
+  detailRef?: MiniappEntityRef | null
 }
 
 export interface ProjectDraft {
@@ -48,6 +49,46 @@ export interface MiniappScreenItem {
   value?: string | null
   details?: string | null
   context: Record<string, unknown>
+  detail_ref?: MiniappEntityRef | null
+}
+
+export interface MiniappEntityRef {
+  entity_type: string
+  entity_id: number
+}
+
+export interface MiniappEntityField {
+  key: string
+  label: string
+  value: string
+}
+
+export interface MiniappEntitySection {
+  key: string
+  title: string
+  content: string
+}
+
+export interface MiniappEntityRelatedItem {
+  title: string
+  subtitle?: string | null
+  detail_ref: MiniappEntityRef
+}
+
+export interface MiniappEntityDetail {
+  entity_type: string
+  entity_id: number
+  title: string
+  subtitle?: string | null
+  status?: string | null
+  media_url?: string | null
+  fields: MiniappEntityField[]
+  sections: MiniappEntitySection[]
+  related_items: MiniappEntityRelatedItem[]
+  actions: Array<{
+    label: string
+    target_screen?: string | null
+  }>
 }
 
 export interface MiniappScreenEmptyState {

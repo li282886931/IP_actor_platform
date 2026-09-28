@@ -62,6 +62,39 @@ describe('getMiniappScreen', () => {
   })
 })
 
+describe('getMiniappEntityDetail', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(Taro.getStorageSync).mockReturnValue('')
+  })
+
+  it('requests the encoded entity detail path', async () => {
+    requestMock.mockResolvedValue({
+      statusCode: 200,
+      data: {
+        code: 0,
+        message: 'ok',
+        data: {
+          entity_type: 'show',
+          entity_id: 3,
+          title: '真实演出',
+          fields: [],
+          sections: [],
+          related_items: [],
+          actions: [],
+        },
+      },
+    } as never)
+
+    const result = await api.getMiniappEntityDetail('show', 3)
+
+    expect(requestMock).toHaveBeenCalledWith(expect.objectContaining({
+      url: expect.stringMatching(/\/miniapp\/entities\/show\/3$/),
+    }))
+    expect(result.entity_id).toBe(3)
+  })
+})
+
 describe('searchMiniappEntities', () => {
   beforeEach(() => {
     vi.clearAllMocks()

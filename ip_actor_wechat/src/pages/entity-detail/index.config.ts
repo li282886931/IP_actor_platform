@@ -1,0 +1,4 @@
+export default definePageConfig({
+  navigationBarTitleText: '业务详情',
+  navigationStyle: 'custom',
+})

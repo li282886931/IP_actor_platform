@@ -42,7 +42,8 @@ const normalizeItems = (values) => {
     description: String(value.description || ''),
     status: statusLabel(String(value.status || '')),
     value: value.value == null ? '' : String(value.value),
-    details: String(value.details || '')
+    details: String(value.details || ''),
+    detailRef: value.detail_ref || null
   }))
 }
 
@@ -362,11 +363,13 @@ const createScreenPage = (screenId) => {
       })
     },
     onBusinessItemTap(event) {
-      if (screenId !== 'S55') return
-      const taskId = Number(event.currentTarget.dataset.id || 0)
-      if (!taskId) return
-      wx.setStorageSync(STORAGE_KEYS.taskId, taskId)
-      wx.redirectTo({ url: routeFor('S56') })
+      const entityType = String(event.currentTarget.dataset.entityType || '')
+      const entityId = Number(event.currentTarget.dataset.entityId || 0)
+      if (!entityType || !entityId) return
+      if (entityType === 'task') wx.setStorageSync(STORAGE_KEYS.taskId, entityId)
+      wx.navigateTo({
+        url: '/pages/entity-detail/index?entityType=' + encodeURIComponent(entityType) + '&entityId=' + entityId
+      })
     },
     goNext() {
       const hasProject = Number(wx.getStorageSync(STORAGE_KEYS.projectId) || 0) > 0
@@ -380,4 +383,60 @@ const createScreenPage = (screenId) => {
   })
 }
 
-module.exports = { createScreenPage }
+const createEntityDetailPage = () => Page({
+  data: {
+    entityType: '',
+    entityId: 0,
+    detail: null,
+    loadState: 'loading',
+    message: ''
+  },
+  onLoad(options) {
+    this.setData({
+      entityType: String(options.entityType || ''),
+      entityId: Number(options.entityId || 0)
+    })
+    return this.fetchDetail()
+  },
+  fetchDetail() {
+    if (!this.data.entityType || !this.data.entityId) {
+      this.setData({ loadState: 'error', message: '详情参数不完整' })
+      return Promise.resolve()
+    }
+    this.setData({ loadState: 'loading', message: '' })
+    return request(
+      '/miniapp/entities/' + encodeURIComponent(this.data.entityType) + '/' + this.data.entityId
+    ).then((detail) => {
+      this.setData({
+        detail: Object.assign({}, detail, { status: statusLabel(String(detail.status || '')) }),
+        loadState: 'success'
+      })
+    }).catch((error) => {
+      console.error('[EntityDetail] load failed', error)
+      const message = String(error && error.message || '')
+      this.setData({
+        detail: null,
+        loadState: 'error',
+        message: message === 'HTTP_403' || message === 'HTTP_404'
+          ? '详情不存在或无权查看'
+          : '详情加载失败，请重试'
+      })
+    })
+  },
+  onRetry() {
+    return this.fetchDetail()
+  },
+  onBack() {
+    wx.navigateBack()
+  },
+  onRelatedTap(event) {
+    const entityType = String(event.currentTarget.dataset.entityType || '')
+    const entityId = Number(event.currentTarget.dataset.entityId || 0)
+    if (!entityType || !entityId) return
+    wx.navigateTo({
+      url: '/pages/entity-detail/index?entityType=' + encodeURIComponent(entityType) + '&entityId=' + entityId
+    })
+  }
+})
+
+module.exports = { createScreenPage, createEntityDetailPage }

@@ -17,6 +17,7 @@ node_modules/
 *.log
 storage/
 starhub-web/dist
+ip_actor_wechat/dist-h5/
 .pai/
 **/.pai/
 .superpowers/
