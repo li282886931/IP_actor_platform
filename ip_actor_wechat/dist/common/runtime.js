@@ -33,6 +33,15 @@ const statusLabels = {
 }
 const statusLabel = (status) => statusLabels[status] || status
 
+const toggleSelection = (values, value) => (
+  values.includes(value) ? values.filter((item) => item !== value) : values.concat(value)
+)
+
+const detailUrl = (entityType, entityId) => (
+  '/pages/entity-detail/index?entityType=' + encodeURIComponent(entityType) + '&entityId=' + entityId
+)
+
+
 const normalizeItems = (values) => {
   if (!Array.isArray(values)) return []
   return values.map((value, index) => ({
@@ -101,7 +110,7 @@ const createScreenPage = (screenId) => {
       candidateSearchGroups: [],
       candidateSearchOpen: false,
       candidateSearchLoading: false,
-      showHome: screenId !== 'S01' && !tabs.includes(screenId),
+      showBack: screenId !== 'S01' && !tabs.includes(screenId),
       selectedTaskIds: screenId === 'S56' && initialTaskId ? [initialTaskId] : [],
       expandedTaskIds: screenId === 'S56' && initialTaskId ? [initialTaskId] : [],
       isForm: ['S09','S13','S14','S15','S16','S17','S25','S36','S37','S41','S45','S47','S51','S54','S57','S65','S72','S79','S82'].includes(screenId)
@@ -348,9 +357,7 @@ const createScreenPage = (screenId) => {
       if (screenId !== 'S56') return
       const taskId = Number(event.currentTarget.dataset.id || 0)
       if (!taskId) return
-      const selectedTaskIds = this.data.selectedTaskIds.includes(taskId)
-        ? this.data.selectedTaskIds.filter((id) => id !== taskId)
-        : this.data.selectedTaskIds.concat(taskId)
+      const selectedTaskIds = toggleSelection(this.data.selectedTaskIds, taskId)
       this.setData({ selectedTaskIds }, () => this.syncTaskItemState())
     },
     onTaskToggleDetail(event) {
@@ -417,17 +424,10 @@ const createScreenPage = (screenId) => {
       const entityId = Number(event.currentTarget.dataset.entityId || 0)
       if (!entityType || !entityId) return
       if (entityType === 'task') wx.setStorageSync(STORAGE_KEYS.taskId, entityId)
-      wx.navigateTo({
-        url: '/pages/entity-detail/index?entityType=' + encodeURIComponent(entityType) + '&entityId=' + entityId
-      })
+      wx.navigateTo({ url: detailUrl(entityType, entityId) })
     },
-    onHomeTap() {
-      const token = String(wx.getStorageSync(STORAGE_KEYS.token) || '')
-      if (token) {
-        wx.switchTab({ url: routeFor('S04') })
-        return
-      }
-      wx.redirectTo({ url: routeFor('S01') })
+    onBackTap() {
+      wx.navigateBack({ delta: 1 })
     },
     goNext() {
       const hasProject = Number(wx.getStorageSync(STORAGE_KEYS.projectId) || 0) > 0

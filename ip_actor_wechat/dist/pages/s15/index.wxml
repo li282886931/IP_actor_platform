@@ -1,12 +1,11 @@
 <view class="page">
-  <button class="home-button" bindtap="onHomeTap">主页</button>
+  <button class="home-button" bindtap="onBackTap">‹</button>
   <view class="hero">
     <view class="eyebrow">{{screen.group}} · {{screen.id}}</view>
     <view class="title">{{screen.title}}</view>
     <view class="subtitle">{{screen.subtitle}}</view>
     <view class="highlight">{{screen.highlight}}</view>
   </view>
-
   <view wx:if="{{isForm}}" class="panel">
     <view class="panel-title">输入与联调</view>
     <input class="input" value="{{keyword}}" bindinput="onInput" placeholder="{{placeholder}}" />
@@ -14,16 +13,7 @@
       <view wx:for="{{candidateGroups}}" wx:key="key" wx:for-item="group" wx:for-index="groupIndex" class="candidate-group">
         <view class="candidate-group-label">{{group.label}}</view>
         <view class="candidate-list">
-          <view
-            wx:for="{{group.items}}"
-            wx:key="key"
-            wx:for-item="candidate"
-            wx:for-index="itemIndex"
-            class="candidate-item"
-            data-group-index="{{groupIndex}}"
-            data-item-index="{{itemIndex}}"
-            bindtap="onCandidateTap"
-          >
+          <view wx:for="{{group.items}}" wx:key="key" wx:for-item="candidate" wx:for-index="itemIndex" class="candidate-item" data-group-index="{{groupIndex}}" data-item-index="{{itemIndex}}" bindtap="onCandidateTap">
             <view class="candidate-main">
               <view class="candidate-title">{{candidate.label}}</view>
               <view wx:if="{{candidate.description}}" class="candidate-description">{{candidate.description}}</view>
@@ -38,16 +28,7 @@
       <block wx:elif="{{candidateSearchGroups.length}}">
         <view wx:for="{{candidateSearchGroups}}" wx:key="key" wx:for-item="group" wx:for-index="groupIndex" class="search-group">
           <view class="search-group-label">{{group.label}}</view>
-          <view
-            wx:for="{{group.items}}"
-            wx:key="key"
-            wx:for-item="candidate"
-            wx:for-index="itemIndex"
-            class="search-suggestion"
-            data-group-index="{{groupIndex}}"
-            data-item-index="{{itemIndex}}"
-            bindtap="onCandidateSearchTap"
-          >
+          <view wx:for="{{group.items}}" wx:key="key" wx:for-item="candidate" wx:for-index="itemIndex" class="search-suggestion" data-group-index="{{groupIndex}}" data-item-index="{{itemIndex}}" bindtap="onCandidateSearchTap">
             <view class="search-suggestion-main">
               <view class="search-suggestion-title">{{candidate.label}}</view>
               <view class="search-suggestion-description">{{candidate.description}}</view>
@@ -59,20 +40,12 @@
       <view wx:else class="search-state">未找到匹配数据</view>
     </view>
   </view>
-
   <view class="panel">
     <view class="panel-head">
       <view class="panel-title">业务记录</view>
       <view class="state {{loadState}}">{{loadState}}</view>
     </view>
-    <view
-      wx:for="{{items}}"
-      wx:key="id"
-      class="item"
-      data-entity-type="{{item.detailRef.entity_type}}"
-      data-entity-id="{{item.detailRef.entity_id}}"
-      bindtap="onBusinessItemTap"
-    >
+    <view wx:for="{{items}}" wx:key="id" class="item" data-entity-type="{{item.detailRef.entity_type}}" data-entity-id="{{item.detailRef.entity_id}}" bindtap="onBusinessItemTap">
       <view class="item-main">
         <view class="item-title">{{item.title}}</view>
         <view class="item-desc">{{item.description}}</view>
@@ -81,7 +54,6 @@
       <view wx:if="{{item.detailRef}}" class="detail-chevron">›</view>
     </view>
   </view>
-
   <view class="message" wx:if="{{message}}">{{message}}</view>
   <block wx:if="{{screen.id === 'S01'}}">
     <button class="primary" open-type="getPhoneNumber" bindgetphonenumber="onGetPhoneNumber">{{screen.primaryAction}}</button>

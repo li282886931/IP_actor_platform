@@ -7,6 +7,7 @@ import type { MiniappScreenData } from '@/types/domain'
 const taroMocks = vi.hoisted(() => ({
   getMiniappScreen: vi.fn(),
   navigateTo: vi.fn(),
+  navigateBack: vi.fn(),
   redirectTo: vi.fn(),
   switchTab: vi.fn(),
   stopPullDownRefresh: vi.fn(),
@@ -30,6 +31,7 @@ vi.mock('@tarojs/taro', () => ({
     setStorageSync: (key: string, value: unknown) => taroMocks.storage.set(key, value),
     removeStorageSync: (key: string) => taroMocks.storage.delete(key),
     navigateTo: taroMocks.navigateTo,
+    navigateBack: taroMocks.navigateBack,
     redirectTo: taroMocks.redirectTo,
     switchTab: taroMocks.switchTab,
     stopPullDownRefresh: taroMocks.stopPullDownRefresh,
@@ -80,6 +82,7 @@ describe('BlueprintScreen aggregated loading', () => {
   beforeEach(() => {
     taroMocks.getMiniappScreen.mockReset()
     taroMocks.navigateTo.mockReset()
+    taroMocks.navigateBack.mockReset()
     taroMocks.redirectTo.mockReset()
     taroMocks.switchTab.mockReset()
     taroMocks.stopPullDownRefresh.mockReset()
@@ -178,8 +181,7 @@ describe('BlueprintScreen aggregated loading', () => {
     })
   })
 
-  it('returns an authenticated non-tab page to discovery from the home control', async () => {
-    taroMocks.storage.set('starhub-token', 'session-token')
+  it('returns a non-tab page through the back control', async () => {
     taroMocks.getMiniappScreen.mockResolvedValue(response({
       screen_id: 'S14',
       summary: { title: '地点与时间' },
@@ -187,25 +189,13 @@ describe('BlueprintScreen aggregated loading', () => {
     }))
 
     render(<BlueprintScreen screenId='S14' />)
-    fireEvent.click(await screen.findByRole('button', { name: '主页' }))
+    fireEvent.click(await screen.findByRole('button', { name: '返回' }))
 
-    expect(taroMocks.switchTab).toHaveBeenCalledWith({ url: '/pages/s04/index' })
+    expect(taroMocks.navigateBack).toHaveBeenCalledWith({ delta: 1 })
+    expect(screen.queryByRole('button', { name: '主页' })).not.toBeInTheDocument()
   })
 
-  it('routes an unauthenticated non-tab page to login from the home control', async () => {
-    taroMocks.getMiniappScreen.mockResolvedValue(response({
-      screen_id: 'S14',
-      summary: { title: '地点与时间' },
-      items: [],
-    }))
-
-    render(<BlueprintScreen screenId='S14' />)
-    fireEvent.click(await screen.findByRole('button', { name: '主页' }))
-
-    expect(taroMocks.redirectTo).toHaveBeenCalledWith({ url: '/pages/s01/index' })
-  })
-
-  it('does not show the home control on a tab page', async () => {
+  it('does not show the back control on a tab page', async () => {
     taroMocks.getMiniappScreen.mockResolvedValue(response({
       screen_id: 'S04',
       summary: { title: '发现演出' },
@@ -215,7 +205,7 @@ describe('BlueprintScreen aggregated loading', () => {
     render(<BlueprintScreen screenId='S04' />)
     await screen.findByText('发现演出')
 
-    expect(screen.queryByRole('button', { name: '主页' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '返回' })).not.toBeInTheDocument()
   })
 
   it('clears items from the previous screen before the next request resolves', async () => {

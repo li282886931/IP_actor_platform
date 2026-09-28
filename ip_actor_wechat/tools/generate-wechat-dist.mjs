@@ -1,6 +1,8 @@
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { routeFor, screens } from './blueprint-manifest.mjs'
+import { runtimeHelperSource } from './wechat-runtime-helpers.mjs'
+import { buildScreenWxml } from './wechat-screen-templates.mjs'
 
 const root = resolve(import.meta.dirname, '..')
 const dist = resolve(root, 'dist')
@@ -157,6 +159,8 @@ const statusLabels = {
 }
 const statusLabel = (status) => statusLabels[status] || status
 
+${runtimeHelperSource}
+
 const normalizeItems = (values) => {
   if (!Array.isArray(values)) return []
   return values.map((value, index) => ({
@@ -225,7 +229,7 @@ const createScreenPage = (screenId) => {
       candidateSearchGroups: [],
       candidateSearchOpen: false,
       candidateSearchLoading: false,
-      showHome: screenId !== 'S01' && !tabs.includes(screenId),
+      showBack: screenId !== 'S01' && !tabs.includes(screenId),
       selectedTaskIds: screenId === 'S56' && initialTaskId ? [initialTaskId] : [],
       expandedTaskIds: screenId === 'S56' && initialTaskId ? [initialTaskId] : [],
       isForm: ['S09','S13','S14','S15','S16','S17','S25','S36','S37','S41','S45','S47','S51','S54','S57','S65','S72','S79','S82'].includes(screenId)
@@ -472,9 +476,7 @@ const createScreenPage = (screenId) => {
       if (screenId !== 'S56') return
       const taskId = Number(event.currentTarget.dataset.id || 0)
       if (!taskId) return
-      const selectedTaskIds = this.data.selectedTaskIds.includes(taskId)
-        ? this.data.selectedTaskIds.filter((id) => id !== taskId)
-        : this.data.selectedTaskIds.concat(taskId)
+      const selectedTaskIds = toggleSelection(this.data.selectedTaskIds, taskId)
       this.setData({ selectedTaskIds }, () => this.syncTaskItemState())
     },
     onTaskToggleDetail(event) {
@@ -541,17 +543,10 @@ const createScreenPage = (screenId) => {
       const entityId = Number(event.currentTarget.dataset.entityId || 0)
       if (!entityType || !entityId) return
       if (entityType === 'task') wx.setStorageSync(STORAGE_KEYS.taskId, entityId)
-      wx.navigateTo({
-        url: '/pages/entity-detail/index?entityType=' + encodeURIComponent(entityType) + '&entityId=' + entityId
-      })
+      wx.navigateTo({ url: detailUrl(entityType, entityId) })
     },
-    onHomeTap() {
-      const token = String(wx.getStorageSync(STORAGE_KEYS.token) || '')
-      if (token) {
-        wx.switchTab({ url: routeFor('S04') })
-        return
-      }
-      wx.redirectTo({ url: routeFor('S01') })
+    onBackTap() {
+      wx.navigateBack({ delta: 1 })
     },
     goNext() {
       const hasProject = Number(wx.getStorageSync(STORAGE_KEYS.projectId) || 0) > 0
@@ -1367,13 +1362,7 @@ for (const [id, title] of screens) {
   }, null, 2)}\n`)
   writeFileSync(
     resolve(pageDir, 'index.wxml'),
-    wxml
-      .replace('__HOME_BUTTON__', id !== 'S01' && !tabScreenIds.has(id)
-        ? '\n  <button class="home-button" bindtap="onHomeTap">主页</button>'
-        : '')
-      .replace('__PROJECT_SEARCH__', ['S13', 'S14', 'S15', 'S16'].includes(id) ? projectSearchWxml : '')
-      .replace('__BUSINESS_ITEMS__', id === 'S56' ? taskBusinessItemsWxml : defaultBusinessItemsWxml)
-      .replace('__PAGE_ACTIONS__', id === 'S56' ? taskActionsWxml : defaultActionsWxml),
+    buildScreenWxml(id, { includeBack: id !== 'S01' && !tabScreenIds.has(id) }),
   )
   writeFileSync(resolve(pageDir, 'index.wxss'), `${wxss}${id !== 'S01' && !tabScreenIds.has(id) ? homeWxss : ''}${['S13', 'S14', 'S15', 'S16'].includes(id) ? projectSearchWxss : ''}${id === 'S56' ? taskWxss : ''}`)
   writeFileSync(resolve(pageDir, 'index.js'), `const { createScreenPage } = require('../../common/runtime')

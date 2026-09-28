@@ -351,15 +351,13 @@ test('generated runtime applies a database venue candidate patch to the project 
   }
 })
 
-test('generated runtime routes the home control by session state', () => {
+test('generated runtime returns through the back control', () => {
   const runtimePath = resolve(root, 'dist/common/runtime.js')
-  const storage = new Map([['starhub-token', 'session-token']])
   const navigations = []
   let page
   globalThis.wx = {
-    getStorageSync: (key) => storage.get(key),
-    switchTab: ({ url }) => navigations.push(['tab', url]),
-    redirectTo: ({ url }) => navigations.push(['redirect', url]),
+    getStorageSync: () => undefined,
+    navigateBack: ({ delta }) => navigations.push(['back', delta]),
   }
   globalThis.Page = (definition) => {
     page = {
@@ -376,15 +374,10 @@ test('generated runtime routes the home control by session state', () => {
   delete require.cache[runtimePath]
   try {
     require(runtimePath).createScreenPage('S14')
-    assert.equal(page.data.showHome, true)
-    page.onHomeTap()
-    storage.delete('starhub-token')
-    page.onHomeTap()
+    assert.equal(page.data.showBack, true)
+    page.onBackTap()
 
-    assert.deepEqual(navigations, [
-      ['tab', '/pages/s04/index'],
-      ['redirect', '/pages/s01/index'],
-    ])
+    assert.deepEqual(navigations, [['back', 1]])
   } finally {
     delete globalThis.wx
     delete globalThis.Page
@@ -937,4 +930,23 @@ test('generated runtime keeps an empty list and retry state after request failur
     delete globalThis.Page
     delete require.cache[runtimePath]
   }
+})
+
+test('keeps generated page templates and runtime state helpers in dedicated modules', async () => {
+  const templatePath = resolve(root, 'tools/wechat-screen-templates.mjs')
+  const helperPath = resolve(root, 'tools/wechat-runtime-helpers.mjs')
+
+  assert.equal(existsSync(templatePath), true)
+  assert.equal(existsSync(helperPath), true)
+
+  const templates = await import(templatePath)
+  const helpers = await import(helperPath)
+  const ordinaryPage = templates.buildScreenWxml('S04')
+  const taskPage = templates.buildScreenWxml('S56')
+
+  assert.match(ordinaryPage, /业务记录/)
+  assert.match(taskPage, /onTaskCheck/)
+  assert.deepEqual(helpers.toggleSelection([1], 2), [1, 2])
+  assert.deepEqual(helpers.toggleSelection([1, 2], 2), [1])
+  assert.equal(helpers.detailUrl({ entity_type: 'show', entity_id: 3 }), '/pages/entity-detail/index?entityType=show&entityId=3')
 })
