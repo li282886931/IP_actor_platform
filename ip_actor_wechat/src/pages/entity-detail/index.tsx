@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Button, Image, ScrollView, Text, View } from '@tarojs/components'
+import { Image, ScrollView, Text, View } from '@tarojs/components'
 import Taro, { useRouter } from '@tarojs/taro'
 
+import { BusinessList, KeyValueGrid, ScreenHeader, ScreenHero, ScreenState } from '@/components/ScreenPrimitives'
 import { api, ApiError } from '@/services/api'
 import type { MiniappEntityDetail, MiniappEntityRef } from '@/types/domain'
 import { statusLabel } from '@/utils/status'
@@ -60,31 +61,10 @@ export default function EntityDetailPage() {
   return (
     <ScrollView className={styles.page} scrollY enhanced showScrollbar={false}>
       <View className={styles.safeTop} />
-      <View className={styles.topbar}>
-        <Button className={styles.backButton} onClick={() => void Taro.navigateBack()}>
-          <Text className={styles.backIcon}>‹</Text>
-        </Button>
-        <Text className={styles.pageTitle}>业务详情</Text>
-        <View className={styles.topbarSpacer} />
-      </View>
+      <ScreenHeader title='业务详情' onBack={() => void Taro.navigateBack()} />
 
-      {state === 'loading' && (
-        <View className={styles.statePanel}>
-          <View className={styles.loadingBar} />
-          <Text className={styles.stateTitle}>正在加载详情</Text>
-        </View>
-      )}
-
-      {state === 'error' && (
-        <View className={styles.statePanel}>
-          <Text className={styles.stateTitle}>{message}</Text>
-          <Text className={styles.stateDescription}>返回上一页或重新读取最新数据。</Text>
-          <View className={styles.stateActions}>
-            <Button className={styles.secondaryButton} onClick={() => void Taro.navigateBack()}>返回</Button>
-            <Button className={styles.primaryButton} onClick={() => void loadDetail()}>重新加载</Button>
-          </View>
-        </View>
-      )}
+      {state === 'loading' && <ScreenState state='loading' />}
+      {state === 'error' && <ScreenState state='error' message={message} onRetry={() => void loadDetail()} />}
 
       {state === 'success' && detail && (
         <>
@@ -97,26 +77,17 @@ export default function EntityDetailPage() {
             />
           )}
 
-          <View className={styles.hero}>
-            <Text className={styles.entityType}>{detail.entity_type.replace(/_/g, ' ')}</Text>
-            <Text className={styles.title}>{detail.title}</Text>
-            {detail.subtitle && <Text className={styles.subtitle}>{detail.subtitle}</Text>}
-            {detail.status && (
-              <Text className={styles.status}>{statusLabel(detail.status)}</Text>
-            )}
-          </View>
+          <ScreenHero
+            group={detail.entity_type.replace(/_/g, ' ')}
+            title={detail.title}
+            subtitle={detail.subtitle}
+            status={detail.status ? statusLabel(detail.status) : null}
+          />
 
           {detail.fields.length > 0 && (
             <View className={styles.section}>
               <Text className={styles.sectionTitle}>关键信息</Text>
-              <View className={styles.fieldGrid}>
-                {detail.fields.map((item) => (
-                  <View className={styles.field} key={item.key}>
-                    <Text className={styles.fieldLabel}>{item.label}</Text>
-                    <Text className={styles.fieldValue}>{item.value}</Text>
-                  </View>
-                ))}
-              </View>
+              <KeyValueGrid items={detail.fields.map((item) => ({ label: item.label, value: item.value }))} />
             </View>
           )}
 
@@ -130,21 +101,19 @@ export default function EntityDetailPage() {
           {detail.related_items.length > 0 && (
             <View className={styles.section}>
               <Text className={styles.sectionTitle}>关联记录</Text>
-              <View className={styles.relatedList}>
-                {detail.related_items.map((item) => (
-                  <View
-                    className={styles.relatedItem}
-                    key={`${item.detail_ref.entity_type}-${item.detail_ref.entity_id}`}
-                    onClick={() => openRelated(item.detail_ref)}
-                  >
-                    <View className={styles.relatedText}>
-                      <Text className={styles.relatedTitle}>{item.title}</Text>
-                      {item.subtitle && <Text className={styles.relatedSubtitle}>{item.subtitle}</Text>}
-                    </View>
-                    <Text className={styles.chevron}>›</Text>
-                  </View>
-                ))}
-              </View>
+              <BusinessList
+                items={detail.related_items.map((item) => ({
+                  id: `${item.detail_ref.entity_type}-${item.detail_ref.entity_id}`,
+                  title: item.title,
+                  description: item.subtitle || '',
+                  status: '',
+                  context: {},
+                  detailRef: item.detail_ref,
+                }))}
+                onOpenDetail={(item) => {
+                  if (item.detailRef) openRelated(item.detailRef)
+                }}
+              />
             </View>
           )}
         </>

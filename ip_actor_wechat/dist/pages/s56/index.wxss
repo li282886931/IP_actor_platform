@@ -132,6 +132,22 @@
   font-size: 30rpx;
   font-weight: 700;
 }
+.home-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 88rpx;
+  height: 64rpx;
+  padding: 0 16rpx;
+  margin: 24rpx 0 0 32rpx;
+  color: #2864dc;
+  font-size: 24rpx;
+  font-weight: 600;
+  line-height: 64rpx;
+  background: #e8f0ff;
+  border: 1rpx solid #d3e1ff;
+  border-radius: 32rpx;
+}
 .task-selection {
   padding: 20rpx 0 4rpx;
   color: #667085;

@@ -1,6 +1,8 @@
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { routeFor, screens } from './blueprint-manifest.mjs'
+import { runtimeHelperSource } from './wechat-runtime-helpers.mjs'
+import { buildScreenWxml } from './wechat-screen-templates.mjs'
 
 const root = resolve(import.meta.dirname, '..')
 const dist = resolve(root, 'dist')
@@ -28,6 +30,7 @@ const tabItems = [
   ['S52', '工作', 'agent'],
   ['S67', '我的', 'profile'],
 ]
+const tabScreenIds = new Set(tabItems.map(([screenId]) => screenId))
 
 const nextScreen = {
   S01: 'S02', S02: 'S03', S03: 'S04', S04: 'S13', S05: 'S11', S06: 'S07',
@@ -156,6 +159,8 @@ const statusLabels = {
 }
 const statusLabel = (status) => statusLabels[status] || status
 
+${runtimeHelperSource}
+
 const normalizeItems = (values) => {
   if (!Array.isArray(values)) return []
   return values.map((value, index) => ({
@@ -220,9 +225,11 @@ const createScreenPage = (screenId) => {
       keyword: '',
       placeholder: screenId === 'S82' ? DEFAULT_API_BASE : screenId === 'S13' ? '输入艺人、IP 或项目名称' : '输入关键词或补充信息',
       apiBase: apiBase(),
-      projectSearchSections: [],
-      projectSearchOpen: false,
-      projectSearchLoading: false,
+      candidateGroups: [],
+      candidateSearchGroups: [],
+      candidateSearchOpen: false,
+      candidateSearchLoading: false,
+      showBack: screenId !== 'S01' && !tabs.includes(screenId),
       selectedTaskIds: screenId === 'S56' && initialTaskId ? [initialTaskId] : [],
       expandedTaskIds: screenId === 'S56' && initialTaskId ? [initialTaskId] : [],
       isForm: ['S09','S13','S14','S15','S16','S17','S25','S36','S37','S41','S45','S47','S51','S54','S57','S65','S72','S79','S82'].includes(screenId)
@@ -236,68 +243,113 @@ const createScreenPage = (screenId) => {
     onInput(event) {
       const keyword = event.detail.value
       this.setData({ keyword })
-      if (screenId === 'S13') this.onProjectSearchInput(keyword)
+      if (['S13', 'S14', 'S15', 'S16'].includes(screenId)) this.onCandidateSearchInput(keyword)
     },
-    onProjectSearchInput(keyword) {
-      clearTimeout(this.projectSearchTimer)
+    applyCandidate(candidate) {
+      const patch = candidate && candidate.patch
+      if (!patch || typeof patch !== 'object') return
+      const draft = wx.getStorageSync(STORAGE_KEYS.projectDraft) || {}
+      wx.setStorageSync(STORAGE_KEYS.projectDraft, Object.assign({}, draft, patch))
+      this.setData({ keyword: candidate.label || this.data.keyword, candidateSearchOpen: false })
+    },
+    onCandidateTap(event) {
+      const groupIndex = Number(event.currentTarget.dataset.groupIndex)
+      const itemIndex = Number(event.currentTarget.dataset.itemIndex)
+      const group = this.data.candidateGroups[groupIndex]
+      const candidate = group && group.items && group.items[itemIndex]
+      this.applyCandidate(candidate)
+    },
+    onCandidateSearchTap(event) {
+      const groupIndex = Number(event.currentTarget.dataset.groupIndex)
+      const itemIndex = Number(event.currentTarget.dataset.itemIndex)
+      const group = this.data.candidateSearchGroups[groupIndex]
+      const candidate = group && group.items && group.items[itemIndex]
+      this.applyCandidate(candidate)
+    },
+    candidateFromSearchItem(item) {
+      const value = item && item.value || {}
+      if (item.entity_type === 'artist') {
+        return {
+          key: 'artist-' + item.entity_id,
+          label: item.label,
+          description: item.description || '',
+          patch: { artist_id: Number(item.entity_id), artist_name: item.label }
+        }
+      }
+      if (item.entity_type === 'project') {
+        return {
+          key: 'project-' + item.entity_id,
+          label: item.label,
+          description: item.description || '',
+          patch: Object.assign({}, value, { source_project_id: Number(item.entity_id) })
+        }
+      }
+      if (item.entity_type === 'venue') {
+        return {
+          key: 'venue-' + item.entity_id,
+          label: item.label,
+          description: item.description || '',
+          patch: {
+            venue_id: Number(item.entity_id),
+            venue: item.label,
+            city: value.city || '',
+            venue_capacity: Number(value.capacity) || undefined
+          }
+        }
+      }
+      return {
+        key: 'city-' + item.label,
+        label: item.label,
+        description: item.description || '',
+        patch: { city: item.label }
+      }
+    },
+    onCandidateSearchInput(keyword) {
+      clearTimeout(this.candidateSearchTimer)
       const normalized = String(keyword || '').trim()
       if (!normalized) {
-        this.setData({ projectSearchSections: [], projectSearchOpen: false, projectSearchLoading: false })
+        this.setData({
+          candidateSearchGroups: [],
+          candidateSearchOpen: false,
+          candidateSearchLoading: false
+        })
         return
       }
-      this.setData({ projectSearchOpen: true, projectSearchLoading: true })
-      this.projectSearchTimer = setTimeout(() => {
+      const localGroups = (this.data.candidateGroups || []).map((group) => Object.assign({}, group, {
+        items: (group.items || []).filter((item) => (
+          String(item.label || '').toLowerCase().includes(normalized.toLowerCase())
+          || String(item.description || '').toLowerCase().includes(normalized.toLowerCase())
+        ))
+      })).filter((group) => group.items.length)
+      if (['S15', 'S16'].includes(screenId)) {
+        this.setData({
+          candidateSearchGroups: localGroups,
+          candidateSearchOpen: true,
+          candidateSearchLoading: false
+        })
+        return
+      }
+      const allowedTypes = screenId === 'S13' ? ['artist', 'project'] : ['city', 'venue']
+      this.setData({ candidateSearchOpen: true, candidateSearchLoading: true })
+      this.candidateSearchTimer = setTimeout(() => {
         request('/miniapp/search' + query({ q: normalized })).then((result) => {
-          const sections = (result.groups || [])
-            .filter((group) => ['artist', 'project'].includes(group.entity_type))
+          const groups = (result.groups || [])
+            .filter((group) => allowedTypes.includes(group.entity_type))
             .map((group) => ({
               key: group.entity_type,
               label: group.label,
-              items: (group.items || []).map((item) => ({
-                id: item.entity_type + '-' + item.entity_id,
-                sourceId: item.entity_id,
-                kind: item.entity_type,
-                title: item.label,
-                description: item.description || '',
-                artistName: item.entity_type === 'artist'
-                  ? item.label
-                  : item.value && item.value.artist_name || ''
-              }))
+              items: (group.items || []).map((item) => this.candidateFromSearchItem(item))
             }))
+            .filter((group) => group.items.length)
           this.setData({
-            projectSearchSections: sections.filter((section) => section.items.length),
-            projectSearchLoading: false
+            candidateSearchGroups: groups,
+            candidateSearchLoading: false
           })
         }).catch((error) => {
-          console.error('[S13] fuzzy search failed', normalized, error)
-          this.setData({ projectSearchSections: [], projectSearchLoading: false })
+          console.error('[CandidateSearch] fuzzy search failed', normalized, error)
+          this.setData({ candidateSearchGroups: [], candidateSearchLoading: false })
         })
       }, 300)
-    },
-    onProjectSearchSelect(event) {
-      const suggestion = event.currentTarget.dataset
-      const draft = wx.getStorageSync(STORAGE_KEYS.projectDraft) || {}
-      this.setData({ keyword: suggestion.title, projectSearchOpen: false })
-      if (suggestion.kind === 'artist') {
-        wx.setStorageSync(STORAGE_KEYS.projectDraft, Object.assign({}, draft, {
-          artist_id: Number(suggestion.sourceId),
-          artist_name: suggestion.artistName
-        }))
-        return
-      }
-      request('/projects/' + suggestion.sourceId).then((project) => {
-        wx.setStorageSync(STORAGE_KEYS.projectDraft, Object.assign({}, draft, {
-          name: project.name,
-          type: project.type,
-          artist_name: project.artist_name
-        }))
-      }).catch((error) => {
-        console.error('[S13] project detail load failed', suggestion.sourceId, error)
-        wx.setStorageSync(STORAGE_KEYS.projectDraft, Object.assign({}, draft, {
-          name: suggestion.title,
-          artist_name: suggestion.artistName
-        }))
-      })
     },
     fetchRemote() {
       this.setData({ items: [], loadState: 'loading', message: '' })
@@ -338,6 +390,9 @@ const createScreenPage = (screenId) => {
         this.setData({
           screen: Object.assign({}, screen, data.summary || {}),
           items,
+          candidateGroups: data && data.options && Array.isArray(data.options.candidate_groups)
+            ? data.options.candidate_groups
+            : [],
           loadState: items.length ? 'success' : 'empty',
           message: !items.length && emptyState ? String(emptyState.title || emptyState.description || '') : ''
         })
@@ -421,9 +476,7 @@ const createScreenPage = (screenId) => {
       if (screenId !== 'S56') return
       const taskId = Number(event.currentTarget.dataset.id || 0)
       if (!taskId) return
-      const selectedTaskIds = this.data.selectedTaskIds.includes(taskId)
-        ? this.data.selectedTaskIds.filter((id) => id !== taskId)
-        : this.data.selectedTaskIds.concat(taskId)
+      const selectedTaskIds = toggleSelection(this.data.selectedTaskIds, taskId)
       this.setData({ selectedTaskIds }, () => this.syncTaskItemState())
     },
     onTaskToggleDetail(event) {
@@ -490,9 +543,10 @@ const createScreenPage = (screenId) => {
       const entityId = Number(event.currentTarget.dataset.entityId || 0)
       if (!entityType || !entityId) return
       if (entityType === 'task') wx.setStorageSync(STORAGE_KEYS.taskId, entityId)
-      wx.navigateTo({
-        url: '/pages/entity-detail/index?entityType=' + encodeURIComponent(entityType) + '&entityId=' + entityId
-      })
+      wx.navigateTo({ url: detailUrl(entityType, entityId) })
+    },
+    onBackTap() {
+      wx.navigateBack({ delta: 1 })
     },
     goNext() {
       const hasProject = Number(wx.getStorageSync(STORAGE_KEYS.projectId) || 0) > 0
@@ -565,7 +619,7 @@ const createEntityDetailPage = () => Page({
 module.exports = { createScreenPage, createEntityDetailPage }
 `)
 
-const wxml = `<view class="page">
+const wxml = `<view class="page">__HOME_BUTTON__
   <view class="hero">
     <view class="eyebrow">{{screen.group}} · {{screen.id}}</view>
     <view class="title">{{screen.title}}</view>
@@ -652,31 +706,53 @@ const taskActionsWxml = `<view class="task-actions">
   </view>`
 
 const projectSearchWxml = `
-    <view wx:if="{{projectSearchOpen}}" class="search-dropdown">
-      <view wx:if="{{projectSearchLoading}}" class="search-state">正在搜索数据库...</view>
-      <block wx:elif="{{projectSearchSections.length}}">
-        <view wx:for="{{projectSearchSections}}" wx:key="key" wx:for-item="section" class="search-group">
-          <view class="search-group-label">{{section.label}}</view>
+    <view wx:if="{{candidateGroups.length}}" class="candidate-groups">
+      <view wx:for="{{candidateGroups}}" wx:key="key" wx:for-item="group" wx:for-index="groupIndex" class="candidate-group">
+        <view class="candidate-group-label">{{group.label}}</view>
+        <view class="candidate-list">
           <view
-            wx:for="{{section.items}}"
-            wx:key="id"
-            wx:for-item="suggestion"
+            wx:for="{{group.items}}"
+            wx:key="key"
+            wx:for-item="candidate"
+            wx:for-index="itemIndex"
+            class="candidate-item"
+            data-group-index="{{groupIndex}}"
+            data-item-index="{{itemIndex}}"
+            bindtap="onCandidateTap"
+          >
+            <view class="candidate-main">
+              <view class="candidate-title">{{candidate.label}}</view>
+              <view wx:if="{{candidate.description}}" class="candidate-description">{{candidate.description}}</view>
+            </view>
+            <view class="candidate-action">选择</view>
+          </view>
+        </view>
+      </view>
+    </view>
+    <view wx:if="{{candidateSearchOpen}}" class="search-dropdown">
+      <view wx:if="{{candidateSearchLoading}}" class="search-state">正在搜索数据库...</view>
+      <block wx:elif="{{candidateSearchGroups.length}}">
+        <view wx:for="{{candidateSearchGroups}}" wx:key="key" wx:for-item="group" wx:for-index="groupIndex" class="search-group">
+          <view class="search-group-label">{{group.label}}</view>
+          <view
+            wx:for="{{group.items}}"
+            wx:key="key"
+            wx:for-item="candidate"
+            wx:for-index="itemIndex"
             class="search-suggestion"
-            data-kind="{{suggestion.kind}}"
-            data-title="{{suggestion.title}}"
-            data-artist-name="{{suggestion.artistName}}"
-            data-source-id="{{suggestion.sourceId}}"
-            bindtap="onProjectSearchSelect"
+            data-group-index="{{groupIndex}}"
+            data-item-index="{{itemIndex}}"
+            bindtap="onCandidateSearchTap"
           >
             <view class="search-suggestion-main">
-              <view class="search-suggestion-title">{{suggestion.title}}</view>
-              <view class="search-suggestion-description">{{suggestion.description}}</view>
+              <view class="search-suggestion-title">{{candidate.label}}</view>
+              <view class="search-suggestion-description">{{candidate.description}}</view>
             </view>
             <view class="search-suggestion-action">选择</view>
           </view>
         </view>
       </block>
-      <view wx:else class="search-state">未找到匹配的艺人或历史项目</view>
+      <view wx:else class="search-state">未找到匹配数据</view>
     </view>`
 
 const wxss = `.page {
@@ -815,6 +891,24 @@ const wxss = `.page {
 }
 `
 
+const homeWxss = `.home-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 88rpx;
+  height: 64rpx;
+  padding: 0 16rpx;
+  margin: 24rpx 0 0 32rpx;
+  color: #2864dc;
+  font-size: 24rpx;
+  font-weight: 600;
+  line-height: 64rpx;
+  background: #e8f0ff;
+  border: 1rpx solid #d3e1ff;
+  border-radius: 32rpx;
+}
+`
+
 const projectSearchWxss = `.search-dropdown {
   max-height: 560rpx;
   margin-top: 12rpx;
@@ -824,6 +918,66 @@ const projectSearchWxss = `.search-dropdown {
   border-radius: 12rpx;
   background: #fff;
   box-shadow: 0 8rpx 32rpx rgba(0, 0, 0, .15);
+}
+.candidate-groups {
+  margin-top: 24rpx;
+}
+.candidate-group + .candidate-group {
+  margin-top: 24rpx;
+}
+.candidate-group-label {
+  margin-bottom: 12rpx;
+  color: #566176;
+  font-size: 24rpx;
+  font-weight: 600;
+}
+.candidate-list {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1rpx solid #e5eaf2;
+  border-radius: 12rpx;
+}
+.candidate-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+  min-height: 88rpx;
+  padding: 16rpx 20rpx;
+  background: #fff;
+}
+.candidate-item + .candidate-item {
+  border-top: 1rpx solid #edf0f5;
+}
+.candidate-item:active {
+  background: #eef2f7;
+}
+.candidate-main {
+  min-width: 0;
+  flex: 1;
+}
+.candidate-title,
+.candidate-description {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.candidate-title {
+  color: #172033;
+  font-size: 28rpx;
+  font-weight: 600;
+}
+.candidate-description {
+  margin-top: 6rpx;
+  color: #667085;
+  font-size: 22rpx;
+}
+.candidate-action {
+  flex: none;
+  color: #2864dc;
+  font-size: 24rpx;
+  font-weight: 600;
 }
 .search-group {
   padding: 16rpx 0 8rpx;
@@ -1208,12 +1362,9 @@ for (const [id, title] of screens) {
   }, null, 2)}\n`)
   writeFileSync(
     resolve(pageDir, 'index.wxml'),
-    wxml
-      .replace('__PROJECT_SEARCH__', id === 'S13' ? projectSearchWxml : '')
-      .replace('__BUSINESS_ITEMS__', id === 'S56' ? taskBusinessItemsWxml : defaultBusinessItemsWxml)
-      .replace('__PAGE_ACTIONS__', id === 'S56' ? taskActionsWxml : defaultActionsWxml),
+    buildScreenWxml(id, { includeBack: id !== 'S01' && !tabScreenIds.has(id) }),
   )
-  writeFileSync(resolve(pageDir, 'index.wxss'), `${wxss}${id === 'S13' ? projectSearchWxss : ''}${id === 'S56' ? taskWxss : ''}`)
+  writeFileSync(resolve(pageDir, 'index.wxss'), `${wxss}${id !== 'S01' && !tabScreenIds.has(id) ? homeWxss : ''}${['S13', 'S14', 'S15', 'S16'].includes(id) ? projectSearchWxss : ''}${id === 'S56' ? taskWxss : ''}`)
   writeFileSync(resolve(pageDir, 'index.js'), `const { createScreenPage } = require('../../common/runtime')
 
 createScreenPage('${id}')

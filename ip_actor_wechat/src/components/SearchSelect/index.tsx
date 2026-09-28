@@ -20,6 +20,7 @@ export interface SearchSelectSection<T = unknown> {
 interface SearchSelectProps<T = unknown> {
   value: string
   placeholder?: string
+  initialSections?: Array<SearchSelectSection<T>>
   onInput: (value: string) => void
   onSearch: (keyword: string) => Promise<Array<SearchSelectSection<T>>>
   onSelect: (option: SearchSelectOption<T>) => void
@@ -30,14 +31,18 @@ type SearchState = 'idle' | 'loading' | 'success' | 'empty' | 'error'
 export default function SearchSelect<T>({
   value,
   placeholder,
+  initialSections = [],
   onInput,
   onSearch,
   onSelect,
 }: SearchSelectProps<T>) {
   const [query, setQuery] = useState(value)
-  const [sections, setSections] = useState<Array<SearchSelectSection<T>>>([])
+  const [sections, setSections] = useState<Array<SearchSelectSection<T>>>(initialSections)
   const [status, setStatus] = useState<SearchState>('idle')
   const [open, setOpen] = useState(false)
+  const initialSectionSignature = initialSections
+    .map((section) => `${section.entityType}:${section.options.map((option) => option.entityId).join(',')}`)
+    .join('|')
 
   useEffect(() => {
     setQuery(value)
@@ -46,9 +51,9 @@ export default function SearchSelect<T>({
   useEffect(() => {
     const keyword = query.trim()
     if (!keyword) {
-      setSections([])
-      setStatus('idle')
-      setOpen(false)
+      const populatedSections = initialSections.filter((section) => section.options.length > 0)
+      setSections(populatedSections)
+      setStatus(populatedSections.length ? 'success' : 'idle')
       return undefined
     }
 
@@ -74,7 +79,7 @@ export default function SearchSelect<T>({
       active = false
       clearTimeout(timer)
     }
-  }, [onSearch, query])
+  }, [initialSectionSignature, onSearch, query])
 
   const updateQuery = (nextValue: string) => {
     setQuery(nextValue)
@@ -88,7 +93,7 @@ export default function SearchSelect<T>({
         value={query}
         placeholder={placeholder}
         onFocus={() => {
-          if (query.trim()) setOpen(true)
+          if (query.trim() || initialSections.length) setOpen(true)
         }}
         onBlur={() => {
           setTimeout(() => setOpen(false), 150)
