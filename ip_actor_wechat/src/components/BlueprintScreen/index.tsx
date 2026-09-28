@@ -1,20 +1,30 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Button, Input, ScrollView, Text, View } from '@tarojs/components'
 import Taro, { usePullDownRefresh, useRouter } from '@tarojs/taro'
 import classNames from 'classnames'
 
+import SearchSelect, {
+  type SearchSelectOption,
+  type SearchSelectSection,
+} from '@/components/SearchSelect'
 import { DEFAULT_API_BASE, STORAGE_KEYS } from '@/config/runtime'
-import { getFixtureItems } from '@/data/fixtures'
+import { screenDataMap } from '@/data/screenDataMap'
 import { screenDefinitions } from '@/data/screens'
-import { api, getApiBase, setApiBase } from '@/services/api'
-import type { DisplayItem, ProjectDraft, SessionData } from '@/types/domain'
+import { api, ApiError, getApiBase, setApiBase } from '@/services/api'
+import type {
+  DisplayItem,
+  MiniappScreenContext,
+  MiniappScreenData,
+  ProjectDraft,
+  SessionData,
+} from '@/types/domain'
 import styles from './index.module.scss'
 
 interface BlueprintScreenProps {
   screenId: string
 }
 
-type LoadState = 'idle' | 'loading' | 'success' | 'example' | 'error'
+type LoadState = 'idle' | 'loading' | 'success' | 'empty' | 'error'
 
 const tabIds = new Set(['S04', 'S10', 'S52', 'S67'])
 const formScreens = new Set(['S09', 'S13', 'S14', 'S15', 'S16', 'S17', 'S25', 'S36', 'S37', 'S41', 'S45', 'S47', 'S51', 'S54', 'S57', 'S65', 'S72', 'S79', 'S82'])
@@ -41,7 +51,8 @@ const replaceWithScreen = async (screenId: string) => {
 const nextScreen: Record<string, string> = {
   S01: 'S02', S02: 'S03', S03: 'S04', S04: 'S13', S05: 'S11', S06: 'S07',
   S07: 'S13', S08: 'S13', S09: 'S06', S10: 'S13', S11: 'S34', S12: 'S49',
-  S17: 'S74', S18: 'S16', S24: 'S25', S25: 'S29', S26: 'S25', S27: 'S25',
+  S13: 'S14', S14: 'S15', S15: 'S16', S16: 'S17', S17: 'S74', S18: 'S16',
+  S24: 'S25', S25: 'S29', S26: 'S25', S27: 'S25',
   S28: 'S29', S29: 'S34', S30: 'S29', S31: 'S34', S32: 'S34', S33: 'S55',
   S34: 'S45', S35: 'S37', S36: 'S12', S37: 'S40', S38: 'S37', S39: 'S42',
   S40: 'S41', S41: 'S42', S42: 'S39', S43: 'S44', S44: 'S55', S45: 'S46',
@@ -66,31 +77,13 @@ const textValue = (record: Record<string, unknown>, keys: string[], fallback = '
   return fallback
 }
 
-const toDisplayItems = (values: unknown[], group: string): DisplayItem[] => values.map((value, index) => {
-  const record = asRecord(value)
-  return {
-    id: textValue(record, ['id', 'project_id'], `${group}-${index}`),
-    title: textValue(record, ['name', 'title', 'account'], `${group}记录 ${index + 1}`),
-    description: textValue(record, ['description', 'content', 'city', 'source'], '详情已从决策服务同步'),
-    status: textValue(record, ['status', 'level', 'group_code'], '已同步'),
-    value: textValue(record, ['profit', 'heat_score', 'fan_count'], ''),
-  }
-})
-
 const initialDraft: ProjectDraft = {
-  name: '星河计划·南京站',
+  name: '',
   type: 'concert',
-  artist_name: '艺人 A',
-  city: '南京',
-  venue: '候选场馆 A',
-  schedule: '2027 年 10 月',
-  expected_attendance: 12000,
-  available_funds: 5000000,
-  avg_ticket_price: 680,
-  artist_fee: 2600000,
-  venue_cost: 1200000,
-  marketing_cost: 600000,
-  production_cost: 600000,
+  artist_name: '',
+  city: '',
+  venue: '',
+  schedule: '',
 }
 
 const getStoredDraft = (): ProjectDraft => {
@@ -104,10 +97,16 @@ export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
   const screen = screenDefinitions[screenId]
   const router = useRouter()
   const params = router.params
-  const [items, setItems] = useState<DisplayItem[]>(() => getFixtureItems(screen.group))
+  const [items, setItems] = useState<DisplayItem[]>([])
+  const [screenData, setScreenData] = useState<MiniappScreenData | null>(null)
   const [loadState, setLoadState] = useState<LoadState>('idle')
   const [message, setMessage] = useState('')
   const [draft, setDraft] = useState<ProjectDraft>(getStoredDraft)
+  const [projectSearchKeyword, setProjectSearchKeyword] = useState('')
+  const initialTaskId = Number(params.taskId || Taro.getStorageSync<number>(STORAGE_KEYS.taskId) || 0)
+  const [activeTaskId, setActiveTaskId] = useState(initialTaskId)
+  const [selectedTaskIds, setSelectedTaskIds] = useState<number[]>(initialTaskId ? [initialTaskId] : [])
+  const [expandedTaskIds, setExpandedTaskIds] = useState<number[]>(initialTaskId ? [initialTaskId] : [])
   const [form, setForm] = useState<Record<string, string>>({
     keyword: '',
     question: '',
@@ -122,96 +121,69 @@ export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
     gateName: '',
   })
 
-  const projectId = Number(params.projectId || Taro.getStorageSync<number>(STORAGE_KEYS.projectId) || 1)
-  const versionId = Number(Taro.getStorageSync<number>(STORAGE_KEYS.versionId) || 1)
-  const taskId = Number(params.taskId || Taro.getStorageSync<number>(STORAGE_KEYS.taskId) || 1)
+  const storedProjectId = Number(params.projectId || Taro.getStorageSync<number>(STORAGE_KEYS.projectId) || 0)
+  const projectId = storedProjectId
+  const versionId = Number(params.versionId || Taro.getStorageSync<number>(STORAGE_KEYS.versionId) || 0)
+  const artistId = Number(params.artistId || 0)
 
   const fetchRemote = async () => {
-    let values: unknown[] | null = null
+    const requiredContext = screenDataMap[screenId].requiredContext
+    const context: MiniappScreenContext = {
+      ...(projectId && requiredContext.includes('project_id') ? { project_id: projectId } : {}),
+      ...(versionId && requiredContext.includes('version_id') ? { version_id: versionId } : {}),
+      ...(activeTaskId && requiredContext.includes('task_id') ? { task_id: activeTaskId } : {}),
+      ...(artistId && requiredContext.includes('artist_id') ? { artist_id: artistId } : {}),
+      ...(form.keyword.trim() ? { keyword: form.keyword.trim() } : {}),
+    }
+    setItems([])
+    setScreenData(null)
+    setMessage('')
     setLoadState('loading')
     try {
-      switch (screenId) {
-        case 'S02':
-          values = await api.listTenants()
-          break
-        case 'S04':
-          values = await api.listShows()
-          break
-        case 'S06':
-        case 'S09':
-          values = await api.searchCases(form.keyword)
-          break
-        case 'S10':
-          values = await api.listProjects()
-          break
-        case 'S11': {
-          const project = await api.getProject(projectId)
-          const projectRecord = asRecord(project)
-          if (projectRecord.current_version_id) {
-            Taro.setStorageSync(STORAGE_KEYS.versionId, Number(projectRecord.current_version_id))
+      const data = await api.getMiniappScreen(screenId, context)
+      const displayItems: DisplayItem[] = data.items.map((item) => ({
+        id: item.id,
+        title: item.title,
+        description: item.description || '',
+        status: item.status || '',
+        value: item.value || '',
+        details: item.details || '',
+        context: item.context,
+      }))
+      setScreenData(data)
+      setItems(displayItems)
+      if (displayItems.length) {
+        if (['S55', 'S56', 'S57', 'S58'].includes(screenId)) {
+          const selectedTaskId = Number(
+            displayItems.find((task) => Number(task.context?.task_id) === activeTaskId)?.context?.task_id
+              || displayItems[0].context?.task_id
+              || 0,
+          )
+          if (selectedTaskId) {
+            setActiveTaskId(selectedTaskId)
+            Taro.setStorageSync(STORAGE_KEYS.taskId, selectedTaskId)
           }
-          values = [project]
-          break
         }
-        case 'S12':
-        case 'S49':
-          values = await api.listProjectVersions(projectId)
-          break
-        case 'S19':
-          values = await api.listArtists(form.keyword)
-          break
-        case 'S20': {
-          const artist = await api.getArtist(Number(params.artistId || 1))
-          values = [artist]
-          break
-        }
-        case 'S36':
-          values = await api.listAssumptions(projectId)
-          break
-        case 'S37':
-          values = await api.listFacts(projectId)
-          break
-        case 'S38':
-        case 'S41':
-        case 'S42':
-          values = await api.listEvidences(projectId)
-          break
-        case 'S43':
-        case 'S44':
-          values = await api.listRisks(projectId)
-          break
-        case 'S45':
-        case 'S46':
-          values = await api.listGates(projectId)
-          break
-        case 'S52':
-        case 'S53':
-        case 'S55':
-        case 'S56':
-        case 'S57':
-        case 'S58':
-          values = await api.listTasks(projectId)
-          break
-        case 'S68': {
-          const [users, groups] = await Promise.all([api.listUsers(), api.listUserGroups()])
-          values = [...users, ...groups]
-          break
-        }
-        case 'S82':
-          await api.ping()
-          setMessage('决策服务连接正常')
-          break
-        default:
-          setLoadState('success')
-          return
       }
-
-      if (values?.length) setItems(toDisplayItems(values, screen.group))
-      setLoadState('success')
+      setLoadState(displayItems.length ? 'success' : 'empty')
     } catch (error) {
       console.error(`[${screenId}] load failed`, error)
-      setLoadState('example')
-      setMessage('决策服务暂不可用，当前展示已标注的产品示例数据。')
+      const statusCode = error instanceof ApiError ? error.statusCode : undefined
+      const errorTarget = statusCode === 401
+        ? 'S81'
+        : statusCode === 403
+          ? 'S77'
+          : statusCode === 409
+            ? 'S78'
+            : ''
+      if (errorTarget && screenId !== errorTarget) {
+        await replaceWithScreen(errorTarget)
+        return
+      }
+      setLoadState('error')
+      setMessage(statusCode === 422
+        ? '缺少打开当前页面所需的项目、版本或任务信息。'
+        : '页面数据加载失败，请重试。')
     } finally {
       Taro.stopPullDownRefresh()
     }
@@ -232,6 +204,7 @@ export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
 
   const updateDraft = (key: keyof ProjectDraft, value: string) => {
     const numericKeys: Array<keyof ProjectDraft> = [
+      'artist_id', 'venue_id', 'source_project_id',
       'expected_attendance', 'available_funds', 'avg_ticket_price', 'artist_fee',
       'venue_cost', 'marketing_cost', 'production_cost',
     ]
@@ -241,7 +214,170 @@ export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
     Taro.setStorageSync(STORAGE_KEYS.projectDraft, next)
   }
 
+  const searchProjectOptions = useCallback(async (keyword: string): Promise<Array<SearchSelectSection<Record<string, unknown>>>> => {
+    const result = await api.searchMiniappEntities(keyword)
+    return result.groups
+      .filter((group) => ['artist', 'project'].includes(group.entity_type))
+      .map((group) => ({
+        entityType: group.entity_type,
+        label: group.label,
+        options: group.items.map((item) => ({
+          entityType: item.entity_type,
+          entityId: item.entity_id,
+          label: item.label,
+          description: item.description || '',
+          value: asRecord(item.value),
+        })),
+      }))
+  }, [])
+
+  const searchCityOptions = useCallback(async (keyword: string): Promise<Array<SearchSelectSection<Record<string, unknown>>>> => {
+    const result = await api.searchMiniappEntities(keyword)
+    return result.groups
+      .filter((group) => group.entity_type === 'city')
+      .map((group) => ({
+        entityType: group.entity_type,
+        label: group.label,
+        options: group.items.map((item) => ({
+          entityType: item.entity_type,
+          entityId: item.entity_id,
+          label: item.label,
+          description: item.description || '',
+          value: asRecord(item.value),
+        })),
+      }))
+  }, [])
+
+  const searchVenueOptions = useCallback(async (keyword: string): Promise<Array<SearchSelectSection<Record<string, unknown>>>> => {
+    const result = await api.searchMiniappEntities(keyword)
+    return result.groups
+      .filter((group) => group.entity_type === 'venue')
+      .map((group) => ({
+        entityType: group.entity_type,
+        label: group.label,
+        options: group.items.map((item) => ({
+          entityType: item.entity_type,
+          entityId: item.entity_id,
+          label: item.label,
+          description: item.description || '',
+          value: asRecord(item.value),
+        })),
+      }))
+  }, [])
+
+  const selectProjectSearchSuggestion = async (
+    suggestion: SearchSelectOption<Record<string, unknown>>,
+  ) => {
+    setProjectSearchKeyword(suggestion.label)
+    if (suggestion.entityType === 'artist') {
+      const next = {
+        ...draft,
+        artist_id: Number(suggestion.entityId),
+        artist_name: suggestion.label,
+        source_project_id: undefined,
+      }
+      setDraft(next)
+      Taro.setStorageSync(STORAGE_KEYS.projectDraft, next)
+      return
+    }
+
+    const projectIdValue = Number(suggestion.entityId)
+    let project = suggestion.value
+    if (projectIdValue) {
+      try {
+        project = asRecord(await api.getProject(projectIdValue))
+      } catch (error) {
+        console.error('[S13] project detail load failed', { projectId: projectIdValue, error })
+      }
+    }
+    const next = {
+      ...draft,
+      name: textValue(project, ['name'], suggestion.label),
+      type: textValue(project, ['type'], draft.type),
+      artist_id: Number(project.artist_id) || undefined,
+      artist_name: textValue(project, ['artist_name'], draft.artist_name),
+      city: textValue(project, ['city'], draft.city),
+      venue_id: Number(project.venue_id) || undefined,
+      venue: textValue(project, ['venue'], draft.venue),
+      source_project_id: Number(suggestion.entityId),
+    }
+    setDraft(next)
+    Taro.setStorageSync(STORAGE_KEYS.projectDraft, next)
+  }
+
+  const selectVenue = (suggestion: SearchSelectOption<Record<string, unknown>>) => {
+    const venue = suggestion.value
+    const next = {
+      ...draft,
+      venue_id: Number(suggestion.entityId),
+      venue: suggestion.label,
+      city: textValue(venue, ['city'], draft.city),
+    }
+    setDraft(next)
+    Taro.setStorageSync(STORAGE_KEYS.projectDraft, next)
+  }
+
   const updateForm = (key: string, value: string) => setForm((current) => ({ ...current, [key]: value }))
+
+  const toggleTaskSelection = (taskId: number) => {
+    setSelectedTaskIds((current) => (
+      current.includes(taskId)
+        ? current.filter((id) => id !== taskId)
+        : [...current, taskId]
+    ))
+  }
+
+  const toggleTaskDetails = (taskId: number) => {
+    setExpandedTaskIds((current) => (
+      current.includes(taskId)
+        ? current.filter((id) => id !== taskId)
+        : [...current, taskId]
+    ))
+  }
+
+  const runBatchTaskAction = async (action: 'accept' | 'reject') => {
+    if (!selectedTaskIds.length) {
+      setLoadState('error')
+      setMessage('请至少勾选一项任务。')
+      return
+    }
+
+    let reason = ''
+    if (action === 'reject') {
+      const confirmation = await Taro.showModal({
+        title: '拒绝接单',
+        content: '',
+        editable: true,
+        placeholderText: '请输入拒绝原因',
+        confirmText: '确认拒绝',
+      })
+      if (!confirmation.confirm) return
+      reason = (confirmation.content || '').trim()
+      if (!reason) {
+        setLoadState('error')
+        setMessage('拒绝接单时必须填写原因。')
+        return
+      }
+    }
+
+    setLoadState('loading')
+    setMessage('')
+    try {
+      await api.batchTaskAction({
+        task_ids: selectedTaskIds,
+        action,
+        reason,
+      })
+      const count = selectedTaskIds.length
+      setSelectedTaskIds([])
+      setMessage(action === 'accept' ? `已接受 ${count} 项任务。` : `已拒绝 ${count} 项任务，任务已恢复待分配。`)
+      await fetchRemote()
+    } catch (error) {
+      console.error(`[S56] batch ${action} failed`, error)
+      setLoadState('error')
+      setMessage(action === 'accept' ? '接受任务失败，请刷新后重试。' : '拒绝任务失败，请刷新后重试。')
+    }
+  }
 
   const storeSessionData = (session: SessionData) => {
     if (session.token) Taro.setStorageSync(STORAGE_KEYS.token, session.token)
@@ -276,6 +412,8 @@ export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
       const detail = error instanceof Error ? error.message : ''
       if (detail === 'FORBIDDEN') {
         setMessage('手机号未绑定，请联系管理员分配账号。')
+      } else if (detail === 'HTTP_503') {
+        setMessage('微信登录配置缺失，请联系管理员配置小程序密钥或启用本地联调手机号。')
       } else {
         setMessage('登录失败，请确认后端服务可用。')
       }
@@ -302,7 +440,8 @@ export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
       } else if (screenId === 'S17') {
         const created = await api.createProject(draft as unknown as Record<string, unknown>)
         const record = asRecord(created)
-        const id = Number(record.id || 1)
+        const id = Number(record.id || 0)
+        if (!id) throw new Error('PROJECT_ID_MISSING')
         Taro.setStorageSync(STORAGE_KEYS.projectId, id)
         if (record.current_version_id) {
           Taro.setStorageSync(STORAGE_KEYS.versionId, Number(record.current_version_id))
@@ -367,7 +506,8 @@ export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
         const answer = await api.agentChat({ project_id: projectId, message: form.question || '下一步应该优先处理什么？' })
         setMessage(`${textValue(asRecord(answer), ['answer'], 'Agent 已生成下一步建议')}｜推荐动作：${textValue(analysisResult, ['recommendation'], '待负责人核验')}`)
       } else if (screenId === 'S57') {
-        await api.submitTask(taskId, { result: form.result || '已提交任务结果', evidence_ids: [] })
+        if (!activeTaskId) throw new Error('TASK_NOT_SELECTED')
+        await api.submitTask(activeTaskId, { result: form.result || '已提交任务结果', evidence_ids: [] })
       } else if (screenId === 'S65') {
         setMessage('结算数据已保存为待财务确认状态。')
       } else if (screenId === 'S72') {
@@ -379,7 +519,9 @@ export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
       }
 
       setLoadState('success')
-      const target = nextScreen[screenId] || `S${String(Math.min(Number(screenId.slice(1)) + 1, 84)).padStart(2, '0')}`
+      const target = screenId === 'S74' && !storedProjectId
+        ? 'S10'
+        : nextScreen[screenId] || `S${String(Math.min(Number(screenId.slice(1)) + 1, 84)).padStart(2, '0')}`
       if (!['S36', 'S37', 'S41', 'S45', 'S51', 'S54', 'S57', 'S65', 'S72', 'S82'].includes(screenId)) {
         await replaceWithScreen(target)
       } else {
@@ -398,6 +540,16 @@ export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
     if (screenId === 'S13') {
       return (
         <View className={styles.formGrid}>
+          <View className={styles.searchField}>
+            <Text className={styles.fieldLabel}>搜索艺人或历史项目</Text>
+            <SearchSelect
+              value={projectSearchKeyword}
+              placeholder='输入艺人、IP 或项目名称'
+              onInput={setProjectSearchKeyword}
+              onSearch={searchProjectOptions}
+              onSelect={(suggestion) => void selectProjectSearchSuggestion(suggestion)}
+            />
+          </View>
           <Field label='项目名称' value={draft.name} onInput={(value) => updateDraft('name', value)} />
           <Field label='项目类型' value={draft.type} onInput={(value) => updateDraft('type', value)} />
           <Field label='核心艺人 / IP' value={draft.artist_name} onInput={(value) => updateDraft('artist_name', value)} />
@@ -407,9 +559,27 @@ export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
     if (screenId === 'S14') {
       return (
         <View className={styles.formGrid}>
-          <Field label='举办城市' value={draft.city} onInput={(value) => updateDraft('city', value)} />
+          <View className={styles.field}>
+            <Text className={styles.fieldLabel}>举办城市</Text>
+            <SearchSelect
+              value={draft.city}
+              placeholder='搜索已有场馆城市'
+              onInput={(value) => updateDraft('city', value)}
+              onSearch={searchCityOptions}
+              onSelect={(suggestion) => updateDraft('city', suggestion.label)}
+            />
+          </View>
           <Field label='计划时间' value={draft.schedule} onInput={(value) => updateDraft('schedule', value)} />
-          <Field label='候选场馆' value={draft.venue} onInput={(value) => updateDraft('venue', value)} />
+          <View className={styles.field}>
+            <Text className={styles.fieldLabel}>候选场馆</Text>
+            <SearchSelect
+              value={draft.venue}
+              placeholder='搜索场馆名称或城市'
+              onInput={(value) => updateDraft('venue', value)}
+              onSearch={searchVenueOptions}
+              onSelect={selectVenue}
+            />
+          </View>
         </View>
       )
     }
@@ -479,10 +649,12 @@ export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
 
       <View className={styles.hero}>
         <Text className={styles.eyebrow}>{screen.group.toUpperCase()}</Text>
-        <Text className={styles.title}>{screen.title}</Text>
-        <Text className={styles.subtitle}>{screen.subtitle}</Text>
+        <Text className={styles.title}>{screenData?.summary.title || screen.title}</Text>
+        <Text className={styles.subtitle}>{screenData?.summary.subtitle || screen.subtitle}</Text>
         <View className={styles.highlightRow}>
-          <Text className={styles.highlight}>{screen.highlight}</Text>
+          {screenData?.summary.highlight && (
+            <Text className={styles.highlight}>{screenData.summary.highlight}</Text>
+          )}
           <Text className={styles.context}>产品蓝图 · {screen.id}</Text>
         </View>
       </View>
@@ -517,27 +689,81 @@ export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
         </View>
 
         {loadState === 'loading' && <View className={styles.loadingLine}>正在连接决策服务...</View>}
-        {items.map((item) => (
-          <View className={styles.listItem} key={item.id}>
-            <View className={styles.listMain}>
+        {loadState === 'empty' && screenData?.empty_state && (
+          <View className={styles.emptyState}>
+            <Text className={styles.emptyStateTitle}>{screenData.empty_state.title}</Text>
+            {screenData.empty_state.description && (
+              <Text className={styles.emptyStateDescription}>{screenData.empty_state.description}</Text>
+            )}
+            {screenData.empty_state.action?.label && (
+              <Button
+                className={styles.emptyStateAction}
+                onClick={() => {
+                  const target = screenData.empty_state?.action?.target_screen
+                  if (target) void navigateToScreen(target)
+                }}
+              >
+                {screenData.empty_state.action.label}
+              </Button>
+            )}
+          </View>
+        )}
+        {screenId === 'S56' && (
+          <Text className={styles.taskSelectionSummary}>已选择 {selectedTaskIds.length} 项任务</Text>
+        )}
+        {items.map((item) => {
+          const taskId = Number(item.context?.task_id || 0)
+          const isTaskSelected = selectedTaskIds.includes(taskId)
+          const isTaskExpanded = expandedTaskIds.includes(taskId)
+          return (
+          <View
+            className={classNames(styles.listItem, screenId === 'S56' && styles.taskItem)}
+            key={item.id}
+            onClick={screenId === 'S55' ? () => {
+              const selectedTaskId = Number(item.context?.task_id || 0)
+              if (!selectedTaskId) return
+              setActiveTaskId(selectedTaskId)
+              Taro.setStorageSync(STORAGE_KEYS.taskId, selectedTaskId)
+              void replaceWithScreen('S56')
+            } : undefined}
+          >
+            {screenId === 'S56' && (
+              <View
+                className={classNames(styles.taskCheckbox, isTaskSelected && styles.taskCheckboxSelected)}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  toggleTaskSelection(taskId)
+                }}
+              >
+                {isTaskSelected && <Text>✓</Text>}
+              </View>
+            )}
+            <View
+              className={styles.listMain}
+              onClick={screenId === 'S56' ? () => toggleTaskDetails(taskId) : undefined}
+            >
               <Text className={styles.itemTitle}>{item.title}</Text>
-              <Text className={styles.itemDescription}>{item.description}</Text>
+              <Text className={classNames(styles.itemDescription, isTaskExpanded && styles.itemDescriptionExpanded)}>
+                {item.description}
+              </Text>
+              {screenId === 'S56' && isTaskExpanded && (
+                <View className={styles.taskDetails}>
+                  <Text>{item.details || '暂无更多任务信息'}</Text>
+                </View>
+              )}
             </View>
             <View className={styles.itemAside}>
               {item.value && <Text className={styles.itemValue}>{item.value}</Text>}
               <Text className={styles.status}>{item.status}</Text>
             </View>
           </View>
-        ))}
+          )
+        })}
       </View>
 
       <View className={styles.trustNote}>
         <View className={styles.trustIcon}>i</View>
-        <Text>
-          {loadState === 'example'
-            ? '当前为产品示例数据，不代表已核验事实。连接服务后将自动读取授权范围内的数据。'
-            : '事实、假设和 AI 建议分别标注；关键决定与人工门禁始终由具名负责人确认。'}
-        </Text>
+        <Text>事实、假设和 AI 建议分别标注；关键决定与人工门禁始终由具名负责人确认。</Text>
       </View>
 
       {message && (
@@ -547,7 +773,28 @@ export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
       )}
 
       <View className={styles.actions}>
-        {screenId === 'S01' ? (
+        {loadState === 'error' ? (
+          <Button className={styles.primaryButton} onClick={() => void fetchRemote()}>
+            重新加载
+          </Button>
+        ) : screenId === 'S56' ? (
+          <View className={styles.taskActions}>
+            <Button
+              className={styles.primaryButton}
+              disabled={loadState === 'loading' || !selectedTaskIds.length}
+              onClick={() => void runBatchTaskAction('accept')}
+            >
+              接受选中
+            </Button>
+            <Button
+              className={styles.rejectButton}
+              disabled={loadState === 'loading' || !selectedTaskIds.length}
+              onClick={() => void runBatchTaskAction('reject')}
+            >
+              拒绝接单
+            </Button>
+          </View>
+        ) : screenId === 'S01' ? (
           <Button
             className={classNames(styles.primaryButton, destructiveScreens.has(screenId) && styles.cautionButton)}
             disabled={loadState === 'loading'}

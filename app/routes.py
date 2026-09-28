@@ -10,7 +10,7 @@ from typing import Optional
 from urllib.parse import quote
 
 import requests
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -25,6 +25,7 @@ from .config import (
     OSS_PROVIDER,
     WECHAT_API_TIMEOUT_SECONDS,
     WECHAT_MINIAPP_APPID,
+    WECHAT_MINIAPP_MOCK_PHONE_NUMBER,
     WECHAT_MINIAPP_SECRET,
 )
 from .cache import redis_delete, redis_get_json, redis_set_json
@@ -49,8 +50,10 @@ from .models import (
     Show,
     Task,
     Tenant,
+    TenantMember,
     User,
     UserGroup,
+    Venue,
 )
 from .responses import json_ok
 from .schemas import (
@@ -74,6 +77,7 @@ from .schemas import (
     ReportShareIn,
     RiskIn,
     ShowOut,
+    TaskBatchActionIn,
     TaskIn,
     TaskSubmitIn,
     UserCreateIn,
@@ -85,6 +89,7 @@ from .schemas import (
 )
 from .document_parsers import parse_document_evidence, parse_spreadsheet_evidence
 from .feasibility_reports import build_feasibility_calculation, build_feasibility_report_docx
+from .miniapp_screens import SCREEN_PROVIDERS, ScreenRequestContext, build_miniapp_screen
 from .services import (
     GROUPS,
     calculate_breakeven_result,
@@ -108,17 +113,193 @@ from .services import (
     serialize_task,
     serialize_user,
     serialize_version,
+    resolve_request_context,
     verify_password,
 )
 
 
 router = APIRouter()
+PUBLIC_MINIAPP_SCREENS = frozenset({'S01', 'S04', 'S06', 'S07', 'S08', 'S09'})
 CAPTCHA_TTL_SECONDS = 300
 _captcha_fallback_store = {}
 _wechat_access_token_cache = {
     "token": "",
     "expires_at": datetime.now(timezone.utc) - timedelta(seconds=1),
 }
+
+
+@router.get('/miniapp/search')
+def search_miniapp_entities(
+    q: str,
+    authorization: Optional[str] = Header(default=None),
+    tenant_header: Optional[str] = Header(default=None, alias='X-Tenant-Id'),
+    db: Session = Depends(get_db),
+):
+    keyword = ' '.join((q or '').strip().split())
+    if not keyword:
+        raise HTTPException(status_code=422, detail='Search keyword is required')
+    request_context = resolve_request_context(
+        db,
+        authorization=authorization or '',
+        tenant_header=tenant_header,
+    )
+    tenant_id = request_context.tenant.id
+    like = f"%{keyword}%"
+
+    artists = db.query(Artist).filter(
+        (Artist.name.like(like)) | (Artist.tags.like(like))
+    ).order_by(Artist.heat_score.desc(), Artist.id.asc()).limit(8).all()
+    projects = db.query(Project).filter(
+        Project.tenant_id == tenant_id,
+        (
+            (Project.name.like(like))
+            | (Project.artist_name.like(like))
+            | (Project.city.like(like))
+            | (Project.venue.like(like))
+        ),
+    ).order_by(Project.id.desc()).limit(8).all()
+    venues = db.query(Venue).filter(
+        Venue.tenant_id == tenant_id,
+        (Venue.name.like(like)) | (Venue.city.like(like)),
+    ).order_by(Venue.city.asc(), Venue.name.asc()).limit(8).all()
+    members = db.query(User).join(
+        TenantMember,
+        TenantMember.user_id == User.id,
+    ).filter(
+        TenantMember.tenant_id == tenant_id,
+        User.status == 'active',
+        (User.name.like(like)) | (User.account.like(like)) | (User.phone.like(like)),
+    ).order_by(User.name.asc(), User.id.asc()).limit(8).all()
+    cities = sorted({venue.city for venue in venues if venue.city and keyword in venue.city})[:8]
+
+    groups = [
+        {
+            "entity_type": "artist",
+            "label": "艺人 / IP",
+            "items": [
+                {
+                    "entity_type": "artist",
+                    "entity_id": artist.id,
+                    "label": artist.name,
+                    "description": artist.tags or '',
+                    "value": ArtistOut.model_validate(artist).model_dump(),
+                }
+                for artist in artists
+            ],
+        },
+        {
+            "entity_type": "project",
+            "label": "历史项目",
+            "items": [
+                {
+                    "entity_type": "project",
+                    "entity_id": project.id,
+                    "label": project.name,
+                    "description": ' · '.join(filter(None, [project.artist_name, project.city, project.venue])),
+                    "value": serialize_project(project),
+                }
+                for project in projects
+            ],
+        },
+        {
+            "entity_type": "venue",
+            "label": "场馆",
+            "items": [
+                {
+                    "entity_type": "venue",
+                    "entity_id": venue.id,
+                    "label": venue.name,
+                    "description": ' · '.join(filter(None, [
+                        venue.city,
+                        f"{venue.capacity} 人" if venue.capacity is not None else '',
+                    ])),
+                    "value": {
+                        "id": venue.id,
+                        "name": venue.name,
+                        "city": venue.city,
+                        "address": venue.address,
+                        "capacity": venue.capacity,
+                        "quote": venue.quote,
+                    },
+                }
+                for venue in venues
+            ],
+        },
+        {
+            "entity_type": "city",
+            "label": "城市",
+            "items": [
+                {
+                    "entity_type": "city",
+                    "entity_id": f"city:{city}",
+                    "label": city,
+                    "description": "已有场馆城市",
+                    "value": city,
+                }
+                for city in cities
+            ],
+        },
+        {
+            "entity_type": "member",
+            "label": "团队成员",
+            "items": [
+                {
+                    "entity_type": "member",
+                    "entity_id": member.id,
+                    "label": member.name,
+                    "description": member.account or member.phone or '',
+                    "value": serialize_user(member),
+                }
+                for member in members
+            ],
+        },
+    ]
+    return json_ok({
+        "keyword": keyword,
+        "groups": [group for group in groups if group["items"]],
+    })
+
+
+@router.get('/miniapp/screens/{screen_id}')
+def get_miniapp_screen(
+    screen_id: str,
+    project_id: Optional[int] = None,
+    version_id: Optional[int] = None,
+    task_id: Optional[int] = None,
+    artist_id: Optional[int] = None,
+    keyword: str = '',
+    authorization: Optional[str] = Header(default=None),
+    tenant_header: Optional[str] = Header(default=None, alias='X-Tenant-Id'),
+    db: Session = Depends(get_db),
+):
+    if screen_id not in SCREEN_PROVIDERS:
+        raise HTTPException(status_code=400, detail='Unknown miniapp screen')
+
+    tenant_id = None
+    user_id = None
+    if screen_id not in PUBLIC_MINIAPP_SCREENS:
+        request_context = resolve_request_context(
+            db,
+            authorization=authorization or '',
+            tenant_header=tenant_header,
+        )
+        tenant_id = request_context.tenant.id
+        user_id = request_context.user.id
+
+    data = build_miniapp_screen(
+        screen_id,
+        ScreenRequestContext(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            project_id=project_id,
+            version_id=version_id,
+            task_id=task_id,
+            artist_id=artist_id,
+            keyword=keyword,
+        ),
+        db,
+    )
+    return json_ok(data.model_dump())
 
 
 def current_oss_provider():
@@ -349,21 +530,36 @@ def validate_captcha_challenge(captcha_id: str, captcha_code: str):
     return (captcha_code or '').strip().upper() == (payload.get('code') or '').upper()
 
 
+def wechat_miniapp_appid():
+    return os.environ.get('WECHAT_MINIAPP_APPID', WECHAT_MINIAPP_APPID).strip()
+
+
+def wechat_miniapp_secret():
+    return os.environ.get('WECHAT_MINIAPP_SECRET', WECHAT_MINIAPP_SECRET).strip()
+
+
+def wechat_miniapp_mock_phone_number():
+    return os.environ.get('WECHAT_MINIAPP_MOCK_PHONE_NUMBER', WECHAT_MINIAPP_MOCK_PHONE_NUMBER).strip()
+
+
 def wechat_credentials_configured():
-    return bool(WECHAT_MINIAPP_APPID and WECHAT_MINIAPP_SECRET)
+    return bool(wechat_miniapp_appid() and wechat_miniapp_secret())
 
 
 def exchange_wechat_login_code(login_code: str):
     if not login_code:
         raise HTTPException(status_code=400, detail='Missing wechat login code')
     if not wechat_credentials_configured():
-        raise HTTPException(status_code=500, detail='WECHAT_MINIAPP_APPID and WECHAT_MINIAPP_SECRET are required')
+        if wechat_miniapp_mock_phone_number():
+            digest = hashlib.sha256(login_code.encode('utf-8')).hexdigest()[:16]
+            return {"openid": f"local-mock-openid-{digest}", "unionid": "", "session_key": "local-mock-session"}
+        raise HTTPException(status_code=503, detail='WeChat miniapp credentials are not configured')
     try:
         response = requests.get(
             'https://api.weixin.qq.com/sns/jscode2session',
             params={
-                "appid": WECHAT_MINIAPP_APPID,
-                "secret": WECHAT_MINIAPP_SECRET,
+                "appid": wechat_miniapp_appid(),
+                "secret": wechat_miniapp_secret(),
                 "js_code": login_code,
                 "grant_type": "authorization_code",
             },
@@ -385,14 +581,14 @@ def get_wechat_access_token():
     if cached_token and expires_at > now + timedelta(seconds=30):
         return cached_token
     if not wechat_credentials_configured():
-        raise HTTPException(status_code=500, detail='WECHAT_MINIAPP_APPID and WECHAT_MINIAPP_SECRET are required')
+        raise HTTPException(status_code=503, detail='WeChat miniapp credentials are not configured')
     try:
         response = requests.get(
             'https://api.weixin.qq.com/cgi-bin/token',
             params={
                 "grant_type": "client_credential",
-                "appid": WECHAT_MINIAPP_APPID,
-                "secret": WECHAT_MINIAPP_SECRET,
+                "appid": wechat_miniapp_appid(),
+                "secret": wechat_miniapp_secret(),
             },
             timeout=WECHAT_API_TIMEOUT_SECONDS,
         )
@@ -414,6 +610,11 @@ def get_wechat_access_token():
 def fetch_wechat_phone_number(phone_code: str):
     if not phone_code:
         raise HTTPException(status_code=400, detail='Missing wechat phone code')
+    if not wechat_credentials_configured():
+        mock_phone = wechat_miniapp_mock_phone_number()
+        if mock_phone:
+            return mock_phone
+        raise HTTPException(status_code=503, detail='WeChat miniapp credentials are not configured')
     access_token = get_wechat_access_token()
     try:
         response = requests.post(
@@ -927,12 +1128,19 @@ def list_tenants(db: Session = Depends(get_db)):
 
 
 @router.post('/tenants/switch')
-def switch_tenant(tenant_id: int, db: Session = Depends(get_db)):
-    tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
-    if not tenant:
-        raise HTTPException(status_code=404, detail='Tenant not found')
+def switch_tenant(
+    tenant_id: int,
+    authorization: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+):
+    request_context = resolve_request_context(
+        db,
+        authorization=authorization or '',
+        tenant_header=str(tenant_id),
+    )
+    tenant = request_context.tenant
     return json_ok({
-        "token": f"dev-token-tenant-{tenant.id}",
+        "token": f"dev-token-{request_context.user.id}-{tenant.id}",
         "current_tenant": {"id": tenant.id, "name": tenant.name, "status": tenant.status},
     })
 
@@ -947,14 +1155,29 @@ def list_projects(db: Session = Depends(get_db)):
 @router.post('/projects')
 def create_project(payload: ProjectIn, db: Session = Depends(get_db)):
     tenant, user = get_or_create_default_context(db)
+    if payload.artist_id and not db.query(Artist).filter(Artist.id == payload.artist_id).first():
+        raise HTTPException(status_code=404, detail='Artist not found')
+    if payload.venue_id and not db.query(Venue).filter(
+        Venue.id == payload.venue_id,
+        Venue.tenant_id == tenant.id,
+    ).first():
+        raise HTTPException(status_code=404, detail='Venue not found')
+    if payload.source_project_id and not db.query(Project).filter(
+        Project.id == payload.source_project_id,
+        Project.tenant_id == tenant.id,
+    ).first():
+        raise HTTPException(status_code=404, detail='Source project not found')
     project = Project(
         tenant_id=tenant.id,
         name=payload.name,
         type=payload.type or 'concert',
         status='draft',
+        artist_id=payload.artist_id,
         artist_name=payload.artist_name or '',
         city=payload.city or '',
+        venue_id=payload.venue_id,
         venue=payload.venue or '',
+        source_project_id=payload.source_project_id,
         schedule=payload.schedule or '',
         expected_attendance=payload.expected_attendance,
         avg_ticket_price=payload.avg_ticket_price,
@@ -962,6 +1185,12 @@ def create_project(payload: ProjectIn, db: Session = Depends(get_db)):
         venue_cost=payload.venue_cost,
         marketing_cost=payload.marketing_cost,
         production_cost=payload.production_cost,
+        available_funds=payload.available_funds,
+        venue_capacity=payload.venue_capacity,
+        ticket_tiers=payload.ticket_tiers,
+        conservative_occupancy_rate=payload.conservative_occupancy_rate,
+        neutral_occupancy_rate=payload.neutral_occupancy_rate,
+        optimistic_occupancy_rate=payload.optimistic_occupancy_rate,
         created_by=user.id,
     )
     db.add(project)
@@ -1150,6 +1379,84 @@ def create_task(payload: TaskIn, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(task)
     return json_ok(serialize_task(task, project_name=project.name, assignee_name=assignee.name if assignee else None))
+
+
+@router.post('/tasks/{task_id}/accept')
+def accept_task(task_id: int, db: Session = Depends(get_db)):
+    tenant, user = get_or_create_default_context(db)
+    task_row = db.query(Task, Project.name).join(Project, Task.project_id == Project.id).filter(
+        Task.id == task_id,
+        Project.tenant_id == tenant.id,
+    ).first()
+    if not task_row:
+        raise HTTPException(status_code=404, detail='Task not found')
+    task, project_name = task_row
+    if task.status in {'submitted', 'completed'}:
+        raise HTTPException(status_code=409, detail='Task has already been submitted')
+    if task.assignee_id is None:
+        task.assignee_id = user.id
+    task.status = 'in_progress'
+    task.rejection_reason = ''
+    db.commit()
+    db.refresh(task)
+    assignee = db.query(User).filter(User.id == task.assignee_id).first()
+    return json_ok(serialize_task(
+        task,
+        project_name=project_name,
+        assignee_name=assignee.name if assignee else None,
+    ))
+
+
+@router.post('/tasks/actions/batch')
+def batch_task_action(payload: TaskBatchActionIn, db: Session = Depends(get_db)):
+    task_ids = list(dict.fromkeys(payload.task_ids))
+    if not task_ids:
+        raise HTTPException(status_code=400, detail='Select at least one task')
+
+    tenant, user = get_or_create_default_context(db)
+    task_rows = db.query(Task, Project.name).join(Project, Task.project_id == Project.id).filter(
+        Task.id.in_(task_ids),
+        Project.tenant_id == tenant.id,
+    ).all()
+    if len(task_rows) != len(task_ids):
+        raise HTTPException(status_code=404, detail='Task not found')
+
+    blocked_tasks = [task for task, _ in task_rows if task.status in {'submitted', 'completed'}]
+    if blocked_tasks:
+        raise HTTPException(status_code=409, detail='Submitted or completed tasks cannot be changed')
+
+    reason = (payload.reason or '').strip()
+    if payload.action == 'reject' and not reason:
+        raise HTTPException(status_code=400, detail='Rejection reason is required')
+
+    project_names = {}
+    for task, project_name in task_rows:
+        project_names[task.id] = project_name
+        if payload.action == 'accept':
+            task.assignee_id = user.id
+            task.status = 'in_progress'
+            task.rejection_reason = ''
+        else:
+            task.assignee_id = None
+            task.status = 'pending'
+            task.rejection_reason = reason
+
+    db.commit()
+    tasks_by_id = {task.id: task for task, _ in task_rows}
+    serialized_tasks = []
+    for task_id in task_ids:
+        task = tasks_by_id[task_id]
+        db.refresh(task)
+        serialized_tasks.append(serialize_task(
+            task,
+            project_name=project_names[task.id],
+            assignee_name=user.name if payload.action == 'accept' else None,
+        ))
+    return json_ok({
+        "action": payload.action,
+        "updated_count": len(serialized_tasks),
+        "tasks": serialized_tasks,
+    })
 
 
 @router.post('/tasks/{task_id}/submit')

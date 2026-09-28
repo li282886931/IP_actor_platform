@@ -1,6 +1,7 @@
 import Taro from '@tarojs/taro'
 
 import { CLIENT_SOURCE, DEFAULT_API_BASE, REQUEST_TIMEOUT_MS, STORAGE_KEYS } from '@/config/runtime'
+import type { MiniappScreenContext, MiniappScreenData, MiniappSearchResult } from '@/types/domain'
 
 export interface ApiEnvelope<T> {
   code: number
@@ -11,6 +12,18 @@ export interface ApiEnvelope<T> {
 export interface RequestOptions {
   method?: 'GET' | 'POST' | 'PATCH' | 'DELETE'
   data?: Record<string, unknown>
+}
+
+export class ApiError extends Error {
+  code: string
+  statusCode?: number
+
+  constructor(code: string, statusCode?: number, message = code) {
+    super(message)
+    this.name = 'ApiError'
+    this.code = code
+    this.statusCode = statusCode
+  }
 }
 
 export const getApiBase = () => Taro.getStorageSync<string>(STORAGE_KEYS.apiBase) || DEFAULT_API_BASE
@@ -38,20 +51,14 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
       },
     })
 
-    if (response.statusCode === 401) {
-      throw new Error('AUTH_EXPIRED')
-    }
-    if (response.statusCode === 403) {
-      throw new Error('FORBIDDEN')
-    }
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw new Error(`HTTP_${response.statusCode}`)
+      throw new ApiError(`HTTP_${response.statusCode}`, response.statusCode)
     }
     const body = response.data
     if (body && typeof body === 'object' && 'code' in body) {
       const envelope = body as ApiEnvelope<T>
       if (envelope.code !== 0) {
-        throw new Error(envelope.message || 'BUSINESS_ERROR')
+        throw new ApiError('BUSINESS_ERROR', response.statusCode, envelope.message || 'BUSINESS_ERROR')
       }
       return envelope.data
     }
@@ -70,6 +77,18 @@ const query = (params: Record<string, string | number | undefined>) => {
 }
 
 export const api = {
+  searchMiniappEntities: (keyword: string) => (
+    request<MiniappSearchResult>(`/miniapp/search${query({ q: keyword.trim() })}`)
+  ),
+  getMiniappScreen: (screenId: string, context: MiniappScreenContext = {}) => (
+    request<MiniappScreenData>(`/miniapp/screens/${screenId}${query({
+      project_id: context.project_id,
+      version_id: context.version_id,
+      task_id: context.task_id,
+      artist_id: context.artist_id,
+      keyword: context.keyword,
+    })}`)
+  ),
   webLogin: (data: Record<string, unknown>) => request<Record<string, unknown>>('/auth/web-login', { method: 'POST', data }),
   wechatLogin: (data: Record<string, unknown>) => request<Record<string, unknown>>('/auth/wechat-login', { method: 'POST', data }),
   listUserGroups: () => request<unknown[]>('/user-groups'),
@@ -89,6 +108,8 @@ export const api = {
   createDecision: (data: Record<string, unknown>) => request<Record<string, unknown>>('/decisions', { method: 'POST', data }),
   listTasks: (projectId?: number) => request<unknown[]>(`/tasks${query({ project_id: projectId })}`),
   createTask: (data: Record<string, unknown>) => request<Record<string, unknown>>('/tasks', { method: 'POST', data }),
+  acceptTask: (id: number) => request<Record<string, unknown>>(`/tasks/${id}/accept`, { method: 'POST' }),
+  batchTaskAction: (data: Record<string, unknown>) => request<Record<string, unknown>>('/tasks/actions/batch', { method: 'POST', data }),
   submitTask: (id: number, data: Record<string, unknown>) => request<Record<string, unknown>>(`/tasks/${id}/submit`, { method: 'POST', data }),
   listFacts: (projectId?: number) => request<unknown[]>(`/facts${query({ project_id: projectId })}`),
   createFact: (data: Record<string, unknown>) => request<Record<string, unknown>>('/facts', { method: 'POST', data }),

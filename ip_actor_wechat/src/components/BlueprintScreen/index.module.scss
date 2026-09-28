@@ -209,6 +209,55 @@
   line-height: 1.6;
 }
 
+.itemDescriptionExpanded {
+  display: block;
+  overflow: visible;
+  -webkit-line-clamp: unset;
+  line-clamp: unset;
+}
+
+.taskSelectionSummary {
+  display: block;
+  padding: 18rpx 0 4rpx;
+  color: $color-text-secondary;
+  font-size: $font-size-sm;
+}
+
+.taskItem {
+  align-items: flex-start;
+}
+
+.taskCheckbox {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 38rpx;
+  width: 38rpx;
+  height: 38rpx;
+  margin-top: 2rpx;
+  color: $color-text-white;
+  font-size: $font-size-xs;
+  font-weight: $font-weight-bold;
+  border: 2rpx solid $color-border;
+  border-radius: $radius-xs;
+}
+
+.taskCheckboxSelected {
+  background: $color-primary;
+  border-color: $color-primary;
+}
+
+.taskDetails {
+  padding: 16rpx;
+  margin-top: 14rpx;
+  color: $color-text-secondary;
+  font-size: $font-size-xs;
+  line-height: 1.6;
+  background: $color-bg-hover;
+  border-left: 4rpx solid $color-primary;
+  border-radius: $radius-xs;
+}
+
 .itemAside {
   flex: 0 0 auto;
   max-width: 190rpx;
@@ -235,6 +284,41 @@
   padding: 32rpx 0;
   color: $color-text-tertiary;
   text-align: center;
+}
+
+.emptyState {
+  padding: 32rpx 0 16rpx;
+  text-align: center;
+}
+
+.emptyStateTitle,
+.emptyStateDescription {
+  display: block;
+}
+
+.emptyStateTitle {
+  font-size: $font-size-md;
+  font-weight: $font-weight-semibold;
+}
+
+.emptyStateDescription {
+  margin-top: 12rpx;
+  color: $color-text-secondary;
+  font-size: $font-size-sm;
+  line-height: 1.6;
+}
+
+.emptyStateAction {
+  @include button-reset;
+  min-width: 200rpx;
+  height: 72rpx;
+  margin-top: 24rpx;
+  color: $color-primary-dark;
+  font-size: $font-size-sm;
+  font-weight: $font-weight-semibold;
+  background: $color-bg-card;
+  border: 1rpx solid #a8bfeb;
+  border-radius: $radius-button;
 }
 
 .chart {
@@ -294,6 +378,11 @@
   display: block;
 }
 
+.searchField {
+  position: relative;
+  z-index: 3;
+}
+
 .fieldLabel {
   display: block;
   margin-bottom: 12rpx;
@@ -311,6 +400,91 @@
   border: 1rpx solid $color-border;
   border-radius: $radius-sm;
   box-sizing: border-box;
+}
+
+.searchDropdown {
+  position: absolute;
+  top: 128rpx;
+  right: 0;
+  left: 0;
+  z-index: 20;
+  max-height: 560rpx;
+  padding: 8rpx 24rpx;
+  overflow-y: auto;
+  background: $color-bg-card;
+  border: 1rpx solid $color-border;
+  border-radius: $radius-md;
+  box-shadow: $shadow-popup;
+}
+
+.searchGroup {
+  padding: 16rpx 0 8rpx;
+
+  & + & {
+    border-top: 1rpx solid $color-divider;
+  }
+}
+
+.searchGroupLabel {
+  display: block;
+  padding: 0 8rpx 8rpx;
+  color: $color-text-tertiary;
+  font-size: $font-size-xs;
+  font-weight: $font-weight-semibold;
+}
+
+.searchSuggestion {
+  display: flex;
+  gap: 16rpx;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 88rpx;
+  padding: 12rpx 8rpx;
+  border-radius: $radius-sm;
+  box-sizing: border-box;
+
+  &:active {
+    background: $color-bg-hover;
+  }
+}
+
+.searchSuggestionMain {
+  min-width: 0;
+  flex: 1;
+}
+
+.searchSuggestionTitle,
+.searchSuggestionDescription {
+  display: block;
+}
+
+.searchSuggestionTitle {
+  @include text-ellipsis;
+  color: $color-text-primary;
+  font-size: $font-size-md;
+  font-weight: $font-weight-semibold;
+}
+
+.searchSuggestionDescription {
+  @include text-ellipsis;
+  margin-top: 6rpx;
+  color: $color-text-secondary;
+  font-size: $font-size-xs;
+}
+
+.searchSuggestionAction {
+  flex: 0 0 auto;
+  color: $color-primary;
+  font-size: $font-size-sm;
+  font-weight: $font-weight-semibold;
+}
+
+.searchState {
+  display: block;
+  padding: 28rpx 8rpx;
+  color: $color-text-tertiary;
+  font-size: $font-size-sm;
+  text-align: center;
 }
 
 .reviewGrid {
@@ -390,7 +564,8 @@
 }
 
 .primaryButton,
-.secondaryButton {
+.secondaryButton,
+.rejectButton {
   @include button-reset;
   width: 100%;
   min-width: 180rpx;
@@ -423,6 +598,18 @@
   border: 1rpx solid #a8bfeb;
 }
 
+.taskActions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16rpx;
+}
+
+.rejectButton {
+  color: #a72424;
+  background: $color-bg-card;
+  border: 1rpx solid #e6a5a0;
+}
+
 .progress {
   height: 6rpx;
   overflow: hidden;
@@ -444,4 +631,3 @@
   font-size: 20rpx;
   text-align: center;
 }
-

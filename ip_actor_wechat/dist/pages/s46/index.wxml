@@ -16,7 +16,7 @@
       <view class="panel-title">业务记录</view>
       <view class="state {{loadState}}">{{loadState}}</view>
     </view>
-    <view wx:for="{{items}}" wx:key="id" class="item">
+    <view wx:for="{{items}}" wx:key="id" class="item" data-id="{{item.entityId}}" bindtap="onBusinessItemTap">
       <view class="item-main">
         <view class="item-title">{{item.title}}</view>
         <view class="item-desc">{{item.description}}</view>

@@ -1,4 +1,4 @@
-from sqlalchemy import JSON, Column, DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import JSON, Column, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import relationship
 
 from .database import Base
@@ -107,9 +107,12 @@ class Project(Base):
     name = Column(String(255), nullable=False)
     type = Column(String(64), default='concert')
     status = Column(String(64), default='draft')
+    artist_id = Column(Integer, ForeignKey('artists.id'), nullable=True)
     artist_name = Column(String(255), default='')
     city = Column(String(128), default='')
+    venue_id = Column(Integer, ForeignKey('venues.id'), nullable=True)
     venue = Column(String(255), default='')
+    source_project_id = Column(Integer, ForeignKey('projects.id'), nullable=True)
     schedule = Column(String(64), default='')
     expected_attendance = Column(Integer, nullable=True)
     avg_ticket_price = Column(Integer, nullable=True)
@@ -117,6 +120,12 @@ class Project(Base):
     venue_cost = Column(Integer, nullable=True)
     marketing_cost = Column(Integer, nullable=True)
     production_cost = Column(Integer, nullable=True)
+    available_funds = Column(Integer, nullable=True)
+    venue_capacity = Column(Integer, nullable=True)
+    ticket_tiers = Column(JSON, nullable=True)
+    conservative_occupancy_rate = Column(Integer, nullable=True)
+    neutral_occupancy_rate = Column(Integer, nullable=True)
+    optimistic_occupancy_rate = Column(Integer, nullable=True)
     current_version_id = Column(Integer, nullable=True)
     created_by = Column(Integer, ForeignKey('users.id'), nullable=True)
     created_at = Column(DateTime, server_default=func.current_timestamp())
@@ -160,6 +169,7 @@ class Task(Base):
     status = Column(String(64), default='pending')
     result = Column(Text, default='')
     evidence_ids = Column(JSON, default=list)
+    rejection_reason = Column(Text, default='')
     created_at = Column(DateTime, server_default=func.current_timestamp())
 
 
@@ -322,3 +332,183 @@ class ExternalDataJob(Base):
     created_at = Column(DateTime, server_default=func.current_timestamp())
     started_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
+
+
+class Venue(Base):
+    __tablename__ = 'venues'
+    __table_args__ = (
+        UniqueConstraint('tenant_id', 'city', 'name', name='uq_venues_tenant_city_name'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(Integer, ForeignKey('tenants.id'), nullable=False)
+    name = Column(String(255), nullable=False)
+    city = Column(String(128), nullable=False)
+    address = Column(String(512), default='')
+    capacity = Column(Integer, nullable=True)
+    quote = Column(Integer, nullable=True)
+    fire_safety_status = Column(String(64), default='unverified')
+    transport_notes = Column(Text, default='')
+    source = Column(String(128), default='')
+    created_at = Column(DateTime, server_default=func.current_timestamp())
+
+
+class TourPlan(Base):
+    __tablename__ = 'tour_plans'
+    __table_args__ = (
+        UniqueConstraint('tenant_id', 'name', name='uq_tour_plans_tenant_name'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(Integer, ForeignKey('tenants.id'), nullable=False)
+    name = Column(String(255), nullable=False)
+    status = Column(String(64), default='draft')
+    created_by = Column(Integer, ForeignKey('users.id'), nullable=True)
+    created_at = Column(DateTime, server_default=func.current_timestamp())
+    updated_at = Column(DateTime, server_default=func.current_timestamp(), onupdate=func.current_timestamp())
+
+
+class TourStop(Base):
+    __tablename__ = 'tour_stops'
+    __table_args__ = (
+        UniqueConstraint('tour_plan_id', 'sequence', name='uq_tour_stops_plan_sequence'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    tour_plan_id = Column(Integer, ForeignKey('tour_plans.id'), nullable=False)
+    project_id = Column(Integer, ForeignKey('projects.id'), nullable=True)
+    venue_id = Column(Integer, ForeignKey('venues.id'), nullable=True)
+    city = Column(String(128), nullable=False)
+    sequence = Column(Integer, nullable=False)
+    scheduled_at = Column(String(64), default='')
+    status = Column(String(64), default='planned')
+    created_at = Column(DateTime, server_default=func.current_timestamp())
+
+
+class Notification(Base):
+    __tablename__ = 'notifications'
+    __table_args__ = (
+        UniqueConstraint('tenant_id', 'user_id', 'business_key', name='uq_notifications_recipient_key'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(Integer, ForeignKey('tenants.id'), nullable=False)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
+    business_key = Column(String(255), nullable=False)
+    notification_type = Column(String(64), default='system')
+    title = Column(String(255), nullable=False)
+    content = Column(Text, default='')
+    status = Column(String(64), default='unread')
+    context = Column(JSON, default=dict)
+    created_at = Column(DateTime, server_default=func.current_timestamp())
+    read_at = Column(DateTime, nullable=True)
+
+
+class ProjectActual(Base):
+    __tablename__ = 'project_actuals'
+    __table_args__ = (
+        UniqueConstraint('project_id', name='uq_project_actuals_project'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, ForeignKey('projects.id'), nullable=False)
+    actual_attendance = Column(Integer, nullable=True)
+    actual_revenue = Column(Integer, nullable=True)
+    actual_cost = Column(Integer, nullable=True)
+    actual_profit = Column(Integer, nullable=True)
+    status = Column(String(64), default='pending')
+    notes = Column(Text, default='')
+    settled_at = Column(DateTime, nullable=True)
+    updated_at = Column(DateTime, server_default=func.current_timestamp(), onupdate=func.current_timestamp())
+
+
+class TicketingSnapshot(Base):
+    __tablename__ = 'ticketing_snapshots'
+    __table_args__ = (
+        UniqueConstraint('project_id', 'captured_at', 'source', name='uq_ticketing_snapshots_project_time_source'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, ForeignKey('projects.id'), nullable=False)
+    captured_at = Column(DateTime, nullable=False)
+    sold_count = Column(Integer, nullable=False)
+    gross_revenue = Column(Integer, nullable=True)
+    source = Column(String(128), nullable=False)
+    created_at = Column(DateTime, server_default=func.current_timestamp())
+
+
+class UserSetting(Base):
+    __tablename__ = 'user_settings'
+    __table_args__ = (
+        UniqueConstraint('tenant_id', 'user_id', name='uq_user_settings_tenant_user'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(Integer, ForeignKey('tenants.id'), nullable=False)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
+    locale = Column(String(32), default='zh-CN')
+    theme = Column(String(32), default='system')
+    notification_preferences = Column(JSON, default=dict)
+    updated_at = Column(DateTime, server_default=func.current_timestamp(), onupdate=func.current_timestamp())
+
+
+class PrivacyConsent(Base):
+    __tablename__ = 'privacy_consents'
+    __table_args__ = (
+        UniqueConstraint('tenant_id', 'user_id', 'scope', name='uq_privacy_consents_tenant_user_scope'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(Integer, ForeignKey('tenants.id'), nullable=False)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
+    scope = Column(String(128), nullable=False)
+    granted = Column(Integer, default=0)
+    policy_version = Column(String(64), default='')
+    granted_at = Column(DateTime, nullable=True)
+    revoked_at = Column(DateTime, nullable=True)
+
+
+class MemberInvitation(Base):
+    __tablename__ = 'member_invitations'
+    __table_args__ = (
+        UniqueConstraint('tenant_id', 'invitee', 'status', name='uq_member_invitations_active_invitee'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(Integer, ForeignKey('tenants.id'), nullable=False)
+    invitee = Column(String(255), nullable=False)
+    role = Column(String(64), default='member')
+    token = Column(String(128), nullable=False, unique=True)
+    status = Column(String(64), default='pending')
+    invited_by = Column(Integer, ForeignKey('users.id'), nullable=True)
+    expires_at = Column(DateTime, nullable=False)
+    created_at = Column(DateTime, server_default=func.current_timestamp())
+
+
+class AgentPermission(Base):
+    __tablename__ = 'agent_permissions'
+    __table_args__ = (
+        UniqueConstraint('tenant_id', 'user_id', 'capability', name='uq_agent_permissions_tenant_user_capability'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(Integer, ForeignKey('tenants.id'), nullable=False)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
+    capability = Column(String(128), nullable=False)
+    enabled = Column(Integer, default=0)
+    updated_at = Column(DateTime, server_default=func.current_timestamp(), onupdate=func.current_timestamp())
+
+
+class ProjectDraft(Base):
+    __tablename__ = 'project_drafts'
+    __table_args__ = (
+        UniqueConstraint('tenant_id', 'user_id', 'draft_key', name='uq_project_drafts_tenant_user_key'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(Integer, ForeignKey('tenants.id'), nullable=False)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
+    draft_key = Column(String(128), nullable=False, default='default')
+    payload = Column(JSON, default=dict)
+    current_step = Column(Integer, default=1)
+    updated_at = Column(DateTime, server_default=func.current_timestamp(), onupdate=func.current_timestamp())

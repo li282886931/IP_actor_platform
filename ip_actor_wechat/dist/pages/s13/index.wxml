@@ -9,6 +9,32 @@
   <view wx:if="{{isForm}}" class="panel">
     <view class="panel-title">输入与联调</view>
     <input class="input" value="{{keyword}}" bindinput="onInput" placeholder="{{placeholder}}" />
+    <view wx:if="{{projectSearchOpen}}" class="search-dropdown">
+      <view wx:if="{{projectSearchLoading}}" class="search-state">正在搜索数据库...</view>
+      <block wx:elif="{{projectSearchSections.length}}">
+        <view wx:for="{{projectSearchSections}}" wx:key="key" wx:for-item="section" class="search-group">
+          <view class="search-group-label">{{section.label}}</view>
+          <view
+            wx:for="{{section.items}}"
+            wx:key="id"
+            wx:for-item="suggestion"
+            class="search-suggestion"
+            data-kind="{{suggestion.kind}}"
+            data-title="{{suggestion.title}}"
+            data-artist-name="{{suggestion.artistName}}"
+            data-source-id="{{suggestion.sourceId}}"
+            bindtap="onProjectSearchSelect"
+          >
+            <view class="search-suggestion-main">
+              <view class="search-suggestion-title">{{suggestion.title}}</view>
+              <view class="search-suggestion-description">{{suggestion.description}}</view>
+            </view>
+            <view class="search-suggestion-action">选择</view>
+          </view>
+        </view>
+      </block>
+      <view wx:else class="search-state">未找到匹配的艺人或历史项目</view>
+    </view>
   </view>
 
   <view class="panel">
@@ -16,7 +42,7 @@
       <view class="panel-title">业务记录</view>
       <view class="state {{loadState}}">{{loadState}}</view>
     </view>
-    <view wx:for="{{items}}" wx:key="id" class="item">
+    <view wx:for="{{items}}" wx:key="id" class="item" data-id="{{item.entityId}}" bindtap="onBusinessItemTap">
       <view class="item-main">
         <view class="item-title">{{item.title}}</view>
         <view class="item-desc">{{item.description}}</view>

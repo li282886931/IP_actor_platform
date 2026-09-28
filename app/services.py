@@ -1,8 +1,10 @@
 import hashlib
 import math
+from dataclasses import dataclass
 from typing import Optional
 from urllib.parse import quote
 
+from fastapi import HTTPException
 from sqlalchemy import func, inspect, text
 from sqlalchemy.orm import Session
 
@@ -27,6 +29,7 @@ from .models import (
     TenantMember,
     User,
     UserGroup,
+    Venue,
 )
 from .market_dossier import MARKET_DOSSIER
 
@@ -46,6 +49,44 @@ DEFAULT_USERS = [
     {"account": "g_user", "name": "政府文旅用户", "group_code": "G"},
     {"account": "c_user", "name": "观众用户", "group_code": "C"},
 ]
+
+
+@dataclass(frozen=True)
+class RequestContext:
+    tenant: Tenant
+    user: User
+
+
+def resolve_request_context(
+    db: Session,
+    *,
+    authorization: str,
+    tenant_header: Optional[str] = None,
+) -> RequestContext:
+    scheme, _, token = (authorization or '').partition(' ')
+    parts = token.split('-')
+    if scheme.lower() != 'bearer' or len(parts) != 4 or parts[:2] != ['dev', 'token']:
+        raise HTTPException(status_code=401, detail='Invalid or missing session token')
+
+    try:
+        user_id = int(parts[2])
+        token_tenant_id = int(parts[3])
+        tenant_id = int(tenant_header) if tenant_header else token_tenant_id
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=401, detail='Invalid session token')
+
+    user = db.query(User).filter(User.id == user_id, User.status == 'active').first()
+    tenant = db.query(Tenant).filter(Tenant.id == tenant_id, Tenant.status == 'active').first()
+    if not user or not tenant:
+        raise HTTPException(status_code=401, detail='Session context is no longer available')
+
+    member = db.query(TenantMember).filter(
+        TenantMember.tenant_id == tenant.id,
+        TenantMember.user_id == user.id,
+    ).first()
+    if not member:
+        raise HTTPException(status_code=403, detail='Tenant access denied')
+    return RequestContext(tenant=tenant, user=user)
 
 DEFAULT_ARTISTS = [
     {"name": "周杰伦", "tags": "流行/华语", "heat_score": 95, "fan_count": "5000万", "risk_level": 0, "profile": {}},
@@ -303,9 +344,12 @@ def project_input_snapshot(project):
     return {
         "name": project.name,
         "type": project.type,
+        "artist_id": project.artist_id,
         "artist_name": project.artist_name,
         "city": project.city,
+        "venue_id": project.venue_id,
         "venue": project.venue,
+        "source_project_id": project.source_project_id,
         "schedule": project.schedule,
         "expected_attendance": project.expected_attendance,
         "avg_ticket_price": project.avg_ticket_price,
@@ -313,6 +357,12 @@ def project_input_snapshot(project):
         "venue_cost": project.venue_cost,
         "marketing_cost": project.marketing_cost,
         "production_cost": project.production_cost,
+        "available_funds": project.available_funds,
+        "venue_capacity": project.venue_capacity,
+        "ticket_tiers": project.ticket_tiers or [],
+        "conservative_occupancy_rate": project.conservative_occupancy_rate,
+        "neutral_occupancy_rate": project.neutral_occupancy_rate,
+        "optimistic_occupancy_rate": project.optimistic_occupancy_rate,
     }
 
 
@@ -412,9 +462,12 @@ def serialize_project(project):
         "name": project.name,
         "type": project.type,
         "status": project.status,
+        "artist_id": project.artist_id,
         "artist_name": project.artist_name,
         "city": project.city,
+        "venue_id": project.venue_id,
         "venue": project.venue,
+        "source_project_id": project.source_project_id,
         "schedule": project.schedule,
         "expected_attendance": project.expected_attendance,
         "avg_ticket_price": project.avg_ticket_price,
@@ -422,6 +475,12 @@ def serialize_project(project):
         "venue_cost": project.venue_cost,
         "marketing_cost": project.marketing_cost,
         "production_cost": project.production_cost,
+        "available_funds": project.available_funds,
+        "venue_capacity": project.venue_capacity,
+        "ticket_tiers": project.ticket_tiers or [],
+        "conservative_occupancy_rate": project.conservative_occupancy_rate,
+        "neutral_occupancy_rate": project.neutral_occupancy_rate,
+        "optimistic_occupancy_rate": project.optimistic_occupancy_rate,
         "current_version_id": project.current_version_id,
     }
 
@@ -451,6 +510,7 @@ def serialize_task(task: Task, *, project_name: Optional[str] = None, assignee_n
         "result": task.result,
         "evidence_ids": task.evidence_ids or [],
         "evidence_count": len(task.evidence_ids or []),
+        "rejection_reason": task.rejection_reason or '',
     }
 
 
@@ -809,6 +869,28 @@ def seed_initial_data(db: Session):
     db.commit()
 
     seed_market_dossier_data(db)
+    seed_venue_reference_data(db)
+
+
+def seed_venue_reference_data(db: Session):
+    tenant, _ = get_or_create_default_context(db)
+    existing_keys = {
+        (venue.city, venue.name)
+        for venue in db.query(Venue).filter(Venue.tenant_id == tenant.id).all()
+    }
+    for show in db.query(Show).all():
+        city = (show.city or '').strip()
+        name = (show.venue or '').strip()
+        if not city or not name or name == '待定' or (city, name) in existing_keys:
+            continue
+        db.add(Venue(
+            tenant_id=tenant.id,
+            city=city,
+            name=name,
+            source=f"show:{show.id}",
+        ))
+        existing_keys.add((city, name))
+    db.commit()
 
 
 def ensure_runtime_columns():
@@ -832,11 +914,32 @@ def ensure_runtime_columns():
         task_columns = {column['name'] for column in inspector.get_columns('tasks')}
         if 'evidence_ids' not in task_columns:
             statements.append("ALTER TABLE tasks ADD COLUMN evidence_ids JSON")
+        if 'rejection_reason' not in task_columns:
+            statements.append("ALTER TABLE tasks ADD COLUMN rejection_reason TEXT")
 
     if inspector.has_table('shows'):
         show_columns = {column['name'] for column in inspector.get_columns('shows')}
         if 'poster_url' not in show_columns:
             statements.append("ALTER TABLE shows ADD COLUMN poster_url TEXT")
+
+    if inspector.has_table('projects'):
+        project_columns = {column['name'] for column in inspector.get_columns('projects')}
+        project_column_definitions = {
+            'artist_id': 'INTEGER',
+            'venue_id': 'INTEGER',
+            'source_project_id': 'INTEGER',
+            'available_funds': 'INTEGER',
+            'venue_capacity': 'INTEGER',
+            'ticket_tiers': 'JSON',
+            'conservative_occupancy_rate': 'INTEGER',
+            'neutral_occupancy_rate': 'INTEGER',
+            'optimistic_occupancy_rate': 'INTEGER',
+        }
+        for column_name, column_type in project_column_definitions.items():
+            if column_name not in project_columns:
+                statements.append(
+                    f"ALTER TABLE projects ADD COLUMN {column_name} {column_type}"
+                )
 
     if not statements:
         return

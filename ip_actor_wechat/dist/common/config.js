@@ -7,7 +7,10 @@ module.exports = {
     "token": "starhub-token",
     "tenant": "starhub-tenant",
     "user": "starhub-user",
+    "projectDraft": "starhub-project-draft",
     "projectId": "starhub-project-id",
-    "taskId": "starhub-task-id"
+    "versionId": "starhub-version-id",
+    "taskId": "starhub-task-id",
+    "artistId": "starhub-artist-id"
   }
 }

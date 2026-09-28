@@ -9,6 +9,7 @@ __pycache__/
 htmlcov/
 demo.db
 node_modules/
+.swc/
 .DS_Store
 .venv*
 .env

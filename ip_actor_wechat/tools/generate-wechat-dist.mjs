@@ -14,8 +14,11 @@ const runtimeConfig = {
     token: 'starhub-token',
     tenant: 'starhub-tenant',
     user: 'starhub-user',
+    projectDraft: 'starhub-project-draft',
     projectId: 'starhub-project-id',
+    versionId: 'starhub-version-id',
     taskId: 'starhub-task-id',
+    artistId: 'starhub-artist-id',
   },
 }
 
@@ -29,7 +32,8 @@ const tabItems = [
 const nextScreen = {
   S01: 'S02', S02: 'S03', S03: 'S04', S04: 'S13', S05: 'S11', S06: 'S07',
   S07: 'S13', S08: 'S13', S09: 'S06', S10: 'S13', S11: 'S34', S12: 'S49',
-  S17: 'S74', S18: 'S16', S24: 'S25', S25: 'S29', S26: 'S25', S27: 'S25',
+  S13: 'S14', S14: 'S15', S15: 'S16', S16: 'S17', S17: 'S74', S18: 'S16',
+  S24: 'S25', S25: 'S29', S26: 'S25', S27: 'S25',
   S28: 'S29', S29: 'S34', S30: 'S29', S31: 'S34', S32: 'S34', S33: 'S55',
   S34: 'S45', S35: 'S37', S36: 'S12', S37: 'S40', S38: 'S37', S39: 'S42',
   S40: 'S41', S41: 'S42', S42: 'S39', S43: 'S44', S44: 'S55', S45: 'S46',
@@ -42,59 +46,6 @@ const nextScreen = {
   S82: 'S70', S83: 'S70', S84: 'S67',
 }
 
-const fixtures = {
-  认证: [
-    ['可信身份', '登录后签发统一令牌，跨端身份保持一致', '安全'],
-    ['客户隔离', '项目、资料和 Agent 按当前客户空间隔离', '最小权限'],
-    ['人工确认', '政策、场地、授权与资金责任由负责人确认', '硬门禁'],
-  ],
-  发现: [
-    ['华东万人场案例 A', '南京 · 12,000 席 · 已核验结算', '盈利'],
-    ['城市剧场项目', '通过缩小规模降低资金风险', '可迁移'],
-    ['十月档期机会', '同量级项目存在可比案例，档期仍需核验', '待证据'],
-  ],
-  项目: [
-    ['星河计划·南京站', '艺人 A · 南京 · 2027 年 10 月', '调整后推进'],
-    ['星河计划·杭州站', '档期与场馆报价待补充', '缺资料'],
-    ['冬季剧场项目', '组合待选 · 2027 年 12 月', '草稿'],
-  ],
-  财务: [
-    ['保守情景', '65% 上座率 · 利润缓冲较薄', '压力边界'],
-    ['中性情景', '80% 上座率 · 当前判断口径', '条件推进'],
-    ['乐观情景', '95% 上座率 · 不作为销售承诺', '上行空间'],
-  ],
-  依据: [
-    ['可用资金 500 万', '资金确认单 · 已由负责人核验', '已核验'],
-    ['可售规模 12,000 人', '项目输入 · 待场馆正式确认', '待确认'],
-    ['场馆容量冲突', '项目输入 12,000 与资料 10,500', '需处理'],
-  ],
-  风险: [
-    ['峰值资金缺口未落实', '中性情景缺口 94.61 万', '高风险'],
-    ['艺人授权范围未核验', '影响履约、版权与正式签约', '高风险'],
-    ['保守利润缓冲很薄', '65% 上座率利润仅 12.86 万', '中风险'],
-  ],
-  门禁: [
-    ['政策与大型活动审批', '负责人已核验示意文件', '已确认'],
-    ['场地承载、消防与安保', '容量冲突仍待消解', '待确认'],
-    ['资金拨付与合同责任', '资金缺口和亏损承担待确认', '待确认'],
-  ],
-  Agent: [
-    ['确认新增资金安排', '财务负责人 · 今天 18:00', '优先'],
-    ['补充艺人授权文件', '商务负责人 · 明天 12:00', '待证据'],
-    ['核对场馆报价口径', '地方执行 · 明天 18:00', '进行中'],
-  ],
-  任务: [
-    ['确认资金安排', '今天 18:00 · 财务 · 未认领', '高优先'],
-    ['补充艺人授权范围', '明天 12:00 · 商务', '进行中'],
-    ['核对场馆售票区域', '明天 18:00 · 地方执行', '待处理'],
-  ],
-  我的: [
-    ['团队与项目权限', '管理成员角色和项目可见范围', '可管理'],
-    ['Agent 授权设置', '内部任务、提醒与对外行为', '最小权限'],
-    ['数据授权与隐私', '连接、文件、可见范围与撤回', '可管理'],
-  ],
-}
-
 const pagePath = (screenId) => routeFor(screenId).slice(1)
 const serializableScreens = Object.fromEntries(screens.map((item) => [
   item[0],
@@ -104,7 +55,7 @@ const serializableScreens = Object.fromEntries(screens.map((item) => [
     subtitle: item[2],
     group: item[3],
     primaryAction: item[4],
-    highlight: item[5],
+    highlight: '',
   },
 ]))
 
@@ -161,36 +112,31 @@ button::after {
 `)
 
 writeFileSync(resolve(dist, 'common/screens.js'), `const screens = ${JSON.stringify(serializableScreens, null, 2)}
-const fixtures = ${JSON.stringify(fixtures, null, 2)}
 const nextScreen = ${JSON.stringify(nextScreen, null, 2)}
 const tabs = ${JSON.stringify(tabItems.map(([id]) => id), null, 2)}
 
-module.exports = { screens, fixtures, nextScreen, tabs }
+module.exports = { screens, nextScreen, tabs }
 `)
 
 writeFileSync(resolve(dist, 'common/config.js'), `module.exports = ${JSON.stringify(runtimeConfig, null, 2)}
 `)
 
-writeFileSync(resolve(dist, 'common/runtime.js'), `const { screens, fixtures, nextScreen, tabs } = require('./screens')
+writeFileSync(resolve(dist, 'common/runtime.js'), `const { screens, nextScreen, tabs } = require('./screens')
 const { DEFAULT_API_BASE, REQUEST_TIMEOUT_MS, CLIENT_SOURCE, STORAGE_KEYS } = require('./config')
 
 const apiBase = () => wx.getStorageSync(STORAGE_KEYS.apiBase) || DEFAULT_API_BASE
 const routeFor = (screenId) => '/pages/' + screenId.toLowerCase() + '/index'
-const fixtureItems = (group) => (fixtures[group] || fixtures['项目']).map((item, index) => ({
-  id: group + '-' + index,
-  title: item[0],
-  description: item[1],
-  status: item[2]
-}))
 
-const normalizeItems = (values, group) => {
-  if (!Array.isArray(values) || values.length === 0) return fixtureItems(group)
+const normalizeItems = (values) => {
+  if (!Array.isArray(values)) return []
   return values.map((value, index) => ({
-    id: String(value.id || value.project_id || group + '-' + index),
-    title: String(value.name || value.title || value.account || group + '记录 ' + (index + 1)),
-    description: String(value.description || value.content || value.city || value.source || '详情已从决策服务同步'),
-    status: String(value.status || value.level || value.group_code || '已同步'),
-    value: value.profit || value.heat_score || value.fan_count || ''
+    id: String(value.id || 'record-' + index),
+    entityId: Number(value.context && (value.context.task_id || value.context.project_id) || 0),
+    title: String(value.title || ''),
+    description: String(value.description || ''),
+    status: String(value.status || ''),
+    value: value.value == null ? '' : String(value.value),
+    details: String(value.details || '')
   }))
 }
 
@@ -234,15 +180,21 @@ const query = (params) => {
 
 const createScreenPage = (screenId) => {
   const screen = screens[screenId]
+  const initialTaskId = Number(wx.getStorageSync(STORAGE_KEYS.taskId) || 0)
   return Page({
     data: {
       screen,
-      items: fixtureItems(screen.group),
+      items: [],
       loadState: 'idle',
       message: '',
       keyword: '',
-      placeholder: screenId === 'S82' ? DEFAULT_API_BASE : '输入关键词或补充信息',
+      placeholder: screenId === 'S82' ? DEFAULT_API_BASE : screenId === 'S13' ? '输入艺人、IP 或项目名称' : '输入关键词或补充信息',
       apiBase: apiBase(),
+      projectSearchSections: [],
+      projectSearchOpen: false,
+      projectSearchLoading: false,
+      selectedTaskIds: screenId === 'S56' && initialTaskId ? [initialTaskId] : [],
+      expandedTaskIds: screenId === 'S56' && initialTaskId ? [initialTaskId] : [],
       isForm: ['S09','S13','S14','S15','S16','S17','S25','S36','S37','S41','S45','S47','S51','S54','S57','S65','S72','S79','S82'].includes(screenId)
     },
     onLoad() {
@@ -252,47 +204,109 @@ const createScreenPage = (screenId) => {
       this.fetchRemote().finally(() => wx.stopPullDownRefresh())
     },
     onInput(event) {
-      this.setData({ keyword: event.detail.value })
+      const keyword = event.detail.value
+      this.setData({ keyword })
+      if (screenId === 'S13') this.onProjectSearchInput(keyword)
+    },
+    onProjectSearchInput(keyword) {
+      clearTimeout(this.projectSearchTimer)
+      const normalized = String(keyword || '').trim()
+      if (!normalized) {
+        this.setData({ projectSearchSections: [], projectSearchOpen: false, projectSearchLoading: false })
+        return
+      }
+      this.setData({ projectSearchOpen: true, projectSearchLoading: true })
+      this.projectSearchTimer = setTimeout(() => {
+        request('/miniapp/search' + query({ q: normalized })).then((result) => {
+          const sections = (result.groups || [])
+            .filter((group) => ['artist', 'project'].includes(group.entity_type))
+            .map((group) => ({
+              key: group.entity_type,
+              label: group.label,
+              items: (group.items || []).map((item) => ({
+                id: item.entity_type + '-' + item.entity_id,
+                sourceId: item.entity_id,
+                kind: item.entity_type,
+                title: item.label,
+                description: item.description || '',
+                artistName: item.entity_type === 'artist'
+                  ? item.label
+                  : item.value && item.value.artist_name || ''
+              }))
+            }))
+          this.setData({
+            projectSearchSections: sections.filter((section) => section.items.length),
+            projectSearchLoading: false
+          })
+        }).catch((error) => {
+          console.error('[S13] fuzzy search failed', normalized, error)
+          this.setData({ projectSearchSections: [], projectSearchLoading: false })
+        })
+      }, 300)
+    },
+    onProjectSearchSelect(event) {
+      const suggestion = event.currentTarget.dataset
+      const draft = wx.getStorageSync(STORAGE_KEYS.projectDraft) || {}
+      this.setData({ keyword: suggestion.title, projectSearchOpen: false })
+      if (suggestion.kind === 'artist') {
+        wx.setStorageSync(STORAGE_KEYS.projectDraft, Object.assign({}, draft, {
+          artist_id: Number(suggestion.sourceId),
+          artist_name: suggestion.artistName
+        }))
+        return
+      }
+      request('/projects/' + suggestion.sourceId).then((project) => {
+        wx.setStorageSync(STORAGE_KEYS.projectDraft, Object.assign({}, draft, {
+          name: project.name,
+          type: project.type,
+          artist_name: project.artist_name
+        }))
+      }).catch((error) => {
+        console.error('[S13] project detail load failed', suggestion.sourceId, error)
+        wx.setStorageSync(STORAGE_KEYS.projectDraft, Object.assign({}, draft, {
+          name: suggestion.title,
+          artist_name: suggestion.artistName
+        }))
+      })
     },
     fetchRemote() {
-      this.setData({ loadState: 'loading', message: '' })
-      const projectId = Number(wx.getStorageSync(STORAGE_KEYS.projectId) || 1)
-      const taskId = Number(wx.getStorageSync(STORAGE_KEYS.taskId) || 1)
-      let promise
-      switch (screenId) {
-        case 'S02': promise = request('/tenants'); break
-        case 'S04': promise = request('/shows'); break
-        case 'S06':
-        case 'S09': promise = request('/cases/search' + query({ q: this.data.keyword })); break
-        case 'S10': promise = request('/projects'); break
-        case 'S11': promise = request('/projects/' + projectId).then((project) => [project]); break
-        case 'S12':
-        case 'S49': promise = request('/projects/' + projectId + '/versions'); break
-        case 'S19': promise = request('/artists' + query({ q: this.data.keyword })); break
-        case 'S36': promise = request('/assumptions' + query({ project_id: projectId })); break
-        case 'S37': promise = request('/facts' + query({ project_id: projectId })); break
-        case 'S38':
-        case 'S41':
-        case 'S42': promise = request('/evidences' + query({ project_id: projectId })); break
-        case 'S43':
-        case 'S44': promise = request('/risks' + query({ project_id: projectId })); break
-        case 'S45':
-        case 'S46': promise = request('/gates' + query({ project_id: projectId })); break
-        case 'S52':
-        case 'S53':
-        case 'S55':
-        case 'S56':
-        case 'S57':
-        case 'S58': promise = request('/tasks' + query({ project_id: projectId })); break
-        case 'S82': promise = request('/ping').then(() => []); break
-        default: promise = Promise.resolve([])
+      this.setData({ items: [], loadState: 'loading', message: '' })
+      const projectId = Number(wx.getStorageSync(STORAGE_KEYS.projectId) || 0)
+      const versionId = Number(wx.getStorageSync(STORAGE_KEYS.versionId) || 0)
+      const taskId = Number(wx.getStorageSync(STORAGE_KEYS.taskId) || 0)
+      const artistId = Number(wx.getStorageSync(STORAGE_KEYS.artistId) || 0)
+      const context = {
+        project_id: projectId || undefined,
+        version_id: versionId || undefined,
+        task_id: taskId || undefined,
+        artist_id: artistId || undefined,
+        keyword: String(this.data.keyword || '').trim() || undefined
       }
-      return promise.then((values) => {
-        const items = Array.isArray(values) && values.length ? normalizeItems(values, screen.group) : fixtureItems(screen.group)
-        this.setData({ items, loadState: 'success', message: screenId === 'S82' ? '决策服务连接正常' : '' })
+      return request('/miniapp/screens/' + screenId + query(context)).then((data) => {
+        let items = normalizeItems(data && data.items)
+        if (['S55', 'S56', 'S57', 'S58'].includes(screenId) && items.length) {
+          const storedTaskId = Number(wx.getStorageSync(STORAGE_KEYS.taskId) || 0)
+          const selectedTask = items.find((task) => task.entityId === storedTaskId) || items[0]
+          if (selectedTask.entityId) wx.setStorageSync(STORAGE_KEYS.taskId, selectedTask.entityId)
+          if (screenId === 'S56') {
+            const selectedTaskIds = this.data.selectedTaskIds
+            const expandedTaskIds = this.data.expandedTaskIds
+            items = items.map((item) => Object.assign({}, item, {
+              selected: selectedTaskIds.includes(item.entityId),
+              expanded: expandedTaskIds.includes(item.entityId)
+            }))
+          }
+        }
+        const emptyState = data && data.empty_state
+        this.setData({
+          screen: Object.assign({}, screen, data.summary || {}),
+          items,
+          loadState: items.length ? 'success' : 'empty',
+          message: !items.length && emptyState ? String(emptyState.title || emptyState.description || '') : ''
+        })
       }).catch((error) => {
         console.error('[MiniApp] load failed', screenId, error)
-        this.setData({ loadState: 'example', items: fixtureItems(screen.group), message: '决策服务暂不可用，当前展示已标注的产品示例数据。' })
+        this.setData({ loadState: 'error', items: [], message: '页面数据加载失败，请重试。' })
       })
     },
     onGetPhoneNumber(event) {
@@ -326,6 +340,28 @@ const createScreenPage = (screenId) => {
         this.setData({ loadState: 'error', message: '请使用手机号授权登录。' })
         return
       }
+      if (screenId === 'S17') {
+        const draft = wx.getStorageSync(STORAGE_KEYS.projectDraft) || {}
+        if (!draft.name) {
+          this.setData({ loadState: 'error', message: '项目名称缺失，请返回第一步补充。' })
+          return Promise.resolve()
+        }
+        this.setData({ loadState: 'loading', message: '' })
+        return request('/projects', 'POST', draft).then((project) => {
+          const projectId = Number(project.id || 0)
+          if (!projectId) throw new Error('PROJECT_ID_MISSING')
+          wx.setStorageSync(STORAGE_KEYS.projectId, projectId)
+          if (project.current_version_id) {
+            wx.setStorageSync(STORAGE_KEYS.versionId, Number(project.current_version_id))
+          }
+          wx.removeStorageSync(STORAGE_KEYS.projectDraft)
+          this.setData({ loadState: 'success' })
+          this.goNext()
+        }).catch((error) => {
+          console.error('[S17] create project failed', error)
+          this.setData({ loadState: 'error', message: '项目创建失败，输入已保留，请重试。' })
+        })
+      }
       if (screenId === 'S82') {
         const value = this.data.keyword && this.data.keyword.trim()
         if (value) wx.setStorageSync(STORAGE_KEYS.apiBase, value.replace(/\\/+$/, ''))
@@ -334,8 +370,96 @@ const createScreenPage = (screenId) => {
       }
       this.goNext()
     },
+    syncTaskItemState() {
+      const selectedTaskIds = this.data.selectedTaskIds
+      const expandedTaskIds = this.data.expandedTaskIds
+      this.setData({
+        items: this.data.items.map((item) => Object.assign({}, item, {
+          selected: selectedTaskIds.includes(Number(item.id)),
+          expanded: expandedTaskIds.includes(Number(item.id))
+        }))
+      })
+    },
+    onTaskCheck(event) {
+      if (screenId !== 'S56') return
+      const taskId = Number(event.currentTarget.dataset.id || 0)
+      if (!taskId) return
+      const selectedTaskIds = this.data.selectedTaskIds.includes(taskId)
+        ? this.data.selectedTaskIds.filter((id) => id !== taskId)
+        : this.data.selectedTaskIds.concat(taskId)
+      this.setData({ selectedTaskIds }, () => this.syncTaskItemState())
+    },
+    onTaskToggleDetail(event) {
+      if (screenId !== 'S56') return
+      const taskId = Number(event.currentTarget.dataset.id || 0)
+      if (!taskId) return
+      const expandedTaskIds = this.data.expandedTaskIds.includes(taskId)
+        ? this.data.expandedTaskIds.filter((id) => id !== taskId)
+        : this.data.expandedTaskIds.concat(taskId)
+      this.setData({ expandedTaskIds }, () => this.syncTaskItemState())
+    },
+    onBatchTaskAction(event) {
+      if (screenId !== 'S56') return
+      const action = event.currentTarget.dataset.action
+      if (!this.data.selectedTaskIds.length) {
+        this.setData({ loadState: 'error', message: '请至少勾选一项任务。' })
+        return
+      }
+      if (action === 'reject') {
+        wx.showModal({
+          title: '拒绝接单',
+          editable: true,
+          placeholderText: '请输入拒绝原因',
+          confirmText: '确认拒绝',
+          success: (result) => {
+            if (!result.confirm) return
+            const reason = String(result.content || '').trim()
+            if (!reason) {
+              this.setData({ loadState: 'error', message: '拒绝接单时必须填写原因。' })
+              return
+            }
+            this.executeBatchTaskAction(action, reason)
+          }
+        })
+        return
+      }
+      this.executeBatchTaskAction(action, '')
+    },
+    executeBatchTaskAction(action, reason) {
+      const taskIds = this.data.selectedTaskIds.slice()
+      this.setData({ loadState: 'loading', message: '' })
+      return request('/tasks/actions/batch', 'POST', {
+        task_ids: taskIds,
+        action,
+        reason
+      }).then(() => {
+        this.setData({ selectedTaskIds: [] })
+        return this.fetchRemote()
+      }).then(() => {
+        const message = action === 'accept'
+          ? '已接受 ' + taskIds.length + ' 项任务。'
+          : '已拒绝 ' + taskIds.length + ' 项任务，任务已恢复待分配。'
+        this.setData({ loadState: 'success', message })
+      }).catch((error) => {
+        console.error('[S56] batch task action failed', action, error)
+        this.setData({
+          loadState: 'error',
+          message: action === 'accept' ? '接受任务失败，请刷新后重试。' : '拒绝任务失败，请刷新后重试。'
+        })
+      })
+    },
+    onBusinessItemTap(event) {
+      if (screenId !== 'S55') return
+      const taskId = Number(event.currentTarget.dataset.id || 0)
+      if (!taskId) return
+      wx.setStorageSync(STORAGE_KEYS.taskId, taskId)
+      wx.redirectTo({ url: routeFor('S56') })
+    },
     goNext() {
-      const target = nextScreen[screenId] || 'S04'
+      const hasProject = Number(wx.getStorageSync(STORAGE_KEYS.projectId) || 0) > 0
+      const target = screenId === 'S74' && !hasProject
+        ? 'S10'
+        : nextScreen[screenId] || 'S04'
       const url = routeFor(target)
       if (tabs.includes(target)) wx.switchTab({ url })
       else wx.redirectTo({ url })
@@ -356,7 +480,7 @@ const wxml = `<view class="page">
 
   <view wx:if="{{isForm}}" class="panel">
     <view class="panel-title">输入与联调</view>
-    <input class="input" value="{{keyword}}" bindinput="onInput" placeholder="{{placeholder}}" />
+    <input class="input" value="{{keyword}}" bindinput="onInput" placeholder="{{placeholder}}" />__PROJECT_SEARCH__
   </view>
 
   <view class="panel">
@@ -364,24 +488,86 @@ const wxml = `<view class="page">
       <view class="panel-title">业务记录</view>
       <view class="state {{loadState}}">{{loadState}}</view>
     </view>
-    <view wx:for="{{items}}" wx:key="id" class="item">
+    __BUSINESS_ITEMS__
+  </view>
+
+  <view class="message" wx:if="{{message}}">{{message}}</view>
+  __PAGE_ACTIONS__
+</view>
+`
+
+const defaultBusinessItemsWxml = `<view wx:for="{{items}}" wx:key="id" class="item" data-id="{{item.entityId}}" bindtap="onBusinessItemTap">
       <view class="item-main">
         <view class="item-title">{{item.title}}</view>
         <view class="item-desc">{{item.description}}</view>
       </view>
       <view class="badge">{{item.status}}</view>
-    </view>
-  </view>
+    </view>`
 
-  <view class="message" wx:if="{{message}}">{{message}}</view>
-  <block wx:if="{{screen.id === 'S01'}}">
+const taskBusinessItemsWxml = `<view class="task-selection">已选择 {{selectedTaskIds.length}} 项任务</view>
+    <view wx:for="{{items}}" wx:key="id" class="item task-item">
+      <view
+        class="task-checkbox {{item.selected ? 'selected' : ''}}"
+        data-id="{{item.entityId}}"
+        catchtap="onTaskCheck"
+      >{{item.selected ? '✓' : ''}}</view>
+      <view class="item-main" data-id="{{item.entityId}}" bindtap="onTaskToggleDetail">
+        <view class="item-title">{{item.title}}</view>
+        <view class="item-desc {{item.expanded ? 'expanded' : ''}}">{{item.description}}</view>
+        <view wx:if="{{item.expanded}}" class="task-details">{{item.details || '暂无更多任务信息'}}</view>
+      </view>
+      <view class="badge">{{item.status}}</view>
+    </view>`
+
+const defaultActionsWxml = `<block wx:if="{{screen.id === 'S01'}}">
     <button class="primary" open-type="getPhoneNumber" bindgetphonenumber="onGetPhoneNumber">{{screen.primaryAction}}</button>
   </block>
   <block wx:else>
     <button class="primary" bindtap="onPrimaryTap">{{screen.primaryAction}}</button>
-  </block>
-</view>
-`
+  </block>`
+
+const taskActionsWxml = `<view class="task-actions">
+    <button
+      class="primary"
+      data-action="accept"
+      disabled="{{loadState === 'loading' || !selectedTaskIds.length}}"
+      bindtap="onBatchTaskAction"
+    >接受选中</button>
+    <button
+      class="reject"
+      data-action="reject"
+      disabled="{{loadState === 'loading' || !selectedTaskIds.length}}"
+      bindtap="onBatchTaskAction"
+    >拒绝接单</button>
+  </view>`
+
+const projectSearchWxml = `
+    <view wx:if="{{projectSearchOpen}}" class="search-dropdown">
+      <view wx:if="{{projectSearchLoading}}" class="search-state">正在搜索数据库...</view>
+      <block wx:elif="{{projectSearchSections.length}}">
+        <view wx:for="{{projectSearchSections}}" wx:key="key" wx:for-item="section" class="search-group">
+          <view class="search-group-label">{{section.label}}</view>
+          <view
+            wx:for="{{section.items}}"
+            wx:key="id"
+            wx:for-item="suggestion"
+            class="search-suggestion"
+            data-kind="{{suggestion.kind}}"
+            data-title="{{suggestion.title}}"
+            data-artist-name="{{suggestion.artistName}}"
+            data-source-id="{{suggestion.sourceId}}"
+            bindtap="onProjectSearchSelect"
+          >
+            <view class="search-suggestion-main">
+              <view class="search-suggestion-title">{{suggestion.title}}</view>
+              <view class="search-suggestion-description">{{suggestion.description}}</view>
+            </view>
+            <view class="search-suggestion-action">选择</view>
+          </view>
+        </view>
+      </block>
+      <view wx:else class="search-state">未找到匹配的艺人或历史项目</view>
+    </view>`
 
 const wxss = `.page {
   min-height: 100vh;
@@ -513,6 +699,137 @@ const wxss = `.page {
 }
 `
 
+const projectSearchWxss = `.search-dropdown {
+  max-height: 560rpx;
+  margin-top: 12rpx;
+  padding: 8rpx 20rpx;
+  overflow-y: auto;
+  border: 1rpx solid #dce2ec;
+  border-radius: 12rpx;
+  background: #fff;
+  box-shadow: 0 8rpx 32rpx rgba(0, 0, 0, .15);
+}
+.search-group {
+  padding: 16rpx 0 8rpx;
+}
+.search-group + .search-group {
+  border-top: 1rpx solid #edf0f5;
+}
+.search-group-label {
+  padding: 0 8rpx 8rpx;
+  color: #8893a7;
+  font-size: 22rpx;
+  font-weight: 600;
+}
+.search-suggestion {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+  min-height: 88rpx;
+  padding: 12rpx 8rpx;
+  border-radius: 8rpx;
+}
+.search-suggestion:active {
+  background: #eef2f7;
+}
+.search-suggestion-main {
+  min-width: 0;
+  flex: 1;
+}
+.search-suggestion-title,
+.search-suggestion-description {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.search-suggestion-title {
+  color: #172033;
+  font-size: 28rpx;
+  font-weight: 600;
+}
+.search-suggestion-description {
+  margin-top: 6rpx;
+  color: #566176;
+  font-size: 22rpx;
+}
+.search-suggestion-action {
+  flex: none;
+  color: #2864dc;
+  font-size: 24rpx;
+  font-weight: 600;
+}
+.search-state {
+  padding: 28rpx 8rpx;
+  color: #8893a7;
+  font-size: 24rpx;
+  text-align: center;
+}
+`
+
+const taskWxss = `.task-selection {
+  padding: 20rpx 0 4rpx;
+  color: #667085;
+  font-size: 24rpx;
+}
+.task-item {
+  align-items: flex-start;
+}
+.task-checkbox {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 38rpx;
+  width: 38rpx;
+  height: 38rpx;
+  margin-top: 2rpx;
+  color: #fff;
+  font-size: 22rpx;
+  font-weight: 700;
+  border: 2rpx solid #dce2ec;
+  border-radius: 6rpx;
+}
+.task-checkbox.selected {
+  background: #2864dc;
+  border-color: #2864dc;
+}
+.item-desc.expanded {
+  overflow: visible;
+  white-space: normal;
+}
+.task-details {
+  padding: 16rpx;
+  margin-top: 14rpx;
+  color: #566176;
+  font-size: 22rpx;
+  line-height: 1.6;
+  background: #eef2f7;
+  border-left: 4rpx solid #2864dc;
+  border-radius: 6rpx;
+}
+.task-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16rpx;
+  margin-top: 32rpx;
+}
+.task-actions .primary,
+.task-actions .reject {
+  width: 100%;
+  min-width: 0;
+  margin-top: 0;
+}
+.reject {
+  height: 92rpx;
+  border: 1rpx solid #e6a5a0;
+  border-radius: 999rpx;
+  color: #a72424;
+  background: #fff;
+  font-size: 30rpx;
+  font-weight: 700;
+}
+`
+
 const transparentPng = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=',
   'base64',
@@ -529,8 +846,14 @@ for (const [id, title] of screens) {
     navigationBarTitleText: title,
     enablePullDownRefresh: true,
   }, null, 2)}\n`)
-  writeFileSync(resolve(pageDir, 'index.wxml'), wxml)
-  writeFileSync(resolve(pageDir, 'index.wxss'), wxss)
+  writeFileSync(
+    resolve(pageDir, 'index.wxml'),
+    wxml
+      .replace('__PROJECT_SEARCH__', id === 'S13' ? projectSearchWxml : '')
+      .replace('__BUSINESS_ITEMS__', id === 'S56' ? taskBusinessItemsWxml : defaultBusinessItemsWxml)
+      .replace('__PAGE_ACTIONS__', id === 'S56' ? taskActionsWxml : defaultActionsWxml),
+  )
+  writeFileSync(resolve(pageDir, 'index.wxss'), `${wxss}${id === 'S13' ? projectSearchWxss : ''}${id === 'S56' ? taskWxss : ''}`)
   writeFileSync(resolve(pageDir, 'index.js'), `const { createScreenPage } = require('../../common/runtime')
 
 createScreenPage('${id}')

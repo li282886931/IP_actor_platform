@@ -1307,6 +1307,113 @@ def make_test_client(monkeypatch):
     return TestClient(app_module.app), session_factory
 
 
+def test_batch_task_actions_only_update_selected_tasks(monkeypatch):
+    client, session_factory = make_test_client(monkeypatch)
+
+    try:
+        project = client.post(
+            "/projects",
+            json={"name": "批量任务项目", "artist_name": "测试艺人", "city": "北京"},
+        ).json()["data"]
+        tasks = [
+            client.post(
+                "/tasks",
+                json={
+                    "project_id": project["id"],
+                    "title": title,
+                    "description": f"{title}详情",
+                },
+            ).json()["data"]
+            for title in ["任务一", "任务二", "任务三"]
+        ]
+
+        response = client.post(
+            "/tasks/actions/batch",
+            json={
+                "task_ids": [tasks[0]["id"], tasks[2]["id"]],
+                "action": "accept",
+            },
+        )
+
+        assert response.status_code == 200
+        result = response.json()["data"]
+        assert result["action"] == "accept"
+        assert result["updated_count"] == 2
+        assert {task["id"] for task in result["tasks"]} == {
+            tasks[0]["id"],
+            tasks[2]["id"],
+        }
+        assert all(task["status"] == "in_progress" for task in result["tasks"])
+        assert all(task["assignee_id"] is not None for task in result["tasks"])
+    finally:
+        app_module.app.dependency_overrides.clear()
+
+    db = session_factory()
+    try:
+        persisted = {
+            task.id: task
+            for task in db.query(app_module.Task).filter(
+                app_module.Task.id.in_([task["id"] for task in tasks]),
+            ).all()
+        }
+        assert persisted[tasks[0]["id"]].status == "in_progress"
+        assert persisted[tasks[1]["id"]].status == "pending"
+        assert persisted[tasks[1]["id"]].assignee_id is None
+        assert persisted[tasks[2]["id"]].status == "in_progress"
+    finally:
+        db.close()
+
+
+def test_batch_reject_returns_tasks_to_pending_and_records_reason(monkeypatch):
+    client, session_factory = make_test_client(monkeypatch)
+
+    try:
+        project = client.post(
+            "/projects",
+            json={"name": "拒绝任务项目", "artist_name": "测试艺人", "city": "上海"},
+        ).json()["data"]
+        task = client.post(
+            "/tasks",
+            json={
+                "project_id": project["id"],
+                "title": "核验场馆",
+                "description": "核验场馆档期和报价",
+            },
+        ).json()["data"]
+        accepted = client.post(
+            "/tasks/actions/batch",
+            json={"task_ids": [task["id"]], "action": "accept"},
+        )
+        assert accepted.status_code == 200
+
+        rejected = client.post(
+            "/tasks/actions/batch",
+            json={
+                "task_ids": [task["id"]],
+                "action": "reject",
+                "reason": "当前档期冲突",
+            },
+        )
+
+        assert rejected.status_code == 200
+        rejected_task = rejected.json()["data"]["tasks"][0]
+        assert rejected_task["status"] == "pending"
+        assert rejected_task["assignee_id"] is None
+        assert rejected_task["assignee_name"] is None
+        assert rejected_task["rejection_reason"] == "当前档期冲突"
+    finally:
+        app_module.app.dependency_overrides.clear()
+
+    db = session_factory()
+    try:
+        persisted = db.query(app_module.Task).filter(app_module.Task.id == task["id"]).one()
+        assert persisted.status == "pending"
+        assert persisted.assignee_id is None
+        assert persisted.rejection_reason == "当前档期冲突"
+    finally:
+        db.close()
+
+
 def fetch_login_captcha(client, monkeypatch, code="AB12"):
     monkeypatch.setattr(routes_module, "generate_captcha_code", lambda length=4: code)
     response = client.get("/auth/captcha")
@@ -1730,6 +1837,13 @@ def test_full_backend_plan_api_flow(monkeypatch):
             },
         )
         task = task_response.json()["data"]
+        accept_response = client.post(f"/tasks/{task['id']}/accept")
+        assert accept_response.status_code == 200
+        accepted_task = accept_response.json()["data"]
+        assert accepted_task["status"] == "in_progress"
+        assert accepted_task["assignee_id"] is not None
+        assert accepted_task["project_name"] == "杭州音乐节"
+
         submit_response = client.post(
             f"/tasks/{task['id']}/submit",
             json={"result": "审批材料已提交", "evidence_ids": [evidence["id"]]},
@@ -1904,5 +2018,32 @@ def test_wechat_login_rejects_unbound_phone_number(monkeypatch):
         )
         assert response.status_code == 403
         assert response.json()["detail"] == "Phone number is not linked to any account"
+    finally:
+        app_module.app.dependency_overrides.clear()
+
+
+def test_wechat_login_uses_local_mock_phone_when_wechat_credentials_are_missing(monkeypatch):
+    monkeypatch.delenv("WECHAT_MINIAPP_APPID", raising=False)
+    monkeypatch.delenv("WECHAT_MINIAPP_SECRET", raising=False)
+    monkeypatch.setenv("WECHAT_MINIAPP_MOCK_PHONE_NUMBER", "13800000000")
+    client, session_factory = make_test_client(monkeypatch)
+
+    try:
+        db = session_factory()
+        user = db.query(app_module.User).filter(app_module.User.account == "b_user").one()
+        user.phone = "13800000000"
+        db.commit()
+        db.close()
+
+        response = client.post(
+            "/auth/wechat-login",
+            json={"code": "local-dev-login-code", "phone_code": "local-dev-phone-code", "name": "本地微信用户"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert data["source"] == "wechat"
+        assert data["user"]["account"] == "b_user"
+        assert data["user"]["phone"] == "13800000000"
     finally:
         app_module.app.dependency_overrides.clear()

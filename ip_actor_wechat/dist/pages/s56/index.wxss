@@ -126,3 +126,64 @@
   font-size: 30rpx;
   font-weight: 700;
 }
+.task-selection {
+  padding: 20rpx 0 4rpx;
+  color: #667085;
+  font-size: 24rpx;
+}
+.task-item {
+  align-items: flex-start;
+}
+.task-checkbox {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 38rpx;
+  width: 38rpx;
+  height: 38rpx;
+  margin-top: 2rpx;
+  color: #fff;
+  font-size: 22rpx;
+  font-weight: 700;
+  border: 2rpx solid #dce2ec;
+  border-radius: 6rpx;
+}
+.task-checkbox.selected {
+  background: #2864dc;
+  border-color: #2864dc;
+}
+.item-desc.expanded {
+  overflow: visible;
+  white-space: normal;
+}
+.task-details {
+  padding: 16rpx;
+  margin-top: 14rpx;
+  color: #566176;
+  font-size: 22rpx;
+  line-height: 1.6;
+  background: #eef2f7;
+  border-left: 4rpx solid #2864dc;
+  border-radius: 6rpx;
+}
+.task-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16rpx;
+  margin-top: 32rpx;
+}
+.task-actions .primary,
+.task-actions .reject {
+  width: 100%;
+  min-width: 0;
+  margin-top: 0;
+}
+.reject {
+  height: 92rpx;
+  border: 1rpx solid #e6a5a0;
+  border-radius: 999rpx;
+  color: #a72424;
+  background: #fff;
+  font-size: 30rpx;
+  font-weight: 700;
+}

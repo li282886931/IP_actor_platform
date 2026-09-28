@@ -16,20 +16,35 @@
       <view class="panel-title">业务记录</view>
       <view class="state {{loadState}}">{{loadState}}</view>
     </view>
-    <view wx:for="{{items}}" wx:key="id" class="item">
-      <view class="item-main">
+    <view class="task-selection">已选择 {{selectedTaskIds.length}} 项任务</view>
+    <view wx:for="{{items}}" wx:key="id" class="item task-item">
+      <view
+        class="task-checkbox {{item.selected ? 'selected' : ''}}"
+        data-id="{{item.entityId}}"
+        catchtap="onTaskCheck"
+      >{{item.selected ? '✓' : ''}}</view>
+      <view class="item-main" data-id="{{item.entityId}}" bindtap="onTaskToggleDetail">
         <view class="item-title">{{item.title}}</view>
-        <view class="item-desc">{{item.description}}</view>
+        <view class="item-desc {{item.expanded ? 'expanded' : ''}}">{{item.description}}</view>
+        <view wx:if="{{item.expanded}}" class="task-details">{{item.details || '暂无更多任务信息'}}</view>
       </view>
       <view class="badge">{{item.status}}</view>
     </view>
   </view>
 
   <view class="message" wx:if="{{message}}">{{message}}</view>
-  <block wx:if="{{screen.id === 'S01'}}">
-    <button class="primary" open-type="getPhoneNumber" bindgetphonenumber="onGetPhoneNumber">{{screen.primaryAction}}</button>
-  </block>
-  <block wx:else>
-    <button class="primary" bindtap="onPrimaryTap">{{screen.primaryAction}}</button>
-  </block>
+  <view class="task-actions">
+    <button
+      class="primary"
+      data-action="accept"
+      disabled="{{loadState === 'loading' || !selectedTaskIds.length}}"
+      bindtap="onBatchTaskAction"
+    >接受选中</button>
+    <button
+      class="reject"
+      data-action="reject"
+      disabled="{{loadState === 'loading' || !selectedTaskIds.length}}"
+      bindtap="onBatchTaskAction"
+    >拒绝接单</button>
+  </view>
 </view>

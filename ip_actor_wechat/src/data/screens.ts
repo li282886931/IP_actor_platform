@@ -38,7 +38,7 @@ export const screenDefinitions: Record<string, ScreenDefinition> = {
     subtitle: '从艺人、城市、档期、场馆与成本共同判断',
     group: '发现',
     primaryAction: '开始评估我的项目',
-    highlight: '+118 万示例利润',
+    highlight: '实时业务数据',
   },
   S05: {
     id: 'S05',
@@ -450,11 +450,11 @@ export const screenDefinitions: Record<string, ScreenDefinition> = {
   },
   S56: {
     id: 'S56',
-    title: '核对场馆售票区域',
-    subtitle: '任务 T-014 / 已指派，待接受',
+    title: '批量处理待接任务',
+    subtitle: '勾选部分任务后统一接受或拒绝接单',
     group: '任务',
-    primaryAction: '接受这项任务',
-    highlight: '明天 18:00',
+    primaryAction: '处理选中任务',
+    highlight: '按需选择',
   },
   S57: {
     id: 'S57',

@@ -1,0 +1,102 @@
+@use '@/styles/variables.scss' as *;
+
+.root {
+  position: relative;
+  z-index: 3;
+}
+
+.input {
+  width: 100%;
+  height: 88rpx;
+  padding: 0 24rpx;
+  font-size: $font-size-md;
+  background: #f7f9fc;
+  border: 1rpx solid $color-border;
+  border-radius: $radius-sm;
+  box-sizing: border-box;
+}
+
+.dropdown {
+  position: absolute;
+  top: 104rpx;
+  right: 0;
+  left: 0;
+  z-index: 20;
+  max-height: 560rpx;
+  padding: 8rpx 24rpx;
+  overflow-y: auto;
+  background: $color-bg-card;
+  border: 1rpx solid $color-border;
+  border-radius: $radius-md;
+  box-shadow: $shadow-popup;
+}
+
+.group {
+  padding: 16rpx 0 8rpx;
+
+  & + & {
+    border-top: 1rpx solid $color-divider;
+  }
+}
+
+.groupLabel {
+  display: block;
+  padding: 0 8rpx 8rpx;
+  color: $color-text-tertiary;
+  font-size: $font-size-xs;
+  font-weight: $font-weight-semibold;
+}
+
+.option {
+  display: flex;
+  gap: 16rpx;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 88rpx;
+  padding: 12rpx 8rpx;
+  border-radius: $radius-sm;
+  box-sizing: border-box;
+
+  &:active {
+    background: $color-bg-hover;
+  }
+}
+
+.optionMain {
+  min-width: 0;
+  flex: 1;
+}
+
+.optionLabel,
+.optionDescription {
+  display: block;
+}
+
+.optionLabel {
+  @include text-ellipsis;
+  color: $color-text-primary;
+  font-size: $font-size-md;
+  font-weight: $font-weight-semibold;
+}
+
+.optionDescription {
+  @include text-ellipsis;
+  margin-top: 6rpx;
+  color: $color-text-secondary;
+  font-size: $font-size-xs;
+}
+
+.selectLabel {
+  flex: 0 0 auto;
+  color: $color-primary;
+  font-size: $font-size-sm;
+  font-weight: $font-weight-semibold;
+}
+
+.state {
+  display: block;
+  padding: 28rpx 8rpx;
+  color: $color-text-tertiary;
+  font-size: $font-size-sm;
+  text-align: center;
+}

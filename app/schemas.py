@@ -1,6 +1,59 @@
-from typing import Optional
+from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+
+class MiniappScreenSummary(BaseModel):
+    title: str
+    subtitle: Optional[str] = None
+    highlight: Optional[str] = None
+
+
+class MiniappScreenItem(BaseModel):
+    id: str
+    entity_type: str
+    title: str
+    description: Optional[str] = None
+    status: Optional[str] = None
+    value: Optional[str] = None
+    details: Optional[str] = None
+    context: dict[str, Any] = Field(default_factory=dict)
+
+
+class MiniappScreenAction(BaseModel):
+    label: str
+    target_screen: Optional[str] = None
+
+
+class MiniappEmptyState(BaseModel):
+    title: str
+    description: Optional[str] = None
+    action: Optional[MiniappScreenAction] = None
+
+
+class MiniappScreenContext(BaseModel):
+    tenant_id: Optional[int] = None
+    user_id: Optional[int] = None
+    project_id: Optional[int] = None
+    version_id: Optional[int] = None
+    task_id: Optional[int] = None
+    artist_id: Optional[int] = None
+
+
+class MiniappScreenData(BaseModel):
+    screen_id: str
+    summary: MiniappScreenSummary
+    items: list[MiniappScreenItem] = Field(default_factory=list)
+    options: dict[str, Any] = Field(default_factory=dict)
+    context: MiniappScreenContext = Field(default_factory=MiniappScreenContext)
+    empty_state: Optional[MiniappEmptyState] = None
+
+    @field_validator('screen_id')
+    @classmethod
+    def validate_screen_id(cls, value: str):
+        if value not in {f"S{index:02d}" for index in range(1, 85)}:
+            raise ValueError('screen_id must be between S01 and S84')
+        return value
 
 
 class ArtistOut(BaseModel):
@@ -77,9 +130,12 @@ class UserUpdateIn(BaseModel):
 class ProjectIn(BaseModel):
     name: str
     type: Optional[str] = 'concert'
+    artist_id: Optional[int] = None
     artist_name: Optional[str] = ''
     city: Optional[str] = ''
+    venue_id: Optional[int] = None
     venue: Optional[str] = ''
+    source_project_id: Optional[int] = None
     schedule: Optional[str] = ''
     expected_attendance: Optional[int] = None
     avg_ticket_price: Optional[int] = None
@@ -87,6 +143,12 @@ class ProjectIn(BaseModel):
     venue_cost: Optional[int] = None
     marketing_cost: Optional[int] = None
     production_cost: Optional[int] = None
+    available_funds: Optional[int] = None
+    venue_capacity: Optional[int] = None
+    ticket_tiers: list[dict[str, Any]] = Field(default_factory=list)
+    conservative_occupancy_rate: Optional[int] = None
+    neutral_occupancy_rate: Optional[int] = None
+    optimistic_occupancy_rate: Optional[int] = None
 
 
 class FinanceCalculateIn(BaseModel):
@@ -127,6 +189,12 @@ class TaskIn(BaseModel):
 class TaskSubmitIn(BaseModel):
     result: str
     evidence_ids: Optional[list[int]] = None
+
+
+class TaskBatchActionIn(BaseModel):
+    task_ids: list[int]
+    action: Literal['accept', 'reject']
+    reason: Optional[str] = ''
 
 
 class FactIn(BaseModel):

@@ -5,7 +5,7 @@ const screens = {
     "subtitle": "发现机会，也守住亏损边界",
     "group": "认证",
     "primaryAction": "微信安全登录",
-    "highlight": "AI 辅助判断 · 最终由负责人确认"
+    "highlight": ""
   },
   "S02": {
     "id": "S02",
@@ -13,7 +13,7 @@ const screens = {
     "subtitle": "项目、资料与 Agent 均按客户隔离",
     "group": "认证",
     "primaryAction": "进入星河演出",
-    "highlight": "租户隔离"
+    "highlight": ""
   },
   "S03": {
     "id": "S03",
@@ -21,7 +21,7 @@ const screens = {
     "subtitle": "默认最小权限，私有数据不会跨客户使用",
     "group": "认证",
     "primaryAction": "同意并进入",
-    "highlight": "隐私授权"
+    "highlight": ""
   },
   "S04": {
     "id": "S04",
@@ -29,7 +29,7 @@ const screens = {
     "subtitle": "从艺人、城市、档期、场馆与成本共同判断",
     "group": "发现",
     "primaryAction": "开始评估我的项目",
-    "highlight": "+118 万示例利润"
+    "highlight": ""
   },
   "S05": {
     "id": "S05",
@@ -37,7 +37,7 @@ const screens = {
     "subtitle": "基于你可访问的项目与资料",
     "group": "发现",
     "primaryAction": "继续南京站判断",
-    "highlight": "2 项关键条件"
+    "highlight": ""
   },
   "S06": {
     "id": "S06",
@@ -45,7 +45,7 @@ const screens = {
     "subtitle": "仅展示有权限且来源可追溯的案例",
     "group": "发现",
     "primaryAction": "查看案例结果",
-    "highlight": "18 条可比案例"
+    "highlight": ""
   },
   "S07": {
     "id": "S07",
@@ -53,7 +53,7 @@ const screens = {
     "subtitle": "预测与实际结果均有依据",
     "group": "发现",
     "primaryAction": "参考此案例创建项目",
-    "highlight": "实际利润 105 万"
+    "highlight": ""
   },
   "S08": {
     "id": "S08",
@@ -61,7 +61,7 @@ const screens = {
     "subtitle": "系统发现，尚未形成正式项目判断",
     "group": "发现",
     "primaryAction": "用这个机会创建项目",
-    "highlight": "中等机会信号"
+    "highlight": ""
   },
   "S09": {
     "id": "S09",
@@ -69,7 +69,7 @@ const screens = {
     "subtitle": "按艺人、城市、档期、规模和结果组合筛选",
     "group": "发现",
     "primaryAction": "查看搜索结果",
-    "highlight": "18 条结果"
+    "highlight": ""
   },
   "S10": {
     "id": "S10",
@@ -77,7 +77,7 @@ const screens = {
     "subtitle": "快速查看判断、待办和版本变化",
     "group": "项目",
     "primaryAction": "创建一个新项目",
-    "highlight": "3 个进行中"
+    "highlight": ""
   },
   "S11": {
     "id": "S11",
@@ -85,7 +85,7 @@ const screens = {
     "subtitle": "条件满足后推进",
     "group": "项目",
     "primaryAction": "查看完整项目判断",
-    "highlight": "+118 万中性利润"
+    "highlight": ""
   },
   "S12": {
     "id": "S12",
@@ -93,7 +93,7 @@ const screens = {
     "subtitle": "新评估不会覆盖旧版本",
     "group": "项目",
     "primaryAction": "对比 V2 与 V1",
-    "highlight": "3 个版本"
+    "highlight": ""
   },
   "S13": {
     "id": "S13",
@@ -101,7 +101,7 @@ const screens = {
     "subtitle": "步骤 1 / 5 · 基本信息",
     "group": "创建项目",
     "primaryAction": "下一步：地点与时间",
-    "highlight": "基本信息"
+    "highlight": ""
   },
   "S14": {
     "id": "S14",
@@ -109,7 +109,7 @@ const screens = {
     "subtitle": "步骤 2 / 5 · 地点与时间",
     "group": "创建项目",
     "primaryAction": "下一步：规模与资金",
-    "highlight": "允许先待定"
+    "highlight": ""
   },
   "S15": {
     "id": "S15",
@@ -117,7 +117,7 @@ const screens = {
     "subtitle": "步骤 3 / 5 · 规模与资金",
     "group": "创建项目",
     "primaryAction": "下一步：已知成本",
-    "highlight": "资金边界"
+    "highlight": ""
   },
   "S16": {
     "id": "S16",
@@ -125,7 +125,7 @@ const screens = {
     "subtitle": "步骤 4 / 5 · 已知成本",
     "group": "创建项目",
     "primaryAction": "下一步：确认项目",
-    "highlight": "缺失不按零"
+    "highlight": ""
   },
   "S17": {
     "id": "S17",
@@ -133,7 +133,7 @@ const screens = {
     "subtitle": "步骤 5 / 5 · 创建前复核",
     "group": "创建项目",
     "primaryAction": "创建项目并开始判断",
-    "highlight": "3 类资料缺口"
+    "highlight": ""
   },
   "S18": {
     "id": "S18",
@@ -141,7 +141,7 @@ const screens = {
     "subtitle": "草稿按客户空间隔离保存",
     "group": "项目",
     "primaryAction": "继续填写草稿",
-    "highlight": "已完成 3 / 5"
+    "highlight": ""
   },
   "S19": {
     "id": "S19",
@@ -149,7 +149,7 @@ const screens = {
     "subtitle": "候选基于已授权资料与相似案例",
     "group": "组合",
     "primaryAction": "选择艺人 A 并继续",
-    "highlight": "综合匹配"
+    "highlight": ""
   },
   "S20": {
     "id": "S20",
@@ -157,7 +157,7 @@ const screens = {
     "subtitle": "候选艺人画像，费用与授权仍待确认",
     "group": "组合",
     "primaryAction": "加入南京站方案",
-    "highlight": "匹配信号 72"
+    "highlight": ""
   },
   "S21": {
     "id": "S21",
@@ -165,7 +165,7 @@ const screens = {
     "subtitle": "在相同规模与资金口径下比较",
     "group": "组合",
     "primaryAction": "采用艺人 A 方案",
-    "highlight": "保本 63.2%"
+    "highlight": ""
   },
   "S22": {
     "id": "S22",
@@ -173,7 +173,7 @@ const screens = {
     "subtitle": "城市适配与资料缺口共同判断",
     "group": "组合",
     "primaryAction": "选择南京作为首选城市",
-    "highlight": "南京可比 3 例"
+    "highlight": ""
   },
   "S23": {
     "id": "S23",
@@ -181,7 +181,7 @@ const screens = {
     "subtitle": "结合竞争、节假日与审批周期",
     "group": "组合",
     "primaryAction": "采用 10 月 16 日",
-    "highlight": "候选档期"
+    "highlight": ""
   },
   "S24": {
     "id": "S24",
@@ -189,7 +189,7 @@ const screens = {
     "subtitle": "容量、报价、消防与交通统一比较",
     "group": "组合",
     "primaryAction": "选择场馆 A 并发起核验",
-    "highlight": "4 项待确认"
+    "highlight": ""
   },
   "S25": {
     "id": "S25",
@@ -197,7 +197,7 @@ const screens = {
     "subtitle": "保守、中性和乐观使用同一公式版本",
     "group": "财务",
     "primaryAction": "保存并计算三种情景",
-    "highlight": "中性 80%"
+    "highlight": ""
   },
   "S26": {
     "id": "S26",
@@ -205,7 +205,7 @@ const screens = {
     "subtitle": "折扣与退票计入实收价格",
     "group": "财务",
     "primaryAction": "采用这组票档",
-    "highlight": "均价 680 元"
+    "highlight": ""
   },
   "S27": {
     "id": "S27",
@@ -213,7 +213,7 @@ const screens = {
     "subtitle": "固定成本、变动成本、渠道与税费分开",
     "group": "财务",
     "primaryAction": "确认成本口径",
-    "highlight": "总成本 594.61 万"
+    "highlight": ""
   },
   "S28": {
     "id": "S28",
@@ -221,7 +221,7 @@ const screens = {
     "subtitle": "65% 上座率 / finance-v1",
     "group": "财务",
     "primaryAction": "查看中性情景",
-    "highlight": "+12.86 万"
+    "highlight": ""
   },
   "S29": {
     "id": "S29",
@@ -229,7 +229,7 @@ const screens = {
     "subtitle": "80% 上座率 / finance-v1",
     "group": "财务",
     "primaryAction": "查看完整判断",
-    "highlight": "+118.19 万"
+    "highlight": ""
   },
   "S30": {
     "id": "S30",
@@ -237,7 +237,7 @@ const screens = {
     "subtitle": "95% 上座率 / finance-v1",
     "group": "财务",
     "primaryAction": "比较三种情景",
-    "highlight": "+223.53 万"
+    "highlight": ""
   },
   "S31": {
     "id": "S31",
@@ -245,7 +245,7 @@ const screens = {
     "subtitle": "穿过保本线后利润转正",
     "group": "财务",
     "primaryAction": "把保本线加入止损条件",
-    "highlight": "保本 63.2%"
+    "highlight": ""
   },
   "S32": {
     "id": "S32",
@@ -253,7 +253,7 @@ const screens = {
     "subtitle": "只改变上座率，其他输入不变",
     "group": "财务",
     "primaryAction": "设置销售预警线",
-    "highlight": "敏感性分析"
+    "highlight": ""
   },
   "S33": {
     "id": "S33",
@@ -261,7 +261,7 @@ const screens = {
     "subtitle": "按全部成本先于回款的保守口径",
     "group": "财务",
     "primaryAction": "创建资金落实任务",
-    "highlight": "缺口 94.61 万"
+    "highlight": ""
   },
   "S34": {
     "id": "S34",
@@ -269,7 +269,7 @@ const screens = {
     "subtitle": "判断 V1 · 调整后推进",
     "group": "判断",
     "primaryAction": "处理推进条件",
-    "highlight": "待关闭门禁 3 项"
+    "highlight": ""
   },
   "S35": {
     "id": "S35",
@@ -277,7 +277,7 @@ const screens = {
     "subtitle": "事实、规则和推理分别展示",
     "group": "判断",
     "primaryAction": "查看支持事实",
-    "highlight": "规则可追溯"
+    "highlight": ""
   },
   "S36": {
     "id": "S36",
@@ -285,7 +285,7 @@ const screens = {
     "subtitle": "修改关键假设会生成新评估",
     "group": "依据",
     "primaryAction": "更新并生成新版本",
-    "highlight": "待确认 5"
+    "highlight": ""
   },
   "S37": {
     "id": "S37",
@@ -293,7 +293,7 @@ const screens = {
     "subtitle": "尚未核验的输入不计入事实",
     "group": "依据",
     "primaryAction": "查看资料缺口",
-    "highlight": "已核验事实 1"
+    "highlight": ""
   },
   "S38": {
     "id": "S38",
@@ -301,7 +301,7 @@ const screens = {
     "subtitle": "事实 F-1024 · 产品证据链",
     "group": "依据",
     "primaryAction": "确认已阅读依据",
-    "highlight": "已核验"
+    "highlight": ""
   },
   "S39": {
     "id": "S39",
@@ -309,7 +309,7 @@ const screens = {
     "subtitle": "冲突未解决前降低结论置信度",
     "group": "依据",
     "primaryAction": "提交选择并请求核验",
-    "highlight": "冲突 C-008"
+    "highlight": ""
   },
   "S40": {
     "id": "S40",
@@ -317,7 +317,7 @@ const screens = {
     "subtitle": "缺失不会被当成零或无风险",
     "group": "依据",
     "primaryAction": "从最重要的一项开始",
-    "highlight": "高影响 2 项"
+    "highlight": ""
   },
   "S41": {
     "id": "S41",
@@ -325,7 +325,7 @@ const screens = {
     "subtitle": "上传后只生成候选字段",
     "group": "依据",
     "primaryAction": "上传并开始识别",
-    "highlight": "仅当前项目"
+    "highlight": ""
   },
   "S42": {
     "id": "S42",
@@ -333,7 +333,7 @@ const screens = {
     "subtitle": "候选事实需要人工核验",
     "group": "依据",
     "primaryAction": "确认并提交核验",
-    "highlight": "发现容量冲突"
+    "highlight": ""
   },
   "S43": {
     "id": "S43",
@@ -341,7 +341,7 @@ const screens = {
     "subtitle": "风险由规则和证据状态共同决定",
     "group": "风险",
     "primaryAction": "制定风险处理计划",
-    "highlight": "高风险 3"
+    "highlight": ""
   },
   "S44": {
     "id": "S44",
@@ -349,7 +349,7 @@ const screens = {
     "subtitle": "风险 R-001 · 高风险",
     "group": "风险",
     "primaryAction": "创建资金落实任务",
-    "highlight": "缺口 94.61 万"
+    "highlight": ""
   },
   "S45": {
     "id": "S45",
@@ -357,7 +357,7 @@ const screens = {
     "subtitle": "政策、场地、授权、资金与合同",
     "group": "门禁",
     "primaryAction": "逐项确认门禁",
-    "highlight": "待确认 3"
+    "highlight": ""
   },
   "S46": {
     "id": "S46",
@@ -365,7 +365,7 @@ const screens = {
     "subtitle": "只能由授权负责人处理",
     "group": "门禁",
     "primaryAction": "提交确认记录",
-    "highlight": "人工硬门禁"
+    "highlight": ""
   },
   "S47": {
     "id": "S47",
@@ -373,7 +373,7 @@ const screens = {
     "subtitle": "系统建议：调整后推进 / 判断 V1",
     "group": "决策",
     "primaryAction": "确认并保存这个决定",
-    "highlight": "负责人确认"
+    "highlight": ""
   },
   "S48": {
     "id": "S48",
@@ -381,7 +381,7 @@ const screens = {
     "subtitle": "决定 D-001 · 记录不可覆盖",
     "group": "决策",
     "primaryAction": "进入项目下一步",
-    "highlight": "3 项前置条件"
+    "highlight": ""
   },
   "S49": {
     "id": "S49",
@@ -389,7 +389,7 @@ const screens = {
     "subtitle": "V2 对比 V1",
     "group": "版本",
     "primaryAction": "将 V2 设为待确认方案",
-    "highlight": "利润变化 -24 万"
+    "highlight": ""
   },
   "S50": {
     "id": "S50",
@@ -397,7 +397,7 @@ const screens = {
     "subtitle": "报告 V1 · 依据、风险和确认记录",
     "group": "报告",
     "primaryAction": "导出项目报告",
-    "highlight": "DECISION BRIEF"
+    "highlight": ""
   },
   "S51": {
     "id": "S51",
@@ -405,7 +405,7 @@ const screens = {
     "subtitle": "分享不扩大原资料权限",
     "group": "报告",
     "primaryAction": "创建受限分享",
-    "highlight": "有效期 7 天"
+    "highlight": ""
   },
   "S52": {
     "id": "S52",
@@ -413,7 +413,7 @@ const screens = {
     "subtitle": "星河演出 / 专职 Agent",
     "group": "Agent",
     "primaryAction": "查看今日计划",
-    "highlight": "3 项关键待办"
+    "highlight": ""
   },
   "S53": {
     "id": "S53",
@@ -421,7 +421,7 @@ const screens = {
     "subtitle": "Agent 建议 / 计划 V3",
     "group": "Agent",
     "primaryAction": "确认并派发 3 项任务",
-    "highlight": "待负责人确认"
+    "highlight": ""
   },
   "S54": {
     "id": "S54",
@@ -429,7 +429,7 @@ const screens = {
     "subtitle": "当前范围：南京站 / V1",
     "group": "Agent",
     "primaryAction": "发送问题",
-    "highlight": "推理建议待核验"
+    "highlight": ""
   },
   "S55": {
     "id": "S55",
@@ -437,15 +437,15 @@ const screens = {
     "subtitle": "任务状态和验收要求清晰可见",
     "group": "任务",
     "primaryAction": "查看任务详情",
-    "highlight": "4 项待办"
+    "highlight": ""
   },
   "S56": {
     "id": "S56",
-    "title": "核对场馆售票区域",
-    "subtitle": "任务 T-014 / 已指派，待接受",
+    "title": "批量处理待接任务",
+    "subtitle": "勾选部分任务后统一接受或拒绝接单",
     "group": "任务",
-    "primaryAction": "接受这项任务",
-    "highlight": "明天 18:00"
+    "primaryAction": "处理选中任务",
+    "highlight": ""
   },
   "S57": {
     "id": "S57",
@@ -453,7 +453,7 @@ const screens = {
     "subtitle": "提交不等于核验通过",
     "group": "任务",
     "primaryAction": "提交给负责人核验",
-    "highlight": "附件已上传"
+    "highlight": ""
   },
   "S58": {
     "id": "S58",
@@ -461,7 +461,7 @@ const screens = {
     "subtitle": "保留原截止时间并提示影响",
     "group": "任务",
     "primaryAction": "提交阻塞并通知负责人",
-    "highlight": "外部阻塞"
+    "highlight": ""
   },
   "S59": {
     "id": "S59",
@@ -469,7 +469,7 @@ const screens = {
     "subtitle": "原 V1 确认继续作为历史记录",
     "group": "Agent",
     "primaryAction": "查看新版测算与计划",
-    "highlight": "固定费用 +24 万"
+    "highlight": ""
   },
   "S60": {
     "id": "S60",
@@ -477,7 +477,7 @@ const screens = {
     "subtitle": "高风险动作始终由负责人确认",
     "group": "Agent",
     "primaryAction": "保存授权范围",
-    "highlight": "默认最小授权"
+    "highlight": ""
   },
   "S61": {
     "id": "S61",
@@ -485,7 +485,7 @@ const screens = {
     "subtitle": "城市站点独立评估，资源统一管理",
     "group": "巡演",
     "primaryAction": "比较巡演城市组合",
-    "highlight": "6 个候选城市"
+    "highlight": ""
   },
   "S62": {
     "id": "S62",
@@ -493,7 +493,7 @@ const screens = {
     "subtitle": "同时考虑收益与连续执行成本",
     "group": "巡演",
     "primaryAction": "保存候选路线",
-    "highlight": "最短转场 5 天"
+    "highlight": ""
   },
   "S63": {
     "id": "S63",
@@ -501,7 +501,7 @@ const screens = {
     "subtitle": "巡演子项目使用相同权限体系",
     "group": "巡演",
     "primaryAction": "进入杭州站项目判断",
-    "highlight": "3 项关键缺口"
+    "highlight": ""
   },
   "S64": {
     "id": "S64",
@@ -509,7 +509,7 @@ const screens = {
     "subtitle": "授权票务数据接入后的跟踪",
     "group": "复盘",
     "primaryAction": "查看偏差与应对方案",
-    "highlight": "距保本 381 张"
+    "highlight": ""
   },
   "S65": {
     "id": "S65",
@@ -517,7 +517,7 @@ const screens = {
     "subtitle": "预测不会被实际结果覆盖",
     "group": "复盘",
     "primaryAction": "提交结果供财务确认",
-    "highlight": "实际利润 105 万"
+    "highlight": ""
   },
   "S66": {
     "id": "S66",
@@ -525,7 +525,7 @@ const screens = {
     "subtitle": "核验后进入校准队列",
     "group": "复盘",
     "primaryAction": "保存复盘与改进项",
-    "highlight": "偏差 -13.19 万"
+    "highlight": ""
   },
   "S67": {
     "id": "S67",
@@ -533,7 +533,7 @@ const screens = {
     "subtitle": "星河演出 · 客户管理员",
     "group": "我的",
     "primaryAction": "查看团队与项目权限",
-    "highlight": "3 个项目评估中"
+    "highlight": ""
   },
   "S68": {
     "id": "S68",
@@ -541,7 +541,7 @@ const screens = {
     "subtitle": "成员角色决定可见范围和操作",
     "group": "我的",
     "primaryAction": "邀请新成员",
-    "highlight": "8 位成员"
+    "highlight": ""
   },
   "S69": {
     "id": "S69",
@@ -549,7 +549,7 @@ const screens = {
     "subtitle": "只显示你可访问的项目",
     "group": "我的",
     "primaryAction": "查看待处理消息",
-    "highlight": "2 项需要处理"
+    "highlight": ""
   },
   "S70": {
     "id": "S70",
@@ -557,7 +557,7 @@ const screens = {
     "subtitle": "通知、隐私、支持与开发联调",
     "group": "设置",
     "primaryAction": "保存设置",
-    "highlight": "自动保存草稿"
+    "highlight": ""
   },
   "S71": {
     "id": "S71",
@@ -565,7 +565,7 @@ const screens = {
     "subtitle": "客户与项目权限共同约束",
     "group": "设置",
     "primaryAction": "保存可见范围",
-    "highlight": "仅南京站成员"
+    "highlight": ""
   },
   "S72": {
     "id": "S72",
@@ -573,7 +573,7 @@ const screens = {
     "subtitle": "只能授予当前用户可分配的角色",
     "group": "设置",
     "primaryAction": "生成邀请",
-    "highlight": "48 小时有效"
+    "highlight": ""
   },
   "S73": {
     "id": "S73",
@@ -581,7 +581,7 @@ const screens = {
     "subtitle": "把一场想做的演出变成可讨论方案",
     "group": "状态",
     "primaryAction": "创建第一个项目",
-    "highlight": "FIRST PROJECT"
+    "highlight": ""
   },
   "S74": {
     "id": "S74",
@@ -589,7 +589,7 @@ const screens = {
     "subtitle": "已保存本次输入，可稍后返回",
     "group": "状态",
     "primaryAction": "返回项目，稍后查看",
-    "highlight": "计算进行中"
+    "highlight": ""
   },
   "S75": {
     "id": "S75",
@@ -597,7 +597,7 @@ const screens = {
     "subtitle": "输入草稿已保留",
     "group": "状态",
     "primaryAction": "重新连接并检查结果",
-    "highlight": "网络失败"
+    "highlight": ""
   },
   "S76": {
     "id": "S76",
@@ -605,7 +605,7 @@ const screens = {
     "subtitle": "本次未生成正式判断",
     "group": "状态",
     "primaryAction": "重新查询依据",
-    "highlight": "上下文不可用"
+    "highlight": ""
   },
   "S77": {
     "id": "S77",
@@ -613,7 +613,7 @@ const screens = {
     "subtitle": "不展示未授权资料摘要",
     "group": "状态",
     "primaryAction": "返回当前客户空间",
-    "highlight": "权限不足"
+    "highlight": ""
   },
   "S78": {
     "id": "S78",
@@ -621,7 +621,7 @@ const screens = {
     "subtitle": "正在查看 V1，当前最新为 V2",
     "group": "状态",
     "primaryAction": "查看差异并重新确认",
-    "highlight": "版本已变化"
+    "highlight": ""
   },
   "S79": {
     "id": "S79",
@@ -629,7 +629,7 @@ const screens = {
     "subtitle": "错误定位到字段，其他输入已保存",
     "group": "状态",
     "primaryAction": "保存草稿",
-    "highlight": "表单校验"
+    "highlight": ""
   },
   "S80": {
     "id": "S80",
@@ -637,7 +637,7 @@ const screens = {
     "subtitle": "归档后保留完整记录",
     "group": "状态",
     "primaryAction": "确认归档项目",
-    "highlight": "2 项未关闭任务"
+    "highlight": ""
   },
   "S81": {
     "id": "S81",
@@ -645,7 +645,7 @@ const screens = {
     "subtitle": "私有内容已隐藏，已保存记录仍保留",
     "group": "状态",
     "primaryAction": "重新登录并继续",
-    "highlight": "登录已过期"
+    "highlight": ""
   },
   "S82": {
     "id": "S82",
@@ -653,7 +653,7 @@ const screens = {
     "subtitle": "开发版本专用",
     "group": "设置",
     "primaryAction": "测试连接并保存",
-    "highlight": "FastAPI"
+    "highlight": ""
   },
   "S83": {
     "id": "S83",
@@ -661,7 +661,7 @@ const screens = {
     "subtitle": "仅接收与你有关的项目提醒",
     "group": "设置",
     "primaryAction": "保存通知偏好",
-    "highlight": "工作日 09:00"
+    "highlight": ""
   },
   "S84": {
     "id": "S84",
@@ -669,180 +669,8 @@ const screens = {
     "subtitle": "账户、微信授权与客户空间",
     "group": "设置",
     "primaryAction": "查看我的授权记录",
-    "highlight": "隐私管理"
+    "highlight": ""
   }
-}
-const fixtures = {
-  "认证": [
-    [
-      "可信身份",
-      "登录后签发统一令牌，跨端身份保持一致",
-      "安全"
-    ],
-    [
-      "客户隔离",
-      "项目、资料和 Agent 按当前客户空间隔离",
-      "最小权限"
-    ],
-    [
-      "人工确认",
-      "政策、场地、授权与资金责任由负责人确认",
-      "硬门禁"
-    ]
-  ],
-  "发现": [
-    [
-      "华东万人场案例 A",
-      "南京 · 12,000 席 · 已核验结算",
-      "盈利"
-    ],
-    [
-      "城市剧场项目",
-      "通过缩小规模降低资金风险",
-      "可迁移"
-    ],
-    [
-      "十月档期机会",
-      "同量级项目存在可比案例，档期仍需核验",
-      "待证据"
-    ]
-  ],
-  "项目": [
-    [
-      "星河计划·南京站",
-      "艺人 A · 南京 · 2027 年 10 月",
-      "调整后推进"
-    ],
-    [
-      "星河计划·杭州站",
-      "档期与场馆报价待补充",
-      "缺资料"
-    ],
-    [
-      "冬季剧场项目",
-      "组合待选 · 2027 年 12 月",
-      "草稿"
-    ]
-  ],
-  "财务": [
-    [
-      "保守情景",
-      "65% 上座率 · 利润缓冲较薄",
-      "压力边界"
-    ],
-    [
-      "中性情景",
-      "80% 上座率 · 当前判断口径",
-      "条件推进"
-    ],
-    [
-      "乐观情景",
-      "95% 上座率 · 不作为销售承诺",
-      "上行空间"
-    ]
-  ],
-  "依据": [
-    [
-      "可用资金 500 万",
-      "资金确认单 · 已由负责人核验",
-      "已核验"
-    ],
-    [
-      "可售规模 12,000 人",
-      "项目输入 · 待场馆正式确认",
-      "待确认"
-    ],
-    [
-      "场馆容量冲突",
-      "项目输入 12,000 与资料 10,500",
-      "需处理"
-    ]
-  ],
-  "风险": [
-    [
-      "峰值资金缺口未落实",
-      "中性情景缺口 94.61 万",
-      "高风险"
-    ],
-    [
-      "艺人授权范围未核验",
-      "影响履约、版权与正式签约",
-      "高风险"
-    ],
-    [
-      "保守利润缓冲很薄",
-      "65% 上座率利润仅 12.86 万",
-      "中风险"
-    ]
-  ],
-  "门禁": [
-    [
-      "政策与大型活动审批",
-      "负责人已核验示意文件",
-      "已确认"
-    ],
-    [
-      "场地承载、消防与安保",
-      "容量冲突仍待消解",
-      "待确认"
-    ],
-    [
-      "资金拨付与合同责任",
-      "资金缺口和亏损承担待确认",
-      "待确认"
-    ]
-  ],
-  "Agent": [
-    [
-      "确认新增资金安排",
-      "财务负责人 · 今天 18:00",
-      "优先"
-    ],
-    [
-      "补充艺人授权文件",
-      "商务负责人 · 明天 12:00",
-      "待证据"
-    ],
-    [
-      "核对场馆报价口径",
-      "地方执行 · 明天 18:00",
-      "进行中"
-    ]
-  ],
-  "任务": [
-    [
-      "确认资金安排",
-      "今天 18:00 · 财务 · 未认领",
-      "高优先"
-    ],
-    [
-      "补充艺人授权范围",
-      "明天 12:00 · 商务",
-      "进行中"
-    ],
-    [
-      "核对场馆售票区域",
-      "明天 18:00 · 地方执行",
-      "待处理"
-    ]
-  ],
-  "我的": [
-    [
-      "团队与项目权限",
-      "管理成员角色和项目可见范围",
-      "可管理"
-    ],
-    [
-      "Agent 授权设置",
-      "内部任务、提醒与对外行为",
-      "最小权限"
-    ],
-    [
-      "数据授权与隐私",
-      "连接、文件、可见范围与撤回",
-      "可管理"
-    ]
-  ]
 }
 const nextScreen = {
   "S01": "S02",
@@ -857,6 +685,10 @@ const nextScreen = {
   "S10": "S13",
   "S11": "S34",
   "S12": "S49",
+  "S13": "S14",
+  "S14": "S15",
+  "S15": "S16",
+  "S16": "S17",
   "S17": "S74",
   "S18": "S16",
   "S24": "S25",
@@ -928,4 +760,4 @@ const tabs = [
   "S67"
 ]
 
-module.exports = { screens, fixtures, nextScreen, tabs }
+module.exports = { screens, nextScreen, tabs }

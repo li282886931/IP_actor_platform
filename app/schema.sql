@@ -102,9 +102,12 @@ CREATE TABLE projects (
 	name VARCHAR(255) NOT NULL,
 	type VARCHAR(64),
 	status VARCHAR(64),
+	artist_id INTEGER,
 	artist_name VARCHAR(255),
 	city VARCHAR(128),
+	venue_id INTEGER,
 	venue VARCHAR(255),
+	source_project_id INTEGER,
 	schedule VARCHAR(64),
 	expected_attendance INTEGER,
 	avg_ticket_price INTEGER,
@@ -112,12 +115,21 @@ CREATE TABLE projects (
 	venue_cost INTEGER,
 	marketing_cost INTEGER,
 	production_cost INTEGER,
+	available_funds INTEGER,
+	venue_capacity INTEGER,
+	ticket_tiers JSON,
+	conservative_occupancy_rate INTEGER,
+	neutral_occupancy_rate INTEGER,
+	optimistic_occupancy_rate INTEGER,
 	current_version_id INTEGER,
 	created_by INTEGER,
 	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 	updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 	PRIMARY KEY (id),
 	FOREIGN KEY(tenant_id) REFERENCES tenants (id),
+	FOREIGN KEY(artist_id) REFERENCES artists (id),
+	FOREIGN KEY(venue_id) REFERENCES venues (id),
+	FOREIGN KEY(source_project_id) REFERENCES projects (id),
 	FOREIGN KEY(created_by) REFERENCES users (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE INDEX ix_projects_id ON projects (id);
@@ -240,6 +252,7 @@ CREATE TABLE tasks (
 	status VARCHAR(64),
 	result TEXT,
 	evidence_ids JSON,
+	rejection_reason TEXT,
 	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 	PRIMARY KEY (id),
 	FOREIGN KEY(project_id) REFERENCES projects (id),
@@ -368,5 +381,184 @@ CREATE TABLE document_parse_jobs (
 	FOREIGN KEY(created_by) REFERENCES users (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE INDEX ix_document_parse_jobs_id ON document_parse_jobs (id);
+
+CREATE TABLE venues (
+	id INTEGER NOT NULL AUTO_INCREMENT,
+	tenant_id INTEGER NOT NULL,
+	name VARCHAR(255) NOT NULL,
+	city VARCHAR(128) NOT NULL,
+	address VARCHAR(512),
+	capacity INTEGER,
+	quote INTEGER,
+	fire_safety_status VARCHAR(64),
+	transport_notes TEXT,
+	source VARCHAR(128),
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	PRIMARY KEY (id),
+	CONSTRAINT uq_venues_tenant_city_name UNIQUE (tenant_id, city, name),
+	FOREIGN KEY(tenant_id) REFERENCES tenants (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE INDEX ix_venues_id ON venues (id);
+
+CREATE TABLE tour_plans (
+	id INTEGER NOT NULL AUTO_INCREMENT,
+	tenant_id INTEGER NOT NULL,
+	name VARCHAR(255) NOT NULL,
+	status VARCHAR(64),
+	created_by INTEGER,
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	PRIMARY KEY (id),
+	CONSTRAINT uq_tour_plans_tenant_name UNIQUE (tenant_id, name),
+	FOREIGN KEY(tenant_id) REFERENCES tenants (id),
+	FOREIGN KEY(created_by) REFERENCES users (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE INDEX ix_tour_plans_id ON tour_plans (id);
+
+CREATE TABLE tour_stops (
+	id INTEGER NOT NULL AUTO_INCREMENT,
+	tour_plan_id INTEGER NOT NULL,
+	project_id INTEGER,
+	venue_id INTEGER,
+	city VARCHAR(128) NOT NULL,
+	sequence INTEGER NOT NULL,
+	scheduled_at VARCHAR(64),
+	status VARCHAR(64),
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	PRIMARY KEY (id),
+	CONSTRAINT uq_tour_stops_plan_sequence UNIQUE (tour_plan_id, sequence),
+	FOREIGN KEY(tour_plan_id) REFERENCES tour_plans (id),
+	FOREIGN KEY(project_id) REFERENCES projects (id),
+	FOREIGN KEY(venue_id) REFERENCES venues (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE INDEX ix_tour_stops_id ON tour_stops (id);
+
+CREATE TABLE notifications (
+	id INTEGER NOT NULL AUTO_INCREMENT,
+	tenant_id INTEGER NOT NULL,
+	user_id INTEGER NOT NULL,
+	business_key VARCHAR(255) NOT NULL,
+	notification_type VARCHAR(64),
+	title VARCHAR(255) NOT NULL,
+	content TEXT,
+	status VARCHAR(64),
+	context JSON,
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	read_at DATETIME,
+	PRIMARY KEY (id),
+	CONSTRAINT uq_notifications_recipient_key UNIQUE (tenant_id, user_id, business_key),
+	FOREIGN KEY(tenant_id) REFERENCES tenants (id),
+	FOREIGN KEY(user_id) REFERENCES users (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE INDEX ix_notifications_id ON notifications (id);
+
+CREATE TABLE project_actuals (
+	id INTEGER NOT NULL AUTO_INCREMENT,
+	project_id INTEGER NOT NULL,
+	actual_attendance INTEGER,
+	actual_revenue INTEGER,
+	actual_cost INTEGER,
+	actual_profit INTEGER,
+	status VARCHAR(64),
+	notes TEXT,
+	settled_at DATETIME,
+	updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	PRIMARY KEY (id),
+	CONSTRAINT uq_project_actuals_project UNIQUE (project_id),
+	FOREIGN KEY(project_id) REFERENCES projects (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE INDEX ix_project_actuals_id ON project_actuals (id);
+
+CREATE TABLE ticketing_snapshots (
+	id INTEGER NOT NULL AUTO_INCREMENT,
+	project_id INTEGER NOT NULL,
+	captured_at DATETIME NOT NULL,
+	sold_count INTEGER NOT NULL,
+	gross_revenue INTEGER,
+	source VARCHAR(128) NOT NULL,
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	PRIMARY KEY (id),
+	CONSTRAINT uq_ticketing_snapshots_project_time_source UNIQUE (project_id, captured_at, source),
+	FOREIGN KEY(project_id) REFERENCES projects (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE INDEX ix_ticketing_snapshots_id ON ticketing_snapshots (id);
+
+CREATE TABLE user_settings (
+	id INTEGER NOT NULL AUTO_INCREMENT,
+	tenant_id INTEGER NOT NULL,
+	user_id INTEGER NOT NULL,
+	locale VARCHAR(32),
+	theme VARCHAR(32),
+	notification_preferences JSON,
+	updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	PRIMARY KEY (id),
+	CONSTRAINT uq_user_settings_tenant_user UNIQUE (tenant_id, user_id),
+	FOREIGN KEY(tenant_id) REFERENCES tenants (id),
+	FOREIGN KEY(user_id) REFERENCES users (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE INDEX ix_user_settings_id ON user_settings (id);
+
+CREATE TABLE privacy_consents (
+	id INTEGER NOT NULL AUTO_INCREMENT,
+	tenant_id INTEGER NOT NULL,
+	user_id INTEGER NOT NULL,
+	scope VARCHAR(128) NOT NULL,
+	granted INTEGER,
+	policy_version VARCHAR(64),
+	granted_at DATETIME,
+	revoked_at DATETIME,
+	PRIMARY KEY (id),
+	CONSTRAINT uq_privacy_consents_tenant_user_scope UNIQUE (tenant_id, user_id, scope),
+	FOREIGN KEY(tenant_id) REFERENCES tenants (id),
+	FOREIGN KEY(user_id) REFERENCES users (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE INDEX ix_privacy_consents_id ON privacy_consents (id);
+
+CREATE TABLE member_invitations (
+	id INTEGER NOT NULL AUTO_INCREMENT,
+	tenant_id INTEGER NOT NULL,
+	invitee VARCHAR(255) NOT NULL,
+	`role` VARCHAR(64),
+	token VARCHAR(128) NOT NULL,
+	status VARCHAR(64),
+	invited_by INTEGER,
+	expires_at DATETIME NOT NULL,
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	PRIMARY KEY (id),
+	CONSTRAINT uq_member_invitations_active_invitee UNIQUE (tenant_id, invitee, status),
+	FOREIGN KEY(tenant_id) REFERENCES tenants (id),
+	UNIQUE (token),
+	FOREIGN KEY(invited_by) REFERENCES users (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE INDEX ix_member_invitations_id ON member_invitations (id);
+
+CREATE TABLE agent_permissions (
+	id INTEGER NOT NULL AUTO_INCREMENT,
+	tenant_id INTEGER NOT NULL,
+	user_id INTEGER NOT NULL,
+	capability VARCHAR(128) NOT NULL,
+	enabled INTEGER,
+	updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	PRIMARY KEY (id),
+	CONSTRAINT uq_agent_permissions_tenant_user_capability UNIQUE (tenant_id, user_id, capability),
+	FOREIGN KEY(tenant_id) REFERENCES tenants (id),
+	FOREIGN KEY(user_id) REFERENCES users (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE INDEX ix_agent_permissions_id ON agent_permissions (id);
+
+CREATE TABLE project_drafts (
+	id INTEGER NOT NULL AUTO_INCREMENT,
+	tenant_id INTEGER NOT NULL,
+	user_id INTEGER NOT NULL,
+	draft_key VARCHAR(128) NOT NULL,
+	payload JSON,
+	current_step INTEGER,
+	updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	PRIMARY KEY (id),
+	CONSTRAINT uq_project_drafts_tenant_user_key UNIQUE (tenant_id, user_id, draft_key),
+	FOREIGN KEY(tenant_id) REFERENCES tenants (id),
+	FOREIGN KEY(user_id) REFERENCES users (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE INDEX ix_project_drafts_id ON project_drafts (id);
 
 SET FOREIGN_KEY_CHECKS = 1;
