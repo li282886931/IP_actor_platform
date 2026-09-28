@@ -101,6 +101,24 @@ describe('BlueprintScreen aggregated loading', () => {
     expect(taroMocks.getMiniappScreen).toHaveBeenCalledWith('S10', {})
   })
 
+  it('renders persisted project statuses with Chinese labels', async () => {
+    taroMocks.getMiniappScreen.mockResolvedValue(response({
+      items: [{
+        id: 'project-42',
+        entity_type: 'project',
+        title: '待确认项目',
+        description: '真实数据库项目',
+        status: 'pending_confirmation',
+        context: { project_id: 42 },
+      }],
+    }))
+
+    render(<BlueprintScreen screenId='S10' />)
+
+    expect(await screen.findByText('待确认')).toBeInTheDocument()
+    expect(screen.queryByText('pending_confirmation')).not.toBeInTheDocument()
+  })
+
   it('only sends cached entity context required by the current screen', async () => {
     taroMocks.storage.set('starhub-project-id', 42)
     taroMocks.getMiniappScreen.mockResolvedValue(response())

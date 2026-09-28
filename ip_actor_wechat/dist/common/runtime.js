@@ -3,6 +3,35 @@ const { DEFAULT_API_BASE, REQUEST_TIMEOUT_MS, CLIENT_SOURCE, STORAGE_KEYS } = re
 
 const apiBase = () => wx.getStorageSync(STORAGE_KEYS.apiBase) || DEFAULT_API_BASE
 const routeFor = (screenId) => '/pages/' + screenId.toLowerCase() + '/index'
+const statusLabels = {
+  active: '进行中',
+  archived: '已归档',
+  available: '可用',
+  blocked: '已阻塞',
+  calculated: '已测算',
+  closed: '已关闭',
+  completed: '已完成',
+  confirmed: '已确认',
+  disabled: '已停用',
+  draft: '草稿',
+  enabled: '已启用',
+  failed: '失败',
+  in_progress: '进行中',
+  on_sale: '售票中',
+  open: '待处理',
+  pending: '待处理',
+  pending_confirmation: '待确认',
+  queued: '排队中',
+  read: '已读',
+  revoked: '已撤回',
+  running: '处理中',
+  settled: '已结算',
+  submitted: '待验收',
+  unread: '未读',
+  unverified: '待核验',
+  verified: '已核验'
+}
+const statusLabel = (status) => statusLabels[status] || status
 
 const normalizeItems = (values) => {
   if (!Array.isArray(values)) return []
@@ -11,7 +40,7 @@ const normalizeItems = (values) => {
     entityId: Number(value.context && (value.context.task_id || value.context.project_id) || 0),
     title: String(value.title || ''),
     description: String(value.description || ''),
-    status: String(value.status || ''),
+    status: statusLabel(String(value.status || '')),
     value: value.value == null ? '' : String(value.value),
     details: String(value.details || '')
   }))
