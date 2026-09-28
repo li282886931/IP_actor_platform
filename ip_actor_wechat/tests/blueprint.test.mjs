@@ -625,6 +625,59 @@ test('generated runtime loads every screen from the unified aggregation endpoint
   }
 })
 
+test('generated runtime renders persisted statuses with Chinese labels', async () => {
+  const runtimePath = resolve(root, 'dist/common/runtime.js')
+  let page
+  globalThis.wx = {
+    getStorageSync: () => undefined,
+    request: (options) => options.success({
+      statusCode: 200,
+      data: {
+        code: 0,
+        data: {
+          screen_id: 'S10',
+          summary: { title: '我的项目' },
+          items: [{
+            id: 'project-42',
+            title: '待确认项目',
+            description: '真实数据库项目',
+            status: 'pending_confirmation',
+            context: { project_id: 42 },
+          }],
+          options: {},
+          context: {},
+          empty_state: null,
+        },
+        message: 'ok',
+      },
+    }),
+    stopPullDownRefresh: () => {},
+  }
+  globalThis.Page = (definition) => {
+    page = {
+      ...definition,
+      data: { ...definition.data },
+      setData(next, callback) {
+        this.data = { ...this.data, ...next }
+        callback?.()
+      },
+    }
+  }
+
+  const require = createRequire(import.meta.url)
+  delete require.cache[runtimePath]
+  try {
+    require(runtimePath).createScreenPage('S10')
+    await page.fetchRemote()
+
+    assert.equal(page.data.items[0].status, '待确认')
+  } finally {
+    delete globalThis.wx
+    delete globalThis.Page
+    delete require.cache[runtimePath]
+  }
+})
+
 test('generated runtime keeps an empty list and retry state after request failure', async () => {
   const runtimePath = resolve(root, 'dist/common/runtime.js')
   let page
