@@ -156,6 +156,30 @@ describe('BlueprintScreen aggregated loading', () => {
     expect(screen.getByText('当前机会')).toBeInTheDocument()
   })
 
+  it('renders the server-provided project work plan and human gate state', async () => {
+    taroMocks.getMiniappScreen.mockResolvedValue(response({
+      screen_id: 'S53',
+      summary: { title: '项目工作计划' },
+      options: {
+        project_work: {
+          plan_version: 3,
+          open_alert_count: 2,
+          recommendation: '等待负责人核验后再推进。',
+          human_gate: '财务与审批由负责人确认',
+        },
+      },
+      items: [],
+    }))
+
+    render(<BlueprintScreen screenId='S53' />)
+
+    expect(await screen.findByText('项目工作')).toBeInTheDocument()
+    expect(screen.getByText('计划 V3')).toBeInTheDocument()
+    expect(screen.getByText('待处理预警 2 项')).toBeInTheDocument()
+    expect(screen.getByText('等待负责人核验后再推进。')).toBeInTheDocument()
+    expect(screen.getByText('财务与审批由负责人确认')).toBeInTheDocument()
+  })
+
   it('renders persisted project statuses with Chinese labels', async () => {
     taroMocks.getMiniappScreen.mockResolvedValue(response({
       items: [{

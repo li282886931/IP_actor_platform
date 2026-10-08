@@ -277,11 +277,13 @@ const createScreenPage = (screenId) => {
             value_evidence: [],
             cockpit: null,
             work_briefing: null,
+            project_work: null,
             calibration_loop: null,
           }, {
             value_evidence: data.options.value_evidence || [],
             cockpit: data.options.decision_cockpit || data.options.finance_cockpit || null,
             work_briefing: data.options.work_briefing || null,
+            project_work: data.options.project_work || null,
             calibration_loop: data.options.calibration_loop || null,
           }) : {},
           candidateGroups: data && data.options && Array.isArray(data.options.candidate_groups)

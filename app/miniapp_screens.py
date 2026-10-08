@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from .models import (
     Artist,
     AgentPermission,
+    AlertEvent,
     Assumption,
     Decision,
     DocumentParseJob,
@@ -19,6 +20,7 @@ from .models import (
     Project,
     ProjectActual,
     ProjectAnalysisJob,
+    ProjectWorkPlan,
     ProjectVersion,
     MemberInvitation,
     Notification,
@@ -2178,6 +2180,16 @@ def _agent_plan_screen(db: Session, context: ScreenRequestContext) -> dict:
         ProjectAnalysisJob.tenant_id == context.tenant_id,
         ProjectAnalysisJob.project_id == project.id,
     ).order_by(ProjectAnalysisJob.id.desc()).all()
+    work_plan = db.query(ProjectWorkPlan).filter(
+        ProjectWorkPlan.tenant_id == context.tenant_id,
+        ProjectWorkPlan.project_id == project.id,
+        ProjectWorkPlan.status == "current",
+    ).order_by(ProjectWorkPlan.version_no.desc()).first()
+    open_alert_count = db.query(AlertEvent).filter(
+        AlertEvent.tenant_id == context.tenant_id,
+        AlertEvent.project_id == project.id,
+        AlertEvent.status != "resolved",
+    ).count()
     items = [_task_item(*row) for row in task_rows]
     items.extend(_analysis_item(job, project.name) for job in jobs)
     return {
@@ -2188,7 +2200,24 @@ def _agent_plan_screen(db: Session, context: ScreenRequestContext) -> dict:
             "highlight": str(len(items)),
         },
         "items": items,
-        "options": {},
+        "options": {
+            "project_work": (
+                {
+                    "plan_version": work_plan.version_no,
+                    "open_alert_count": open_alert_count,
+                    "recommendation": (
+                        f"当前有 {open_alert_count} 项预警，等待负责人核验后再推进。"
+                        if open_alert_count
+                        else "当前计划无未关闭预警，仍需由负责人确认财务与审批门禁。"
+                    ),
+                    "human_gate": (
+                        (work_plan.plan_json or {}).get("constraints", {}).get("human_gate")
+                        or "财务与审批由负责人确认"
+                    ),
+                }
+                if work_plan else None
+            ),
+        },
         "context": _screen_context(context),
         "empty_state": _empty_state("暂无执行计划", "创建任务或分析任务后可在这里查看") if not items else None,
     }

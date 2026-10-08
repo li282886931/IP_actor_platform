@@ -184,6 +184,264 @@ CREATE TABLE external_data_jobs (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE INDEX ix_external_data_jobs_id ON external_data_jobs (id);
 
+CREATE TABLE data_sources (
+	id INTEGER NOT NULL AUTO_INCREMENT,
+	tenant_id INTEGER NOT NULL,
+	name VARCHAR(255) NOT NULL,
+	source_kind VARCHAR(64) NOT NULL,
+	connector_key VARCHAR(64) NOT NULL,
+	status VARCHAR(64),
+	credential_ref VARCHAR(512),
+	schedule_config JSON,
+	scope_config JSON,
+	created_by INTEGER,
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	PRIMARY KEY (id),
+	CONSTRAINT uq_data_sources_tenant_name UNIQUE (tenant_id, name),
+	FOREIGN KEY(tenant_id) REFERENCES tenants (id),
+	FOREIGN KEY(created_by) REFERENCES users (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE INDEX ix_data_sources_id ON data_sources (id);
+
+CREATE TABLE data_assets (
+	id INTEGER NOT NULL AUTO_INCREMENT,
+	tenant_id INTEGER NOT NULL,
+	project_id INTEGER,
+	data_source_id INTEGER NOT NULL,
+	asset_type VARCHAR(64) NOT NULL,
+	source_uri TEXT,
+	content_hash VARCHAR(255),
+	captured_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	effective_until DATETIME,
+	visibility VARCHAR(64),
+	status VARCHAR(64),
+	raw_payload_ref TEXT,
+	created_by INTEGER,
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	PRIMARY KEY (id),
+	FOREIGN KEY(tenant_id) REFERENCES tenants (id),
+	FOREIGN KEY(project_id) REFERENCES projects (id),
+	FOREIGN KEY(data_source_id) REFERENCES data_sources (id),
+	FOREIGN KEY(created_by) REFERENCES users (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE INDEX ix_data_assets_id ON data_assets (id);
+
+CREATE TABLE data_records (
+	id INTEGER NOT NULL AUTO_INCREMENT,
+	tenant_id INTEGER NOT NULL,
+	asset_id INTEGER NOT NULL,
+	entity_type VARCHAR(64) NOT NULL,
+	entity_id VARCHAR(128) NOT NULL,
+	metric_key VARCHAR(128) NOT NULL,
+	value_json JSON,
+	unit VARCHAR(64),
+	observed_at DATETIME,
+	confidence INTEGER,
+	record_status VARCHAR(64),
+	lineage JSON,
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	PRIMARY KEY (id),
+	FOREIGN KEY(tenant_id) REFERENCES tenants (id),
+	FOREIGN KEY(asset_id) REFERENCES data_assets (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE INDEX ix_data_records_id ON data_records (id);
+
+CREATE TABLE data_quality_issues (
+	id INTEGER NOT NULL AUTO_INCREMENT,
+	tenant_id INTEGER NOT NULL,
+	asset_id INTEGER,
+	record_id INTEGER,
+	issue_type VARCHAR(64) NOT NULL,
+	severity VARCHAR(64),
+	details JSON,
+	status VARCHAR(64),
+	resolved_by INTEGER,
+	resolved_at DATETIME,
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	PRIMARY KEY (id),
+	FOREIGN KEY(tenant_id) REFERENCES tenants (id),
+	FOREIGN KEY(asset_id) REFERENCES data_assets (id),
+	FOREIGN KEY(record_id) REFERENCES data_records (id),
+	FOREIGN KEY(resolved_by) REFERENCES users (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE INDEX ix_data_quality_issues_id ON data_quality_issues (id);
+
+CREATE TABLE monitoring_rules (
+	id INTEGER NOT NULL AUTO_INCREMENT,
+	tenant_id INTEGER NOT NULL,
+	name VARCHAR(255) NOT NULL,
+	rule_type VARCHAR(64) NOT NULL,
+	condition_json JSON,
+	severity_policy VARCHAR(64),
+	notification_policy JSON,
+	enabled INTEGER,
+	version INTEGER,
+	created_by INTEGER,
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	PRIMARY KEY (id),
+	FOREIGN KEY(tenant_id) REFERENCES tenants (id),
+	FOREIGN KEY(created_by) REFERENCES users (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE INDEX ix_monitoring_rules_id ON monitoring_rules (id);
+
+CREATE TABLE alert_events (
+	id INTEGER NOT NULL AUTO_INCREMENT,
+	tenant_id INTEGER NOT NULL,
+	project_id INTEGER,
+	rule_id INTEGER NOT NULL,
+	business_key VARCHAR(255) NOT NULL,
+	severity VARCHAR(64),
+	title VARCHAR(255) NOT NULL,
+	summary TEXT,
+	context JSON,
+	status VARCHAR(64),
+	source_record_ids JSON,
+	dedupe_key VARCHAR(255) NOT NULL,
+	triggered_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	resolved_at DATETIME,
+	PRIMARY KEY (id),
+	CONSTRAINT uq_alert_events_tenant_dedupe_key UNIQUE (tenant_id, dedupe_key),
+	FOREIGN KEY(tenant_id) REFERENCES tenants (id),
+	FOREIGN KEY(project_id) REFERENCES projects (id),
+	FOREIGN KEY(rule_id) REFERENCES monitoring_rules (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE INDEX ix_alert_events_id ON alert_events (id);
+
+CREATE TABLE decision_snapshots (
+	id INTEGER NOT NULL AUTO_INCREMENT,
+	tenant_id INTEGER NOT NULL,
+	project_id INTEGER NOT NULL,
+	project_version_id INTEGER,
+	snapshot_type VARCHAR(64),
+	input_lineage JSON,
+	finance_result JSON,
+	risk_summary JSON,
+	alert_summary JSON,
+	recommendation TEXT,
+	created_by_type VARCHAR(64),
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	PRIMARY KEY (id),
+	FOREIGN KEY(tenant_id) REFERENCES tenants (id),
+	FOREIGN KEY(project_id) REFERENCES projects (id),
+	FOREIGN KEY(project_version_id) REFERENCES project_versions (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE INDEX ix_decision_snapshots_id ON decision_snapshots (id);
+
+CREATE TABLE project_work_events (
+	id INTEGER NOT NULL AUTO_INCREMENT,
+	tenant_id INTEGER NOT NULL,
+	project_id INTEGER NOT NULL,
+	event_type VARCHAR(64) NOT NULL,
+	business_key VARCHAR(255) NOT NULL,
+	payload JSON,
+	source_asset_id INTEGER,
+	alert_event_id INTEGER,
+	decision_snapshot_id INTEGER,
+	status VARCHAR(64),
+	processed_at DATETIME,
+	idempotency_key VARCHAR(255) NOT NULL,
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	PRIMARY KEY (id),
+	CONSTRAINT uq_project_work_events_tenant_idempotency UNIQUE (tenant_id, idempotency_key),
+	FOREIGN KEY(tenant_id) REFERENCES tenants (id),
+	FOREIGN KEY(project_id) REFERENCES projects (id),
+	FOREIGN KEY(source_asset_id) REFERENCES data_assets (id),
+	FOREIGN KEY(alert_event_id) REFERENCES alert_events (id),
+	FOREIGN KEY(decision_snapshot_id) REFERENCES decision_snapshots (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE INDEX ix_project_work_events_id ON project_work_events (id);
+
+CREATE TABLE project_work_plans (
+	id INTEGER NOT NULL AUTO_INCREMENT,
+	tenant_id INTEGER NOT NULL,
+	project_id INTEGER NOT NULL,
+	version_no INTEGER NOT NULL,
+	status VARCHAR(64),
+	plan_json JSON,
+	decision_snapshot_id INTEGER,
+	created_from_event_id INTEGER,
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	PRIMARY KEY (id),
+	CONSTRAINT uq_project_work_plans_project_version UNIQUE (project_id, version_no),
+	FOREIGN KEY(tenant_id) REFERENCES tenants (id),
+	FOREIGN KEY(project_id) REFERENCES projects (id),
+	FOREIGN KEY(decision_snapshot_id) REFERENCES decision_snapshots (id),
+	FOREIGN KEY(created_from_event_id) REFERENCES project_work_events (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE INDEX ix_project_work_plans_id ON project_work_plans (id);
+
+CREATE TABLE conversion_assumptions (
+	id INTEGER NOT NULL AUTO_INCREMENT,
+	tenant_id INTEGER NOT NULL,
+	scope_type VARCHAR(64) NOT NULL,
+	scope_id VARCHAR(128) NOT NULL,
+	funnel_stage_from VARCHAR(64) NOT NULL,
+	funnel_stage_to VARCHAR(64) NOT NULL,
+	rate JSON NOT NULL,
+	segment JSON,
+	evidence_ids JSON,
+	confidence INTEGER,
+	status VARCHAR(64),
+	effective_from DATETIME,
+	effective_until DATETIME,
+	version_no INTEGER,
+	created_by INTEGER,
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	PRIMARY KEY (id),
+	FOREIGN KEY(tenant_id) REFERENCES tenants (id),
+	FOREIGN KEY(created_by) REFERENCES users (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE INDEX ix_conversion_assumptions_id ON conversion_assumptions (id);
+
+CREATE TABLE case_outcomes (
+	id INTEGER NOT NULL AUTO_INCREMENT,
+	tenant_id INTEGER NOT NULL,
+	title VARCHAR(255) NOT NULL,
+	artist_id INTEGER,
+	city VARCHAR(128),
+	venue_id INTEGER,
+	outcome_label VARCHAR(64) NOT NULL,
+	scenario JSON,
+	revenue INTEGER,
+	cost INTEGER,
+	profit INTEGER,
+	occupancy_rate JSON,
+	failure_reason TEXT,
+	evidence_ids JSON,
+	created_by INTEGER,
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	PRIMARY KEY (id),
+	FOREIGN KEY(tenant_id) REFERENCES tenants (id),
+	FOREIGN KEY(artist_id) REFERENCES artists (id),
+	FOREIGN KEY(venue_id) REFERENCES venues (id),
+	FOREIGN KEY(created_by) REFERENCES users (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE INDEX ix_case_outcomes_id ON case_outcomes (id);
+
+CREATE TABLE forecast_calibrations (
+	id INTEGER NOT NULL AUTO_INCREMENT,
+	tenant_id INTEGER NOT NULL,
+	project_id INTEGER NOT NULL,
+	conversion_assumption_id INTEGER,
+	forecast_metric VARCHAR(128) NOT NULL,
+	forecast_value JSON,
+	actual_value JSON,
+	error_value JSON,
+	segment JSON,
+	status VARCHAR(64),
+	candidate_rate JSON,
+	approved_by INTEGER,
+	approved_at DATETIME,
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	PRIMARY KEY (id),
+	FOREIGN KEY(tenant_id) REFERENCES tenants (id),
+	FOREIGN KEY(project_id) REFERENCES projects (id),
+	FOREIGN KEY(conversion_assumption_id) REFERENCES conversion_assumptions (id),
+	FOREIGN KEY(approved_by) REFERENCES users (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE INDEX ix_forecast_calibrations_id ON forecast_calibrations (id);
+
 CREATE TABLE facts (
 	id INTEGER NOT NULL AUTO_INCREMENT,
 	project_id INTEGER NOT NULL,

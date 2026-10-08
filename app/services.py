@@ -12,6 +12,9 @@ from . import database
 from .models import (
     Assumption,
     Artist,
+    DataAsset,
+    DataRecord,
+    DataSource,
     DocumentParseJob,
     Evidence,
     ExternalDataJob,
@@ -653,6 +656,61 @@ def serialize_external_data_job(job: ExternalDataJob):
         "error_message": job.error_message,
         "requested_by": job.requested_by,
     }
+
+
+def serialize_data_source(source: DataSource):
+    return {
+        "id": source.id,
+        "tenant_id": source.tenant_id,
+        "name": source.name,
+        "source_kind": source.source_kind,
+        "connector_key": source.connector_key,
+        "status": source.status,
+        "credential_ref": source.credential_ref or '',
+        "schedule_config": source.schedule_config or {},
+        "scope_config": source.scope_config or {},
+    }
+
+
+def serialize_data_record(record: DataRecord):
+    return {
+        "id": record.id,
+        "asset_id": record.asset_id,
+        "entity_type": record.entity_type,
+        "entity_id": record.entity_id,
+        "metric_key": record.metric_key,
+        "value_json": record.value_json,
+        "unit": record.unit or '',
+        "confidence": record.confidence,
+        "record_status": record.record_status,
+        "lineage": record.lineage or {},
+    }
+
+
+def serialize_data_asset(asset: DataAsset, records: list[DataRecord] | None = None):
+    return {
+        "id": asset.id,
+        "tenant_id": asset.tenant_id,
+        "project_id": asset.project_id,
+        "data_source_id": asset.data_source_id,
+        "asset_type": asset.asset_type,
+        "source_uri": asset.source_uri or '',
+        "content_hash": asset.content_hash or '',
+        "visibility": asset.visibility,
+        "status": asset.status,
+        "raw_payload_ref": asset.raw_payload_ref or '',
+        "records": [serialize_data_record(record) for record in records or []],
+    }
+
+
+def connector_health(source: DataSource):
+    if source.status == 'disabled':
+        return False, 'Data source is disabled'
+    if source.status != 'active':
+        return False, 'Data source is not active'
+    if not (source.credential_ref or '').strip():
+        return False, 'Data source has no credential reference'
+    return True, ''
 
 
 def _truncate(value: str, length: int):

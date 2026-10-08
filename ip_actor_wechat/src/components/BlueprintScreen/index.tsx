@@ -10,6 +10,7 @@ import {
   FormField,
   KeyValueGrid,
   LifecycleTimeline,
+  ProjectWorkPanel,
   ScreenHeader,
   ScreenHero,
   ScreenState,
@@ -650,6 +651,12 @@ export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
     top_task?: { title?: string, status?: string, project_name?: string } | null
     active_project_count?: number
   } | undefined
+  const projectWork = options.project_work as {
+    plan_version?: number
+    open_alert_count?: number
+    recommendation?: string
+    human_gate?: string
+  } | undefined
   const ticketingLoop = options.ticketing_loop as { current_sold_count?: number | null } | undefined
   const actualsSummary = options.actuals_summary as { actual_profit?: number | null } | undefined
   const calibrationLoop = options.calibration_loop as {
@@ -685,6 +692,7 @@ export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
         </>
       )}
       {screenId === 'S52' && <WorkBriefing briefing={briefing} />}
+      {screenId === 'S53' && <ProjectWorkPanel projectWork={projectWork} />}
       {['S64', 'S65', 'S66'].includes(screenId) && (
         <>
           <LifecycleTimeline currentStage={screenId === 'S64' ? '售票' : screenId === 'S65' ? '结算' : '校准'} />

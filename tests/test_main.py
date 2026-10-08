@@ -496,6 +496,442 @@ def test_external_data_async_job_can_be_run_and_queried(monkeypatch):
         db.close()
 
 
+def test_data_source_assets_and_disabled_connector_execution_are_traceable(monkeypatch):
+    client, _ = make_test_client(monkeypatch)
+
+    try:
+        project_response = client.post(
+            "/projects",
+            json={"name": "数据资产项目", "artist_name": "测试艺人", "city": "上海"},
+        )
+        assert project_response.status_code == 200
+        project = project_response.json()["data"]
+
+        source_response = client.post(
+            "/data-sources",
+            json={
+                "name": "主办方资料库",
+                "source_kind": "organizer_file",
+                "connector_key": "organizer_files",
+                "status": "disabled",
+                "scope_config": {"project_ids": [project["id"]]},
+            },
+        )
+        assert source_response.status_code == 200
+        source = source_response.json()["data"]
+        assert source["status"] == "disabled"
+        assert source["credential_ref"] == ""
+        assert source["scope_config"]["project_ids"] == [project["id"]]
+
+        health_response = client.post(f"/data-sources/{source['id']}/health-check")
+        assert health_response.status_code == 200
+        assert health_response.json()["data"] == {
+            "data_source_id": source["id"],
+            "connector_key": "organizer_files",
+            "status": "disabled",
+            "can_fetch": False,
+            "reason": "Data source is disabled",
+        }
+
+        asset_response = client.post(
+            "/data-assets",
+            json={
+                "project_id": project["id"],
+                "data_source_id": source["id"],
+                "asset_type": "financial_sheet",
+                "source_uri": "oss://organizer/finance-v1.xlsx",
+                "content_hash": "finance-v1",
+                "raw_payload_ref": "oss://raw/finance-v1.xlsx",
+                "records": [
+                    {
+                        "entity_type": "project",
+                        "entity_id": str(project["id"]),
+                        "metric_key": "available_funds",
+                        "value_json": {"amount": 2000000},
+                        "unit": "CNY",
+                        "record_status": "observed",
+                        "lineage": {"field": "资金余额", "parser_version": "v1"},
+                    },
+                ],
+            },
+        )
+        assert asset_response.status_code == 200
+        asset = asset_response.json()["data"]
+        assert asset["status"] == "received"
+        assert asset["records"][0]["metric_key"] == "available_funds"
+        assert asset["records"][0]["lineage"]["parser_version"] == "v1"
+
+        records_response = client.get(
+            f"/data-records?entity_type=project&entity_id={project['id']}&metric_key=available_funds"
+        )
+        assert records_response.status_code == 200
+        assert records_response.json()["data"][0]["asset_id"] == asset["id"]
+
+        run_response = client.post(
+            "/external-data/jobs",
+            json={
+                "project_id": project["id"],
+                "source_type": "api",
+                "provider": "organizer_files",
+                "query": "同步主办方资料",
+                "purpose": "project_documents",
+                "parameters": {"data_source_id": source["id"]},
+            },
+        )
+        assert run_response.status_code == 200
+        job = run_response.json()["data"]
+        blocked_response = client.post(f"/external-data/jobs/{job['id']}/run")
+        assert blocked_response.status_code == 200
+        assert blocked_response.json()["data"]["status"] == "blocked"
+        assert blocked_response.json()["data"]["result"]["reason"] == "Data source is disabled"
+    finally:
+        app_module.app.dependency_overrides.clear()
+
+
+def test_data_quality_issue_can_only_be_resolved_within_current_tenant(monkeypatch):
+    client, session_factory = make_test_client(monkeypatch)
+
+    try:
+        source = client.post(
+            "/data-sources",
+            json={
+                "name": "质量核验来源",
+                "source_kind": "manual",
+                "connector_key": "organizer_files",
+            },
+        ).json()["data"]
+        asset = client.post(
+            "/data-assets",
+            json={
+                "data_source_id": source["id"],
+                "asset_type": "contract",
+            },
+        ).json()["data"]
+
+        from app.models import DataQualityIssue
+
+        db = session_factory()
+        try:
+            tenant = app_module.get_or_create_default_context(db)[0]
+            issue = DataQualityIssue(
+                tenant_id=tenant.id,
+                asset_id=asset["id"],
+                issue_type="missing_field",
+                severity="high",
+                details={"field": "签约主体"},
+            )
+            db.add(issue)
+            db.commit()
+            db.refresh(issue)
+            issue_id = issue.id
+        finally:
+            db.close()
+
+        resolve_response = client.post(f"/data-quality-issues/{issue_id}/resolve")
+        assert resolve_response.status_code == 200
+        resolved = resolve_response.json()["data"]
+        assert resolved["status"] == "resolved"
+        assert resolved["resolved_by"] is not None
+        assert resolved["resolved_at"] is not None
+    finally:
+        app_module.app.dependency_overrides.clear()
+
+
+def test_monitoring_rule_creates_one_alert_notification_and_predefined_task(monkeypatch):
+    client, _ = make_test_client(monkeypatch)
+
+    try:
+        project = client.post(
+            "/projects",
+            json={"name": "预警项目", "artist_name": "测试艺人", "city": "上海"},
+        ).json()["data"]
+        source = client.post(
+            "/data-sources",
+            json={
+                "name": "售票指标来源",
+                "source_kind": "platform_metric",
+                "connector_key": "ticketing_api",
+            },
+        ).json()["data"]
+        client.post(
+            "/data-assets",
+            json={
+                "project_id": project["id"],
+                "data_source_id": source["id"],
+                "asset_type": "ticketing",
+                "records": [
+                    {
+                        "entity_type": "project",
+                        "entity_id": str(project["id"]),
+                        "metric_key": "refund_rate",
+                        "value_json": {"value": 0.35},
+                        "record_status": "observed",
+                        "lineage": {"field": "退款率"},
+                    },
+                ],
+            },
+        )
+        rule_response = client.post(
+            "/monitoring-rules",
+            json={
+                "name": "退款率异常",
+                "rule_type": "ticketing",
+                "condition_json": {
+                    "metric_key": "refund_rate",
+                    "operator": "gt",
+                    "threshold": 0.2,
+                    "task_type": "verify_ticketing",
+                },
+                "severity_policy": "important",
+                "notification_policy": {"recipients": ["project_owner"]},
+            },
+        )
+        assert rule_response.status_code == 200
+        rule = rule_response.json()["data"]
+
+        first = client.post(f"/monitoring-rules/{rule['id']}/evaluate?project_id={project['id']}")
+        assert first.status_code == 200
+        assert first.json()["data"]["created"] is True
+        alert = first.json()["data"]["alert"]
+        assert alert["status"] == "open"
+        assert alert["severity"] == "important"
+        assert alert["task"]["title"] == "核验售票数据"
+
+        second = client.post(f"/monitoring-rules/{rule['id']}/evaluate?project_id={project['id']}")
+        assert second.status_code == 200
+        assert second.json()["data"]["created"] is False
+        alerts = client.get(f"/alerts?project_id={project['id']}&status=open")
+        assert len(alerts.json()["data"]) == 1
+    finally:
+        app_module.app.dependency_overrides.clear()
+
+
+def test_alert_can_be_acknowledged_then_resolved(monkeypatch):
+    client, _ = make_test_client(monkeypatch)
+
+    try:
+        project = client.post("/projects", json={"name": "预警状态项目"}).json()["data"]
+        source = client.post(
+            "/data-sources",
+            json={"name": "预警状态来源", "source_kind": "manual", "connector_key": "ticketing_api"},
+        ).json()["data"]
+        client.post(
+            "/data-assets",
+            json={
+                "project_id": project["id"],
+                "data_source_id": source["id"],
+                "asset_type": "ticketing",
+                "records": [{
+                    "entity_type": "project",
+                    "entity_id": str(project["id"]),
+                    "metric_key": "refund_rate",
+                    "value_json": {"value": 0.3},
+                }],
+            },
+        )
+        rule = client.post(
+            "/monitoring-rules",
+            json={
+                "name": "退款预警",
+                "rule_type": "ticketing",
+                "condition_json": {"metric_key": "refund_rate", "operator": "gt", "threshold": 0.2},
+            },
+        ).json()["data"]
+        alert = client.post(
+            f"/monitoring-rules/{rule['id']}/evaluate?project_id={project['id']}"
+        ).json()["data"]["alert"]
+
+        acknowledged = client.post(f"/alerts/{alert['id']}/acknowledge")
+        assert acknowledged.status_code == 200
+        assert acknowledged.json()["data"]["status"] == "acknowledged"
+        resolved = client.post(f"/alerts/{alert['id']}/resolve")
+        assert resolved.status_code == 200
+        assert resolved.json()["data"]["status"] == "resolved"
+        assert resolved.json()["data"]["resolved_at"] is not None
+    finally:
+        app_module.app.dependency_overrides.clear()
+
+
+def test_project_work_events_are_idempotent_and_only_material_changes_refresh_the_plan(monkeypatch):
+    client, _ = make_test_client(monkeypatch)
+
+    try:
+        project = client.post(
+            "/projects",
+            json={
+                "name": "项目陪跑测试",
+                "artist_name": "测试艺人",
+                "city": "杭州",
+                "avg_ticket_price": 500,
+                "artist_fee": 100000,
+            },
+        ).json()["data"]
+        initial = client.post(
+            f"/projects/{project['id']}/work-events",
+            json={
+                "event_type": "project_created",
+                "business_key": "project-created",
+                "payload": {"source": "manual"},
+                "idempotency_key": "project-created-1",
+            },
+        )
+        assert initial.status_code == 200
+        initial_data = initial.json()["data"]
+        assert initial_data["created"] is True
+        assert initial_data["work_plan"]["version_no"] == 1
+        assert initial_data["decision_snapshot"]["input_lineage"]["data_record_ids"] == []
+
+        repeated = client.post(
+            f"/projects/{project['id']}/work-events",
+            json={
+                "event_type": "project_created",
+                "business_key": "project-created",
+                "payload": {"source": "manual"},
+                "idempotency_key": "project-created-1",
+            },
+        )
+        assert repeated.status_code == 200
+        assert repeated.json()["data"]["created"] is False
+        assert repeated.json()["data"]["event"]["id"] == initial_data["event"]["id"]
+
+        unchanged = client.post(
+            f"/projects/{project['id']}/work-events",
+            json={
+                "event_type": "manual_review",
+                "business_key": "same-input",
+                "idempotency_key": "same-input-2",
+            },
+        )
+        assert unchanged.status_code == 200
+        assert unchanged.json()["data"]["work_plan_created"] is False
+        assert unchanged.json()["data"]["work_plan"]["version_no"] == 1
+
+        source = client.post(
+            "/data-sources",
+            json={"name": "陪跑资料", "source_kind": "manual", "connector_key": "organizer_files"},
+        ).json()["data"]
+        client.post(
+            "/data-assets",
+            json={
+                "project_id": project["id"],
+                "data_source_id": source["id"],
+                "asset_type": "letter",
+                "records": [{
+                    "entity_type": "project",
+                    "entity_id": str(project["id"]),
+                    "metric_key": "approval_status",
+                    "value_json": {"value": "pending"},
+                    "lineage": {"field": "审批状态"},
+                }],
+            },
+        )
+        changed = client.post(
+            f"/projects/{project['id']}/work-events",
+            json={
+                "event_type": "data_asset_received",
+                "business_key": "letter-v1",
+                "idempotency_key": "letter-v1-3",
+            },
+        )
+        assert changed.status_code == 200
+        assert changed.json()["data"]["work_plan_created"] is True
+        assert changed.json()["data"]["work_plan"]["version_no"] == 2
+
+        snapshots = client.get(f"/projects/{project['id']}/decision-snapshots")
+        assert snapshots.status_code == 200
+        assert len(snapshots.json()["data"]) == 3
+        assert snapshots.json()["data"][0]["input_lineage"]["data_record_ids"]
+        assert snapshots.json()["data"][0]["finance_result"] == initial_data["decision_snapshot"]["finance_result"]
+    finally:
+        app_module.app.dependency_overrides.clear()
+
+
+def test_conversion_assumptions_require_evidence_and_calibration_candidates_need_approval(monkeypatch):
+    client, session_factory = make_test_client(monkeypatch)
+
+    try:
+        project = client.post(
+            "/projects",
+            json={"name": "转化校准项目", "artist_name": "测试艺人", "city": "北京"},
+        ).json()["data"]
+        missing = client.get(f"/projects/{project['id']}/calibration")
+        assert missing.status_code == 200
+        assert missing.json()["data"]["status"] == "needs_assumption"
+        assert missing.json()["data"]["conversion_assumption"] is None
+
+        assumption_response = client.post(
+            "/conversion-assumptions",
+            json={
+                "scope_type": "project",
+                "scope_id": str(project["id"]),
+                "funnel_stage_from": "want_to_see",
+                "funnel_stage_to": "purchase",
+                "rate": 0.12,
+                "segment": {"city": "北京", "channel": "ticketing"},
+                "evidence_ids": [101],
+                "confidence": 80,
+                "status": "active",
+                "effective_from": "2026-01-01T00:00:00+00:00",
+            },
+        )
+        assert assumption_response.status_code == 200
+        assumption = assumption_response.json()["data"]
+        assert assumption["rate"] == 0.12
+        assert assumption["evidence_ids"] == [101]
+
+        cases = client.post(
+            "/case-outcomes",
+            json={
+                "title": "北京同规模已结算项目",
+                "outcome_label": "success",
+                "scenario": {"city": "北京"},
+                "revenue": 1200000,
+                "cost": 900000,
+                "profit": 300000,
+                "occupancy_rate": 0.82,
+                "evidence_ids": [101],
+            },
+        )
+        assert cases.status_code == 200
+        assert client.get("/case-outcomes?city=北京").json()["data"][0]["title"] == "北京同规模已结算项目"
+
+        from app.models import ForecastCalibration
+
+        db = session_factory()
+        try:
+            tenant = app_module.get_or_create_default_context(db)[0]
+            candidate = ForecastCalibration(
+                tenant_id=tenant.id,
+                project_id=project["id"],
+                conversion_assumption_id=assumption["id"],
+                forecast_metric="want_to_see_to_purchase",
+                forecast_value=0.12,
+                actual_value=0.09,
+                error_value=-0.03,
+                status="candidate",
+                candidate_rate=0.09,
+            )
+            db.add(candidate)
+            db.commit()
+            db.refresh(candidate)
+            candidate_id = candidate.id
+        finally:
+            db.close()
+
+        pending = client.get(f"/projects/{project['id']}/calibration")
+        assert pending.json()["data"]["status"] == "pending_approval"
+        assert pending.json()["data"]["candidate"]["status"] == "candidate"
+
+        approved = client.post(f"/calibration-candidates/{candidate_id}/approve")
+        assert approved.status_code == 200
+        approved_data = approved.json()["data"]
+        assert approved_data["candidate"]["status"] == "approved"
+        assert approved_data["conversion_assumption"]["id"] != assumption["id"]
+        assert approved_data["conversion_assumption"]["rate"] == 0.09
+    finally:
+        app_module.app.dependency_overrides.clear()
+
+
 def test_document_parse_job_extracts_docx_and_writes_review_candidates(monkeypatch, tmp_path):
     client, session_factory = make_test_client(monkeypatch)
     docx_path = tmp_path / "venue-contract.docx"

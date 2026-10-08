@@ -34,16 +34,29 @@ from .models import (
     AIGeneration,
     Assumption,
     Artist,
+    CaseOutcome,
+    ConversionAssumption,
+    DataAsset,
+    DataQualityIssue,
+    DataRecord,
+    DataSource,
+    AlertEvent,
+    DecisionSnapshot,
+    MonitoringRule,
+    Notification,
     Decision,
     DocumentParseJob,
     Evidence,
     ExternalDataJob,
     Fact,
+    ForecastCalibration,
     Gate,
     Order,
     OSSUpload,
     Project,
     ProjectAnalysisJob,
+    ProjectWorkEvent,
+    ProjectWorkPlan,
     ProjectVersion,
     ReportShare,
     Risk,
@@ -61,6 +74,12 @@ from .schemas import (
     AIGenerateIn,
     AssumptionIn,
     ArtistOut,
+    CaseOutcomeIn,
+    ConversionAssumptionIn,
+    DataAssetIn,
+    DataSourceIn,
+    MonitoringRuleIn,
+    ProjectWorkEventIn,
     DecisionIn,
     DocumentParseJobIn,
     EvidenceUploadIn,
@@ -95,12 +114,16 @@ from .services import (
     GROUPS,
     calculate_breakeven_result,
     calculate_finance_result,
+    connector_health,
     get_default_tenant_id,
     get_or_create_default_context,
     hash_password,
     next_project_version_no,
     project_input_snapshot,
     serialize_assumption,
+    serialize_data_asset,
+    serialize_data_record,
+    serialize_data_source,
     serialize_document_parse_job,
     serialize_evidence,
     serialize_fact,
@@ -1906,6 +1929,860 @@ def create_external_data_job(payload: ExternalDataJobIn, db: Session = Depends(g
     return json_ok(serialize_external_data_job(job))
 
 
+@router.post('/data-sources')
+def create_data_source(payload: DataSourceIn, db: Session = Depends(get_db)):
+    tenant, user = get_or_create_default_context(db)
+    existing = db.query(DataSource).filter(
+        DataSource.tenant_id == tenant.id,
+        DataSource.name == payload.name.strip(),
+    ).first()
+    if existing:
+        raise HTTPException(status_code=409, detail='Data source name already exists')
+    source = DataSource(
+        tenant_id=tenant.id,
+        name=payload.name.strip(),
+        source_kind=payload.source_kind.strip().lower(),
+        connector_key=payload.connector_key.strip().lower(),
+        status=payload.status,
+        credential_ref=(payload.credential_ref or '').strip(),
+        schedule_config=payload.schedule_config or {},
+        scope_config=payload.scope_config or {},
+        created_by=user.id,
+    )
+    db.add(source)
+    db.commit()
+    db.refresh(source)
+    return json_ok(serialize_data_source(source))
+
+
+@router.get('/data-sources')
+def list_data_sources(db: Session = Depends(get_db)):
+    tenant_id = get_default_tenant_id(db)
+    sources = db.query(DataSource).filter(DataSource.tenant_id == tenant_id).order_by(DataSource.id.desc()).all()
+    return json_ok([serialize_data_source(source) for source in sources])
+
+
+@router.post('/data-sources/{source_id}/health-check')
+def health_check_data_source(source_id: int, db: Session = Depends(get_db)):
+    tenant_id = get_default_tenant_id(db)
+    source = db.query(DataSource).filter(DataSource.id == source_id, DataSource.tenant_id == tenant_id).first()
+    if not source:
+        raise HTTPException(status_code=404, detail='Data source not found')
+    can_fetch, reason = connector_health(source)
+    return json_ok({
+        "data_source_id": source.id,
+        "connector_key": source.connector_key,
+        "status": source.status,
+        "can_fetch": can_fetch,
+        "reason": reason,
+    })
+
+
+@router.post('/data-assets')
+def create_data_asset(payload: DataAssetIn, db: Session = Depends(get_db)):
+    tenant, user = get_or_create_default_context(db)
+    source = db.query(DataSource).filter(
+        DataSource.id == payload.data_source_id,
+        DataSource.tenant_id == tenant.id,
+    ).first()
+    if not source:
+        raise HTTPException(status_code=404, detail='Data source not found')
+    if payload.project_id:
+        project = db.query(Project).filter(Project.id == payload.project_id, Project.tenant_id == tenant.id).first()
+        if not project:
+            raise HTTPException(status_code=404, detail='Project not found')
+    asset = DataAsset(
+        tenant_id=tenant.id,
+        project_id=payload.project_id,
+        data_source_id=source.id,
+        asset_type=payload.asset_type.strip().lower(),
+        source_uri=(payload.source_uri or '').strip(),
+        content_hash=(payload.content_hash or '').strip(),
+        visibility=payload.visibility,
+        raw_payload_ref=(payload.raw_payload_ref or '').strip(),
+        created_by=user.id,
+    )
+    db.add(asset)
+    db.flush()
+    records = [
+        DataRecord(
+            tenant_id=tenant.id,
+            asset_id=asset.id,
+            entity_type=record.entity_type.strip().lower(),
+            entity_id=record.entity_id,
+            metric_key=record.metric_key.strip().lower(),
+            value_json=record.value_json,
+            unit=record.unit or '',
+            confidence=record.confidence,
+            record_status=record.record_status,
+            lineage=record.lineage or {},
+        )
+        for record in payload.records
+    ]
+    db.add_all(records)
+    db.commit()
+    db.refresh(asset)
+    return json_ok(serialize_data_asset(asset, records))
+
+
+@router.get('/data-assets')
+def list_data_assets(
+    project_id: Optional[int] = None,
+    asset_type: Optional[str] = None,
+    status: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    tenant_id = get_default_tenant_id(db)
+    query = db.query(DataAsset).filter(DataAsset.tenant_id == tenant_id)
+    if project_id:
+        query = query.filter(DataAsset.project_id == project_id)
+    if asset_type:
+        query = query.filter(DataAsset.asset_type == asset_type)
+    if status:
+        query = query.filter(DataAsset.status == status)
+    assets = query.order_by(DataAsset.id.desc()).all()
+    return json_ok([serialize_data_asset(asset) for asset in assets])
+
+
+@router.get('/data-records')
+def list_data_records(
+    entity_type: Optional[str] = None,
+    entity_id: Optional[str] = None,
+    metric_key: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    tenant_id = get_default_tenant_id(db)
+    query = db.query(DataRecord).filter(DataRecord.tenant_id == tenant_id)
+    if entity_type:
+        query = query.filter(DataRecord.entity_type == entity_type)
+    if entity_id:
+        query = query.filter(DataRecord.entity_id == entity_id)
+    if metric_key:
+        query = query.filter(DataRecord.metric_key == metric_key)
+    records = query.order_by(DataRecord.id.desc()).all()
+    return json_ok([serialize_data_record(record) for record in records])
+
+
+@router.post('/data-quality-issues/{issue_id}/resolve')
+def resolve_data_quality_issue(issue_id: int, db: Session = Depends(get_db)):
+    tenant, user = get_or_create_default_context(db)
+    issue = db.query(DataQualityIssue).filter(
+        DataQualityIssue.id == issue_id,
+        DataQualityIssue.tenant_id == tenant.id,
+    ).first()
+    if not issue:
+        raise HTTPException(status_code=404, detail='Data quality issue not found')
+    if issue.status != 'resolved':
+        issue.status = 'resolved'
+        issue.resolved_by = user.id
+        issue.resolved_at = datetime.now(timezone.utc)
+        db.commit()
+        db.refresh(issue)
+    return json_ok({
+        "id": issue.id,
+        "status": issue.status,
+        "resolved_by": issue.resolved_by,
+        "resolved_at": issue.resolved_at.isoformat() if issue.resolved_at else None,
+    })
+
+
+def _serialize_alert(alert: AlertEvent, task: Task | None = None):
+    return {
+        "id": alert.id,
+        "project_id": alert.project_id,
+        "rule_id": alert.rule_id,
+        "severity": alert.severity,
+        "title": alert.title,
+        "summary": alert.summary,
+        "status": alert.status,
+        "context": alert.context or {},
+        "task": serialize_task(task) if task else None,
+    }
+
+
+@router.post('/monitoring-rules')
+def create_monitoring_rule(payload: MonitoringRuleIn, db: Session = Depends(get_db)):
+    tenant, user = get_or_create_default_context(db)
+    rule = MonitoringRule(
+        tenant_id=tenant.id,
+        name=payload.name.strip(),
+        rule_type=payload.rule_type.strip().lower(),
+        condition_json=payload.condition_json,
+        severity_policy=payload.severity_policy,
+        notification_policy=payload.notification_policy or {},
+        enabled=1 if payload.enabled else 0,
+        created_by=user.id,
+    )
+    db.add(rule)
+    db.commit()
+    db.refresh(rule)
+    return json_ok({
+        "id": rule.id,
+        "name": rule.name,
+        "rule_type": rule.rule_type,
+        "condition_json": rule.condition_json,
+        "severity_policy": rule.severity_policy,
+        "enabled": bool(rule.enabled),
+        "version": rule.version,
+    })
+
+
+@router.get('/monitoring-rules')
+def list_monitoring_rules(db: Session = Depends(get_db)):
+    tenant_id = get_default_tenant_id(db)
+    rules = db.query(MonitoringRule).filter(MonitoringRule.tenant_id == tenant_id).order_by(MonitoringRule.id.desc()).all()
+    return json_ok([
+        {
+            "id": rule.id,
+            "name": rule.name,
+            "rule_type": rule.rule_type,
+            "condition_json": rule.condition_json or {},
+            "severity_policy": rule.severity_policy,
+            "enabled": bool(rule.enabled),
+            "version": rule.version,
+        }
+        for rule in rules
+    ])
+
+
+@router.post('/monitoring-rules/{rule_id}/evaluate')
+def evaluate_monitoring_rule(rule_id: int, project_id: int, db: Session = Depends(get_db)):
+    tenant, user = get_or_create_default_context(db)
+    rule = db.query(MonitoringRule).filter(
+        MonitoringRule.id == rule_id,
+        MonitoringRule.tenant_id == tenant.id,
+        MonitoringRule.enabled == 1,
+    ).first()
+    if not rule:
+        raise HTTPException(status_code=404, detail='Monitoring rule not found')
+    project = db.query(Project).filter(Project.id == project_id, Project.tenant_id == tenant.id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail='Project not found')
+    condition = rule.condition_json or {}
+    metric_key = (condition.get('metric_key') or '').strip().lower()
+    operator = condition.get('operator')
+    threshold = condition.get('threshold')
+    record = db.query(DataRecord).join(DataAsset, DataRecord.asset_id == DataAsset.id).filter(
+        DataRecord.tenant_id == tenant.id,
+        DataAsset.project_id == project.id,
+        DataRecord.metric_key == metric_key,
+    ).order_by(DataRecord.id.desc()).first()
+    if not record:
+        return json_ok({"created": False, "reason": "No matching data record"})
+    value = (record.value_json or {}).get('value')
+    if not isinstance(value, (int, float)) or operator != 'gt' or not isinstance(threshold, (int, float)) or value <= threshold:
+        return json_ok({"created": False, "reason": "Rule condition not met"})
+    dedupe_key = f"rule:{rule.id}:project:{project.id}:record:{record.id}"
+    alert = db.query(AlertEvent).filter(
+        AlertEvent.tenant_id == tenant.id,
+        AlertEvent.dedupe_key == dedupe_key,
+    ).first()
+    if alert:
+        task = db.query(Task).filter(Task.project_id == project.id, Task.title == '核验售票数据').first()
+        return json_ok({"created": False, "alert": _serialize_alert(alert, task)})
+    alert = AlertEvent(
+        tenant_id=tenant.id,
+        project_id=project.id,
+        rule_id=rule.id,
+        business_key=dedupe_key,
+        severity=rule.severity_policy,
+        title=rule.name,
+        summary=f"{metric_key} 当前值 {value} 超过阈值 {threshold}",
+        context={"metric_key": metric_key, "value": value, "threshold": threshold},
+        source_record_ids=[record.id],
+        dedupe_key=dedupe_key,
+    )
+    db.add(alert)
+    db.flush()
+    notification = Notification(
+        tenant_id=tenant.id,
+        user_id=user.id,
+        business_key=f"alert:{alert.id}",
+        notification_type='alert',
+        title=alert.title,
+        content=alert.summary,
+        context={"alert_id": alert.id},
+    )
+    task = None
+    if condition.get('task_type') == 'verify_ticketing':
+        task = Task(
+            project_id=project.id,
+            assignee_id=user.id,
+            title='核验售票数据',
+            description=alert.summary,
+        )
+        db.add(task)
+    db.add(notification)
+    db.commit()
+    db.refresh(alert)
+    if task:
+        db.refresh(task)
+    return json_ok({"created": True, "alert": _serialize_alert(alert, task)})
+
+
+@router.get('/alerts')
+def list_alerts(
+    project_id: Optional[int] = None,
+    status: Optional[str] = None,
+    severity: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    tenant_id = get_default_tenant_id(db)
+    query = db.query(AlertEvent).filter(AlertEvent.tenant_id == tenant_id)
+    if project_id:
+        query = query.filter(AlertEvent.project_id == project_id)
+    if status:
+        query = query.filter(AlertEvent.status == status)
+    if severity:
+        query = query.filter(AlertEvent.severity == severity)
+    return json_ok([_serialize_alert(alert) for alert in query.order_by(AlertEvent.id.desc()).all()])
+
+
+def _update_alert_status(alert_id: int, status: str, db: Session):
+    tenant_id = get_default_tenant_id(db)
+    alert = db.query(AlertEvent).filter(
+        AlertEvent.id == alert_id,
+        AlertEvent.tenant_id == tenant_id,
+    ).first()
+    if not alert:
+        raise HTTPException(status_code=404, detail='Alert not found')
+    if alert.status != 'resolved':
+        alert.status = status
+        if status == 'resolved':
+            alert.resolved_at = datetime.now(timezone.utc)
+        db.commit()
+        db.refresh(alert)
+    data = _serialize_alert(alert)
+    data["resolved_at"] = alert.resolved_at.isoformat() if alert.resolved_at else None
+    return json_ok(data)
+
+
+@router.post('/alerts/{alert_id}/acknowledge')
+def acknowledge_alert(alert_id: int, db: Session = Depends(get_db)):
+    return _update_alert_status(alert_id, 'acknowledged', db)
+
+
+@router.post('/alerts/{alert_id}/resolve')
+def resolve_alert(alert_id: int, db: Session = Depends(get_db)):
+    return _update_alert_status(alert_id, 'resolved', db)
+
+
+def _serialize_decision_snapshot(snapshot: DecisionSnapshot):
+    return {
+        "id": snapshot.id,
+        "project_id": snapshot.project_id,
+        "project_version_id": snapshot.project_version_id,
+        "snapshot_type": snapshot.snapshot_type,
+        "input_lineage": snapshot.input_lineage or {},
+        "finance_result": snapshot.finance_result or {},
+        "risk_summary": snapshot.risk_summary or {},
+        "alert_summary": snapshot.alert_summary or {},
+        "recommendation": snapshot.recommendation,
+        "created_by_type": snapshot.created_by_type,
+    }
+
+
+def _serialize_project_work_plan(plan: ProjectWorkPlan | None):
+    if not plan:
+        return None
+    return {
+        "id": plan.id,
+        "project_id": plan.project_id,
+        "version_no": plan.version_no,
+        "status": plan.status,
+        "plan_json": plan.plan_json or {},
+        "decision_snapshot_id": plan.decision_snapshot_id,
+        "created_from_event_id": plan.created_from_event_id,
+    }
+
+
+def _serialize_project_work_event(event: ProjectWorkEvent):
+    return {
+        "id": event.id,
+        "project_id": event.project_id,
+        "event_type": event.event_type,
+        "business_key": event.business_key,
+        "payload": event.payload or {},
+        "source_asset_id": event.source_asset_id,
+        "alert_event_id": event.alert_event_id,
+        "decision_snapshot_id": event.decision_snapshot_id,
+        "status": event.status,
+        "idempotency_key": event.idempotency_key,
+    }
+
+
+def _build_decision_snapshot(db: Session, tenant_id: int, project: Project, snapshot_type: str):
+    records = db.query(DataRecord).join(DataAsset, DataRecord.asset_id == DataAsset.id).filter(
+        DataRecord.tenant_id == tenant_id,
+        DataAsset.project_id == project.id,
+    ).order_by(DataRecord.id.asc()).all()
+    evidences = db.query(Evidence).filter(Evidence.project_id == project.id).order_by(Evidence.id.asc()).all()
+    facts = db.query(Fact).filter(
+        Fact.project_id == project.id,
+        Fact.status == 'verified',
+    ).order_by(Fact.id.asc()).all()
+    assumptions = db.query(Assumption).filter(
+        Assumption.project_id == project.id,
+        Assumption.status == 'active',
+    ).order_by(Assumption.id.asc()).all()
+    risks = db.query(Risk).filter(
+        Risk.project_id == project.id,
+        Risk.status != 'resolved',
+    ).order_by(Risk.id.asc()).all()
+    alerts = db.query(AlertEvent).filter(
+        AlertEvent.tenant_id == tenant_id,
+        AlertEvent.project_id == project.id,
+        AlertEvent.status != 'resolved',
+    ).order_by(AlertEvent.id.asc()).all()
+    version = db.query(ProjectVersion).filter(
+        ProjectVersion.id == project.current_version_id,
+        ProjectVersion.project_id == project.id,
+    ).first()
+    finance_result = version.finance_result if version and version.finance_result else {}
+    input_lineage = {
+        "data_record_ids": [record.id for record in records],
+        "evidence_ids": [evidence.id for evidence in evidences],
+        "fact_ids": [fact.id for fact in facts],
+        "assumption_ids": [assumption.id for assumption in assumptions],
+    }
+    risk_summary = {
+        "open_count": len(risks),
+        "risk_ids": [risk.id for risk in risks],
+    }
+    alert_summary = {
+        "open_count": len(alerts),
+        "alert_ids": [alert.id for alert in alerts],
+        "severities": sorted({alert.severity for alert in alerts}),
+    }
+    if alert_summary["open_count"] or risk_summary["open_count"]:
+        recommendation = "存在未关闭预警或风险，等待具名负责人核验后再推进。"
+    elif not records:
+        recommendation = "补充可追溯资料后重新评估；系统不会替代人工审批。"
+    else:
+        recommendation = "当前输入已更新，请由负责人确认后按既定财务和审批门禁推进。"
+    snapshot = DecisionSnapshot(
+        tenant_id=tenant_id,
+        project_id=project.id,
+        project_version_id=version.id if version else None,
+        snapshot_type=snapshot_type,
+        input_lineage=input_lineage,
+        finance_result=finance_result,
+        risk_summary=risk_summary,
+        alert_summary=alert_summary,
+        recommendation=recommendation,
+        created_by_type='system',
+    )
+    db.add(snapshot)
+    db.flush()
+    return snapshot
+
+
+def _snapshot_material_signature(snapshot: DecisionSnapshot):
+    return json.dumps(
+        {
+            "input_lineage": snapshot.input_lineage or {},
+            "finance_result": snapshot.finance_result or {},
+            "risk_summary": snapshot.risk_summary or {},
+            "alert_summary": snapshot.alert_summary or {},
+            "recommendation": snapshot.recommendation,
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(',', ':'),
+    )
+
+
+def _refresh_project_work_plan(
+    db: Session,
+    tenant_id: int,
+    project: Project,
+    event: ProjectWorkEvent,
+    snapshot: DecisionSnapshot,
+):
+    previous_snapshot = db.query(DecisionSnapshot).filter(
+        DecisionSnapshot.tenant_id == tenant_id,
+        DecisionSnapshot.project_id == project.id,
+        DecisionSnapshot.id != snapshot.id,
+    ).order_by(DecisionSnapshot.id.desc()).first()
+    current_plan = db.query(ProjectWorkPlan).filter(
+        ProjectWorkPlan.tenant_id == tenant_id,
+        ProjectWorkPlan.project_id == project.id,
+        ProjectWorkPlan.status == 'current',
+    ).order_by(ProjectWorkPlan.version_no.desc()).first()
+    material_change = (
+        previous_snapshot is None
+        or _snapshot_material_signature(previous_snapshot) != _snapshot_material_signature(snapshot)
+    )
+    if not material_change:
+        return current_plan, False
+    if current_plan:
+        current_plan.status = 'superseded'
+    version_no = (current_plan.version_no if current_plan else 0) + 1
+    plan = ProjectWorkPlan(
+        tenant_id=tenant_id,
+        project_id=project.id,
+        version_no=version_no,
+        status='current',
+        decision_snapshot_id=snapshot.id,
+        created_from_event_id=event.id,
+        plan_json={
+            "goal": f"推进{project.name}的可审计决策",
+            "constraints": {
+                "open_alert_count": (snapshot.alert_summary or {}).get("open_count", 0),
+                "open_risk_count": (snapshot.risk_summary or {}).get("open_count", 0),
+                "human_gate": "财务公式、审批门槛和资金拨付必须由具名负责人确认",
+            },
+            "predefined_task_types": ["verify_ticketing", "verify_evidence", "review_risk"],
+            "dependencies": ["证据核验", "人工审批"],
+            "escalation_policy": "未关闭预警或风险时阻塞推进并通知负责人",
+        },
+    )
+    db.add(plan)
+    db.flush()
+    return plan, True
+
+
+@router.post('/projects/{project_id}/work-events')
+def create_project_work_event(
+    project_id: int,
+    payload: ProjectWorkEventIn,
+    db: Session = Depends(get_db),
+):
+    tenant, _ = get_or_create_default_context(db)
+    project = db.query(Project).filter(Project.id == project_id, Project.tenant_id == tenant.id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail='Project not found')
+    idempotency_key = payload.idempotency_key.strip()
+    existing = db.query(ProjectWorkEvent).filter(
+        ProjectWorkEvent.tenant_id == tenant.id,
+        ProjectWorkEvent.idempotency_key == idempotency_key,
+    ).first()
+    if existing:
+        snapshot = db.query(DecisionSnapshot).filter(DecisionSnapshot.id == existing.decision_snapshot_id).first()
+        plan = db.query(ProjectWorkPlan).filter(
+            ProjectWorkPlan.tenant_id == tenant.id,
+            ProjectWorkPlan.project_id == project.id,
+            ProjectWorkPlan.status == 'current',
+        ).order_by(ProjectWorkPlan.version_no.desc()).first()
+        return json_ok({
+            "created": False,
+            "work_plan_created": False,
+            "event": _serialize_project_work_event(existing),
+            "decision_snapshot": _serialize_decision_snapshot(snapshot) if snapshot else None,
+            "work_plan": _serialize_project_work_plan(plan),
+        })
+    event = ProjectWorkEvent(
+        tenant_id=tenant.id,
+        project_id=project.id,
+        event_type=payload.event_type.strip().lower(),
+        business_key=payload.business_key.strip(),
+        payload=payload.payload or {},
+        source_asset_id=payload.source_asset_id,
+        alert_event_id=payload.alert_event_id,
+        idempotency_key=idempotency_key,
+        status='processing',
+    )
+    db.add(event)
+    db.flush()
+    snapshot = _build_decision_snapshot(db, tenant.id, project, event.event_type)
+    plan, work_plan_created = _refresh_project_work_plan(db, tenant.id, project, event, snapshot)
+    event.decision_snapshot_id = snapshot.id
+    event.status = 'processed'
+    event.processed_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(event)
+    db.refresh(snapshot)
+    if plan:
+        db.refresh(plan)
+    return json_ok({
+        "created": True,
+        "work_plan_created": work_plan_created,
+        "event": _serialize_project_work_event(event),
+        "decision_snapshot": _serialize_decision_snapshot(snapshot),
+        "work_plan": _serialize_project_work_plan(plan),
+    })
+
+
+@router.get('/projects/{project_id}/work-plan')
+def get_project_work_plan(project_id: int, db: Session = Depends(get_db)):
+    tenant_id = get_default_tenant_id(db)
+    plan = db.query(ProjectWorkPlan).filter(
+        ProjectWorkPlan.tenant_id == tenant_id,
+        ProjectWorkPlan.project_id == project_id,
+        ProjectWorkPlan.status == 'current',
+    ).order_by(ProjectWorkPlan.version_no.desc()).first()
+    if not plan:
+        raise HTTPException(status_code=404, detail='Project work plan not found')
+    return json_ok(_serialize_project_work_plan(plan))
+
+
+@router.post('/projects/{project_id}/work-plan/refresh')
+def refresh_project_work_plan(project_id: int, db: Session = Depends(get_db)):
+    return create_project_work_event(
+        project_id,
+        ProjectWorkEventIn(
+            event_type='manual_refresh',
+            business_key='manual-refresh',
+            idempotency_key=f"manual-refresh:{project_id}:{uuid.uuid4()}",
+        ),
+        db,
+    )
+
+
+@router.get('/projects/{project_id}/decision-snapshots')
+def list_decision_snapshots(project_id: int, db: Session = Depends(get_db)):
+    tenant_id = get_default_tenant_id(db)
+    snapshots = db.query(DecisionSnapshot).filter(
+        DecisionSnapshot.tenant_id == tenant_id,
+        DecisionSnapshot.project_id == project_id,
+    ).order_by(DecisionSnapshot.id.desc()).all()
+    return json_ok([_serialize_decision_snapshot(snapshot) for snapshot in snapshots])
+
+
+def _serialize_conversion_assumption(assumption: ConversionAssumption):
+    return {
+        "id": assumption.id,
+        "scope_type": assumption.scope_type,
+        "scope_id": assumption.scope_id,
+        "funnel_stage_from": assumption.funnel_stage_from,
+        "funnel_stage_to": assumption.funnel_stage_to,
+        "rate": assumption.rate,
+        "segment": assumption.segment or {},
+        "evidence_ids": assumption.evidence_ids or [],
+        "confidence": assumption.confidence,
+        "status": assumption.status,
+        "effective_from": assumption.effective_from.isoformat() if assumption.effective_from else None,
+        "effective_until": assumption.effective_until.isoformat() if assumption.effective_until else None,
+        "version_no": assumption.version_no,
+    }
+
+
+def _serialize_case_outcome(case: CaseOutcome):
+    return {
+        "id": case.id,
+        "title": case.title,
+        "artist_id": case.artist_id,
+        "city": case.city,
+        "venue_id": case.venue_id,
+        "outcome_label": case.outcome_label,
+        "scenario": case.scenario or {},
+        "revenue": case.revenue,
+        "cost": case.cost,
+        "profit": case.profit,
+        "occupancy_rate": case.occupancy_rate,
+        "failure_reason": case.failure_reason or '',
+        "evidence_ids": case.evidence_ids or [],
+    }
+
+
+def _serialize_forecast_calibration(calibration: ForecastCalibration):
+    return {
+        "id": calibration.id,
+        "project_id": calibration.project_id,
+        "conversion_assumption_id": calibration.conversion_assumption_id,
+        "forecast_metric": calibration.forecast_metric,
+        "forecast_value": calibration.forecast_value,
+        "actual_value": calibration.actual_value,
+        "error_value": calibration.error_value,
+        "segment": calibration.segment or {},
+        "status": calibration.status,
+        "candidate_rate": calibration.candidate_rate,
+    }
+
+
+def _active_conversion_assumption(db: Session, tenant_id: int, project_id: int):
+    now = datetime.utcnow()
+    candidates = db.query(ConversionAssumption).filter(
+        ConversionAssumption.tenant_id == tenant_id,
+        ConversionAssumption.status == 'active',
+        (
+            ((ConversionAssumption.scope_type == 'project') & (ConversionAssumption.scope_id == str(project_id)))
+            | ((ConversionAssumption.scope_type == 'tenant') & (ConversionAssumption.scope_id == str(tenant_id)))
+        ),
+    ).order_by(ConversionAssumption.version_no.desc(), ConversionAssumption.id.desc()).all()
+    for assumption in candidates:
+        if assumption.effective_from and assumption.effective_from > now:
+            continue
+        if assumption.effective_until and assumption.effective_until <= now:
+            continue
+        return assumption
+    return None
+
+
+@router.post('/conversion-assumptions')
+def create_conversion_assumption(payload: ConversionAssumptionIn, db: Session = Depends(get_db)):
+    tenant, user = get_or_create_default_context(db)
+    if not 0 < payload.rate <= 1:
+        raise HTTPException(status_code=422, detail='Conversion rate must be between 0 and 1')
+    if payload.status == 'active' and not payload.evidence_ids:
+        raise HTTPException(status_code=422, detail='Active conversion assumption requires evidence')
+    latest = db.query(ConversionAssumption).filter(
+        ConversionAssumption.tenant_id == tenant.id,
+        ConversionAssumption.scope_type == payload.scope_type.strip().lower(),
+        ConversionAssumption.scope_id == payload.scope_id.strip(),
+        ConversionAssumption.funnel_stage_from == payload.funnel_stage_from.strip().lower(),
+        ConversionAssumption.funnel_stage_to == payload.funnel_stage_to.strip().lower(),
+    ).order_by(ConversionAssumption.version_no.desc()).first()
+    assumption = ConversionAssumption(
+        tenant_id=tenant.id,
+        scope_type=payload.scope_type.strip().lower(),
+        scope_id=payload.scope_id.strip(),
+        funnel_stage_from=payload.funnel_stage_from.strip().lower(),
+        funnel_stage_to=payload.funnel_stage_to.strip().lower(),
+        rate=payload.rate,
+        segment=payload.segment or {},
+        evidence_ids=payload.evidence_ids,
+        confidence=payload.confidence if payload.confidence is not None else 50,
+        status=payload.status,
+        effective_from=payload.effective_from,
+        effective_until=payload.effective_until,
+        version_no=(latest.version_no if latest else 0) + 1,
+        created_by=user.id,
+    )
+    db.add(assumption)
+    db.commit()
+    db.refresh(assumption)
+    return json_ok(_serialize_conversion_assumption(assumption))
+
+
+@router.get('/conversion-assumptions')
+def list_conversion_assumptions(
+    scope_type: Optional[str] = None,
+    scope_id: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    tenant_id = get_default_tenant_id(db)
+    query = db.query(ConversionAssumption).filter(ConversionAssumption.tenant_id == tenant_id)
+    if scope_type:
+        query = query.filter(ConversionAssumption.scope_type == scope_type)
+    if scope_id:
+        query = query.filter(ConversionAssumption.scope_id == scope_id)
+    assumptions = query.order_by(ConversionAssumption.id.desc()).all()
+    return json_ok([_serialize_conversion_assumption(assumption) for assumption in assumptions])
+
+
+@router.post('/case-outcomes')
+def create_case_outcome(payload: CaseOutcomeIn, db: Session = Depends(get_db)):
+    tenant, user = get_or_create_default_context(db)
+    if payload.artist_id and not db.query(Artist).filter(Artist.id == payload.artist_id).first():
+        raise HTTPException(status_code=404, detail='Artist not found')
+    if payload.venue_id and not db.query(Venue).filter(
+        Venue.id == payload.venue_id,
+        Venue.tenant_id == tenant.id,
+    ).first():
+        raise HTTPException(status_code=404, detail='Venue not found')
+    case = CaseOutcome(
+        tenant_id=tenant.id,
+        title=payload.title.strip(),
+        artist_id=payload.artist_id,
+        city=payload.city or (payload.scenario or {}).get('city', ''),
+        venue_id=payload.venue_id,
+        outcome_label=payload.outcome_label,
+        scenario=payload.scenario or {},
+        revenue=payload.revenue,
+        cost=payload.cost,
+        profit=payload.profit,
+        occupancy_rate=payload.occupancy_rate,
+        failure_reason=payload.failure_reason or '',
+        evidence_ids=payload.evidence_ids,
+        created_by=user.id,
+    )
+    db.add(case)
+    db.commit()
+    db.refresh(case)
+    return json_ok(_serialize_case_outcome(case))
+
+
+@router.get('/case-outcomes')
+def list_case_outcomes(
+    artist_id: Optional[int] = None,
+    city: Optional[str] = None,
+    venue_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+):
+    tenant_id = get_default_tenant_id(db)
+    query = db.query(CaseOutcome).filter(CaseOutcome.tenant_id == tenant_id)
+    if artist_id:
+        query = query.filter(CaseOutcome.artist_id == artist_id)
+    if city:
+        query = query.filter(CaseOutcome.city == city)
+    if venue_id:
+        query = query.filter(CaseOutcome.venue_id == venue_id)
+    return json_ok([_serialize_case_outcome(case) for case in query.order_by(CaseOutcome.id.desc()).all()])
+
+
+@router.get('/projects/{project_id}/calibration')
+def get_project_calibration(project_id: int, db: Session = Depends(get_db)):
+    tenant_id = get_default_tenant_id(db)
+    project = db.query(Project).filter(Project.id == project_id, Project.tenant_id == tenant_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail='Project not found')
+    assumption = _active_conversion_assumption(db, tenant_id, project.id)
+    if not assumption:
+        return json_ok({
+            "status": "needs_assumption",
+            "conversion_assumption": None,
+            "candidate": None,
+            "message": "缺少有来源且在有效期内的转化参数，不能使用默认常数计算。",
+        })
+    candidate = db.query(ForecastCalibration).filter(
+        ForecastCalibration.tenant_id == tenant_id,
+        ForecastCalibration.project_id == project.id,
+        ForecastCalibration.status == 'candidate',
+    ).order_by(ForecastCalibration.id.desc()).first()
+    return json_ok({
+        "status": "pending_approval" if candidate else "ready",
+        "conversion_assumption": _serialize_conversion_assumption(assumption),
+        "candidate": _serialize_forecast_calibration(candidate) if candidate else None,
+    })
+
+
+@router.post('/calibration-candidates/{calibration_id}/approve')
+def approve_calibration_candidate(calibration_id: int, db: Session = Depends(get_db)):
+    tenant, user = get_or_create_default_context(db)
+    calibration = db.query(ForecastCalibration).filter(
+        ForecastCalibration.id == calibration_id,
+        ForecastCalibration.tenant_id == tenant.id,
+        ForecastCalibration.status == 'candidate',
+    ).first()
+    if not calibration:
+        raise HTTPException(status_code=404, detail='Calibration candidate not found')
+    source = db.query(ConversionAssumption).filter(
+        ConversionAssumption.id == calibration.conversion_assumption_id,
+        ConversionAssumption.tenant_id == tenant.id,
+    ).first()
+    if not source or not isinstance(calibration.candidate_rate, (int, float)):
+        raise HTTPException(status_code=422, detail='Calibration candidate has no approvable conversion parameter')
+    source.status = 'superseded'
+    source.effective_until = datetime.now(timezone.utc)
+    assumption = ConversionAssumption(
+        tenant_id=tenant.id,
+        scope_type=source.scope_type,
+        scope_id=source.scope_id,
+        funnel_stage_from=source.funnel_stage_from,
+        funnel_stage_to=source.funnel_stage_to,
+        rate=calibration.candidate_rate,
+        segment=source.segment or {},
+        evidence_ids=source.evidence_ids or [],
+        confidence=source.confidence,
+        status='active',
+        effective_from=datetime.now(timezone.utc),
+        version_no=source.version_no + 1,
+        created_by=user.id,
+    )
+    calibration.status = 'approved'
+    calibration.approved_by = user.id
+    calibration.approved_at = datetime.now(timezone.utc)
+    db.add(assumption)
+    db.commit()
+    db.refresh(calibration)
+    db.refresh(assumption)
+    return json_ok({
+        "candidate": _serialize_forecast_calibration(calibration),
+        "conversion_assumption": _serialize_conversion_assumption(assumption),
+    })
+
+
 @router.get('/external-data/jobs')
 def list_external_data_jobs(project_id: Optional[int] = None, db: Session = Depends(get_db)):
     tenant_id = get_default_tenant_id(db)
@@ -1933,6 +2810,27 @@ def run_external_data_job(job_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail='External data job not found')
     if job.status == 'completed':
         return json_ok(serialize_external_data_job(job))
+    data_source_id = (job.parameters or {}).get('data_source_id')
+    if data_source_id:
+        source = db.query(DataSource).filter(
+            DataSource.id == data_source_id,
+            DataSource.tenant_id == tenant_id,
+        ).first()
+        if not source:
+            raise HTTPException(status_code=404, detail='Data source not found')
+        can_fetch, reason = connector_health(source)
+        if not can_fetch:
+            job.status = 'blocked'
+            job.error_message = reason
+            job.result = {
+                "data_source_id": source.id,
+                "connector_key": source.connector_key,
+                "reason": reason,
+                "network_called": False,
+            }
+            db.commit()
+            db.refresh(job)
+            return json_ok(serialize_external_data_job(job))
     job.status = 'running'
     job.started_at = datetime.now(timezone.utc)
     job.result = {

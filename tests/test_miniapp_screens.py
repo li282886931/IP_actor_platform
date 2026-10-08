@@ -2106,7 +2106,18 @@ def test_agent_screens_aggregate_current_user_tasks_and_analysis_jobs(monkeypatc
             result={"recommendation": "conditional_advance"},
             requested_by=user.id,
         )
-        db.add_all([task, other_task, analysis])
+        work_plan = models.ProjectWorkPlan(
+            tenant_id=tenant.id,
+            project_id=project.id,
+            version_no=2,
+            status="current",
+            plan_json={
+                "constraints": {
+                    "human_gate": "财务与审批由负责人确认",
+                },
+            },
+        )
+        db.add_all([task, other_task, analysis, work_plan])
         db.commit()
         project_id = project.id
         task_id = task.id
@@ -2137,6 +2148,12 @@ def test_agent_screens_aggregate_current_user_tasks_and_analysis_jobs(monkeypatc
     assert data_by_screen["S54"]["options"]["latest_analysis"]["result"]["recommendation"] == "conditional_advance"
     assert data_by_screen["S52"]["options"]["work_briefing"]["today_change_count"] == 1
     assert data_by_screen["S52"]["options"]["work_briefing"]["top_task"]["task_id"] == task_id
+    assert data_by_screen["S53"]["options"]["project_work"] == {
+        "plan_version": 2,
+        "open_alert_count": 0,
+        "recommendation": "当前计划无未关闭预警，仍需由负责人确认财务与审批门禁。",
+        "human_gate": "财务与审批由负责人确认",
+    }
     task_item = next(
         item for item in data_by_screen["S53"]["items"]
         if item["context"].get("task_id") == task_id

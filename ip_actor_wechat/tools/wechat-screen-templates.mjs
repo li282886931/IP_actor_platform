@@ -95,6 +95,12 @@ const workBriefingWxml = `
     <view wx:if="{{options.work_briefing.top_task}}" class="item"><view class="item-title">{{options.work_briefing.top_task.title}}</view></view>
   </view>`
 
+const projectWorkWxml = `
+  <view wx:if="{{options.project_work}}" class="panel">
+    <view class="panel-title">项目工作</view>
+    <view class="item"><view class="item-main"><view class="item-title">计划 V{{options.project_work.plan_version}}</view><view class="item-desc">{{options.project_work.recommendation}}</view><view class="item-desc">{{options.project_work.human_gate}}</view></view><view class="badge">待处理预警 {{options.project_work.open_alert_count}} 项</view></view>
+  </view>`
+
 const calibrationWxml = `
   <view wx:if="{{options.calibration_loop}}" class="panel">
     <view class="panel-title">预测与实际差异</view>
@@ -109,6 +115,7 @@ export const buildScreenWxml = (screenId, { includeBack = false } = {}) => {
   const pptV2 = screenId === 'S04' ? valueEvidenceWxml
     : ['S11', 'S25'].includes(screenId) ? cockpitWxml
     : screenId === 'S52' ? workBriefingWxml
+    : screenId === 'S53' ? projectWorkWxml
     : screenId === 'S66' ? calibrationWxml
     : ''
   const pptSection = pptV2 ? `\n${pptV2}` : ''

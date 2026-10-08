@@ -744,9 +744,11 @@ test('generates PPT V2 value, cockpit, work and calibration sections', () => {
   assert.match(generator, /价值证据/)
   assert.match(generator, /项目收益边界/)
   assert.match(generator, /今日变化/)
+  assert.match(generator, /项目工作/)
   assert.match(generator, /预测与实际差异/)
   assert.match(generator, /需补证据/)
   assert.match(runtime, /options: data && data\.options/)
+  assert.match(runtime, /project_work: data\.options\.project_work/)
 })
 
 test('generated runtime uses local placeholders for login in WeChat devtools', async () => {

@@ -155,6 +155,30 @@ export function ValueEvidencePanel({
   )
 }
 
+export function ProjectWorkPanel({
+  projectWork,
+}: {
+  projectWork?: {
+    plan_version?: number
+    open_alert_count?: number
+    recommendation?: string
+    human_gate?: string
+  } | null
+}) {
+  if (!projectWork) return null
+  return (
+    <View className={styles.insightPanel}>
+      <Text className={styles.insightTitle}>项目工作</Text>
+      <View className={styles.insightRow}>
+        <Text className={styles.itemTitle}>计划 V{projectWork.plan_version || 0}</Text>
+        <Text className={styles.itemValue}>待处理预警 {projectWork.open_alert_count || 0} 项</Text>
+      </View>
+      {projectWork.recommendation && <Text className={styles.sourceLabel}>{projectWork.recommendation}</Text>}
+      {projectWork.human_gate && <Text className={styles.sourceLabel}>{projectWork.human_gate}</Text>}
+    </View>
+  )
+}
+
 export function DecisionCockpit({
   cockpit,
 }: {
