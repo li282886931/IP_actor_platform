@@ -11,12 +11,33 @@ const taroMocks = vi.hoisted(() => ({
   redirectTo: vi.fn(),
   switchTab: vi.fn(),
   stopPullDownRefresh: vi.fn(),
+  getEnv: vi.fn(() => 'WEB'),
+  login: vi.fn(),
+  getSystemInfoSync: vi.fn(() => ({ platform: 'ios' })),
+  wechatLogin: vi.fn(),
+  phoneNumberDetail: {} as { code?: string, errMsg?: string },
   storage: new Map<string, unknown>(),
   params: {} as Record<string, string>,
 }))
 
 vi.mock('@tarojs/components', () => ({
-  Button: ({ children, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement>) => <button {...props}>{children}</button>,
+  Button: ({ children, onGetPhoneNumber, openType, onClick, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & {
+    onGetPhoneNumber?: (event: { detail?: { code?: string, errMsg?: string } }) => void
+    openType?: string
+  }) => (
+    <button
+      {...props}
+      onClick={(event) => {
+        if (openType === 'getPhoneNumber' && onGetPhoneNumber) {
+          onGetPhoneNumber({ detail: taroMocks.phoneNumberDetail })
+          return
+        }
+        onClick?.(event)
+      }}
+    >
+      {children}
+    </button>
+  ),
   Input: (props: React.InputHTMLAttributes<HTMLInputElement>) => <input {...props} />,
   ScrollView: ({ children }: React.HTMLAttributes<HTMLDivElement>) => <div>{children}</div>,
   Text: ({ children, ...props }: React.HTMLAttributes<HTMLSpanElement>) => <span {...props}>{children}</span>,
@@ -26,7 +47,9 @@ vi.mock('@tarojs/components', () => ({
 vi.mock('@tarojs/taro', () => ({
   default: {
     ENV_TYPE: { WEAPP: 'WEAPP' },
-    getEnv: () => 'WEB',
+    getEnv: taroMocks.getEnv,
+    login: taroMocks.login,
+    getSystemInfoSync: taroMocks.getSystemInfoSync,
     getStorageSync: (key: string) => taroMocks.storage.get(key),
     setStorageSync: (key: string, value: unknown) => taroMocks.storage.set(key, value),
     removeStorageSync: (key: string) => taroMocks.storage.delete(key),
@@ -48,6 +71,7 @@ vi.mock('@/services/api', async () => {
     api: {
       ...actual.api,
       getMiniappScreen: taroMocks.getMiniappScreen,
+      wechatLogin: taroMocks.wechatLogin,
     },
   }
 })
@@ -86,6 +110,13 @@ describe('BlueprintScreen aggregated loading', () => {
     taroMocks.redirectTo.mockReset()
     taroMocks.switchTab.mockReset()
     taroMocks.stopPullDownRefresh.mockReset()
+    taroMocks.getEnv.mockReset()
+    taroMocks.getEnv.mockReturnValue('WEB')
+    taroMocks.login.mockReset()
+    taroMocks.getSystemInfoSync.mockReset()
+    taroMocks.getSystemInfoSync.mockReturnValue({ platform: 'ios' })
+    taroMocks.wechatLogin.mockReset()
+    taroMocks.phoneNumberDetail = {}
     taroMocks.storage.clear()
     taroMocks.params = {}
   })
@@ -206,6 +237,33 @@ describe('BlueprintScreen aggregated loading', () => {
     await screen.findByText('发现演出')
 
     expect(screen.queryByRole('button', { name: '返回' })).not.toBeInTheDocument()
+  })
+
+  it('uses local placeholder login codes in WeChat developer tools', async () => {
+    taroMocks.getEnv.mockReturnValue('WEAPP')
+    taroMocks.getSystemInfoSync.mockReturnValue({ platform: 'devtools' })
+    taroMocks.wechatLogin.mockResolvedValue({
+      token: 'dev-token',
+      user: { id: 3, account: 'b_user' },
+      current_tenant: { id: 1, name: '锐音场默认空间' },
+    })
+    taroMocks.getMiniappScreen.mockResolvedValue(response({
+      screen_id: 'S01',
+      summary: { title: '登录' },
+      items: [],
+    }))
+
+    render(<BlueprintScreen screenId='S01' />)
+    fireEvent.click(await screen.findByRole('button', { name: '微信安全登录' }))
+
+    await waitFor(() => {
+      expect(taroMocks.wechatLogin).toHaveBeenCalledWith({
+        code: 'local-devtools-login-code',
+        phone_code: 'local-devtools-phone-code',
+        name: '微信用户',
+      })
+    })
+    expect(taroMocks.login).not.toHaveBeenCalled()
   })
 
   it('clears items from the previous screen before the next request resolves', async () => {

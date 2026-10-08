@@ -284,23 +284,32 @@ const createScreenPage = (screenId) => {
     },
     onGetPhoneNumber(event) {
       if (screenId !== 'S01') return
-      if (!event.detail || !event.detail.code) {
+      const isDevtools = wx.getSystemInfoSync && wx.getSystemInfoSync().platform === 'devtools'
+      const phoneCode = event.detail && event.detail.code ? event.detail.code : (isDevtools ? 'local-devtools-phone-code' : '')
+      if (!phoneCode) {
         this.setData({ loadState: 'error', message: '未完成手机号授权，暂不能登录。' })
         return
       }
       this.setData({ loadState: 'loading', message: '' })
+      const finishLogin = (loginCode) => {
+        request('/auth/wechat-login', 'POST', { code: loginCode, phone_code: phoneCode, name: '小程序用户' }).then((session) => {
+          wx.setStorageSync(STORAGE_KEYS.token, session.token)
+          wx.setStorageSync(STORAGE_KEYS.user, session.user)
+          wx.setStorageSync(STORAGE_KEYS.tenant, session.current_tenant)
+          this.goNext()
+        }).catch((error) => {
+          console.error('[MiniApp] phone login failed', error)
+          const detail = String(error && error.message || '')
+          this.setData({ loadState: 'error', message: detail.includes('Phone number is not linked to any account') ? '手机号未绑定，请联系管理员分配账号。' : '登录失败，请确认后端服务可用。' })
+        })
+      }
+      if (isDevtools) {
+        finishLogin('local-devtools-login-code')
+        return
+      }
       wx.login({
         success: (loginResult) => {
-          request('/auth/wechat-login', 'POST', { code: loginResult.code || 'local-devtools', phone_code: event.detail.code, name: '小程序用户' }).then((session) => {
-            wx.setStorageSync(STORAGE_KEYS.token, session.token)
-            wx.setStorageSync(STORAGE_KEYS.user, session.user)
-            wx.setStorageSync(STORAGE_KEYS.tenant, session.current_tenant)
-            this.goNext()
-          }).catch((error) => {
-            console.error('[MiniApp] phone login failed', error)
-            const detail = String(error && error.message || '')
-            this.setData({ loadState: 'error', message: detail.includes('Phone number is not linked to any account') ? '手机号未绑定，请联系管理员分配账号。' : '登录失败，请确认后端服务可用。' })
-          })
+          finishLogin(loginResult.code || 'local-devtools-login-code')
         },
         fail: (error) => {
           console.error('[MiniApp] wx.login failed', error)

@@ -10,7 +10,7 @@ from typing import Optional
 from urllib.parse import quote
 
 import requests
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -566,6 +566,11 @@ def wechat_miniapp_secret():
     return os.environ.get('WECHAT_MINIAPP_SECRET', WECHAT_MINIAPP_SECRET).strip()
 
 
+LOCAL_DEVTOOLS_LOGIN_CODE = 'local-devtools-login-code'
+LOCAL_DEVTOOLS_PHONE_CODE = 'local-devtools-phone-code'
+LOCAL_DEVTOOLS_MOCK_PHONE_NUMBER = '13800000000'
+
+
 def wechat_miniapp_mock_phone_number():
     return os.environ.get('WECHAT_MINIAPP_MOCK_PHONE_NUMBER', WECHAT_MINIAPP_MOCK_PHONE_NUMBER).strip()
 
@@ -574,11 +579,24 @@ def wechat_credentials_configured():
     return bool(wechat_miniapp_appid() and wechat_miniapp_secret())
 
 
-def exchange_wechat_login_code(login_code: str):
+def is_local_request(request: Optional[Request]):
+    host = request.client.host if request and request.client else ''
+    return host in {'127.0.0.1', '::1', 'testclient'}
+
+
+def is_local_devtools_login(login_code: str, request: Optional[Request] = None):
+    return bool(login_code) and is_local_request(request)
+
+
+def is_local_devtools_phone(phone_code: str, request: Optional[Request] = None):
+    return bool(phone_code) and is_local_request(request)
+
+
+def exchange_wechat_login_code(login_code: str, request: Optional[Request] = None):
     if not login_code:
         raise HTTPException(status_code=400, detail='Missing wechat login code')
     if not wechat_credentials_configured():
-        if wechat_miniapp_mock_phone_number():
+        if wechat_miniapp_mock_phone_number() or is_local_devtools_login(login_code, request):
             digest = hashlib.sha256(login_code.encode('utf-8')).hexdigest()[:16]
             return {"openid": f"local-mock-openid-{digest}", "unionid": "", "session_key": "local-mock-session"}
         raise HTTPException(status_code=503, detail='WeChat miniapp credentials are not configured')
@@ -635,13 +653,15 @@ def get_wechat_access_token():
     return token
 
 
-def fetch_wechat_phone_number(phone_code: str):
+def fetch_wechat_phone_number(phone_code: str, request: Optional[Request] = None):
     if not phone_code:
         raise HTTPException(status_code=400, detail='Missing wechat phone code')
     if not wechat_credentials_configured():
         mock_phone = wechat_miniapp_mock_phone_number()
         if mock_phone:
             return mock_phone
+        if is_local_devtools_phone(phone_code, request):
+            return LOCAL_DEVTOOLS_MOCK_PHONE_NUMBER
         raise HTTPException(status_code=503, detail='WeChat miniapp credentials are not configured')
     access_token = get_wechat_access_token()
     try:
@@ -1035,10 +1055,10 @@ def issue_auth_captcha():
 
 
 @router.post('/auth/wechat-login')
-def wechat_login(payload: WechatLoginIn, db: Session = Depends(get_db)):
+def wechat_login(payload: WechatLoginIn, request: Request, db: Session = Depends(get_db)):
     tenant, _ = get_or_create_default_context(db)
-    session = exchange_wechat_login_code(payload.code)
-    phone_number = fetch_wechat_phone_number(payload.phone_code)
+    session = exchange_wechat_login_code(payload.code, request)
+    phone_number = fetch_wechat_phone_number(payload.phone_code, request)
     user = db.query(User).filter(User.phone == phone_number, User.status == 'active').first()
     if not user:
         raise HTTPException(status_code=403, detail='Phone number is not linked to any account')

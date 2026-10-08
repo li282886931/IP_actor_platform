@@ -737,6 +737,72 @@ test('uses WeChat phone authorization for mini program login', () => {
   assert.doesNotMatch(source, /wechatLogin\(\{ code, name: '微信用户', group_code: 'B' \}\)/)
 })
 
+test('generated runtime uses local placeholders for login in WeChat devtools', async () => {
+  const runtimePath = resolve(root, 'dist/common/runtime.js')
+  const storage = new Map()
+  const requests = []
+  let page
+  globalThis.wx = {
+    getStorageSync: (key) => storage.get(key),
+    setStorageSync: (key, value) => storage.set(key, value),
+    getSystemInfoSync: () => ({ platform: 'devtools' }),
+    request: (options) => {
+      requests.push(options)
+      options.success({
+        statusCode: 200,
+        data: {
+          code: 0,
+          data: options.url.endsWith('/auth/wechat-login')
+            ? {
+                token: 'dev-token',
+                user: { id: 3, account: 'b_user' },
+                current_tenant: { id: 1, name: '锐音场默认空间' },
+              }
+            : {
+                screen_id: 'S01',
+                summary: { title: '登录' },
+                items: [],
+                options: {},
+                context: {},
+              },
+          message: 'ok',
+        },
+      })
+    },
+    redirectTo: () => {},
+    switchTab: () => {},
+  }
+  globalThis.Page = (definition) => {
+    page = {
+      ...definition,
+      data: { ...definition.data },
+      setData(next, callback) {
+        this.data = { ...this.data, ...next }
+        callback?.()
+      },
+    }
+  }
+
+  const require = createRequire(import.meta.url)
+  delete require.cache[runtimePath]
+  try {
+    require(runtimePath).createScreenPage('S01')
+    page.onGetPhoneNumber({ detail: {} })
+    await new Promise((resolve) => setImmediate(resolve))
+
+    const loginRequest = requests.find((request) => request.url.endsWith('/auth/wechat-login'))
+    assert.deepEqual(loginRequest.data, {
+      code: 'local-devtools-login-code',
+      phone_code: 'local-devtools-phone-code',
+      name: '小程序用户',
+    })
+    assert.equal(storage.get('starhub-token'), 'dev-token')
+  } finally {
+    delete globalThis.wx
+    delete globalThis.Page
+  }
+})
+
 test('provides database-backed candidates and fuzzy search for project creation', () => {
   const source = readFileSync(resolve(root, 'src/components/BlueprintScreen/index.tsx'), 'utf8')
   const searchSource = readFileSync(resolve(root, 'src/components/SearchSelect/index.tsx'), 'utf8')

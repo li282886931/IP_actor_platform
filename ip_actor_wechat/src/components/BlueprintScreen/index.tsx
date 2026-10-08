@@ -39,6 +39,8 @@ interface BlueprintScreenProps {
 const tabIds = new Set(['S04', 'S10', 'S52', 'S67'])
 const formScreens = new Set(['S09', 'S13', 'S14', 'S15', 'S16', 'S17', 'S25', 'S36', 'S37', 'S41', 'S45', 'S47', 'S51', 'S54', 'S57', 'S65', 'S72', 'S79', 'S82'])
 const destructiveScreens = new Set(['S47', 'S80', 'S84'])
+const devtoolsLoginCode = 'local-devtools-login-code'
+const devtoolsPhoneCode = 'local-devtools-phone-code'
 
 const routeFor = (screenId: string) => `/pages/${screenId.toLowerCase()}/index`
 
@@ -373,15 +375,17 @@ export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
     setLoadState('loading')
     setMessage('')
     try {
-      const phoneCode = event?.detail?.code
+      const isWechatDevtools = Taro.getEnv() === Taro.ENV_TYPE.WEAPP
+        && Taro.getSystemInfoSync?.().platform === 'devtools'
+      const phoneCode = event?.detail?.code || (isWechatDevtools ? devtoolsPhoneCode : '')
       if (!phoneCode) {
         setLoadState('error')
         setMessage('未完成手机号授权，暂不能登录。')
         return
       }
 
-      let code = 'preview-code'
-      if (Taro.getEnv() === Taro.ENV_TYPE.WEAPP) {
+      let code = isWechatDevtools ? devtoolsLoginCode : 'preview-code'
+      if (Taro.getEnv() === Taro.ENV_TYPE.WEAPP && !isWechatDevtools) {
         const login = await Taro.login()
         code = login.code
       }

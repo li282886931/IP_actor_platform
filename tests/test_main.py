@@ -1700,12 +1700,12 @@ def test_full_backend_plan_api_flow(monkeypatch):
     monkeypatch.setattr(
         routes_module,
         "exchange_wechat_login_code",
-        lambda login_code: {"openid": "wx-openid-001", "unionid": "wx-union-001", "session_key": "session-key"},
+        lambda login_code, _request=None: {"openid": "wx-openid-001", "unionid": "wx-union-001", "session_key": "session-key"},
     )
     monkeypatch.setattr(
         routes_module,
         "fetch_wechat_phone_number",
-        lambda phone_code: "13800000000",
+        lambda phone_code, _request=None: "13800000000",
     )
 
     try:
@@ -2003,12 +2003,12 @@ def test_wechat_login_rejects_unbound_phone_number(monkeypatch):
     monkeypatch.setattr(
         routes_module,
         "exchange_wechat_login_code",
-        lambda login_code: {"openid": "wx-openid-unbound", "unionid": "wx-union-unbound", "session_key": "session-key"},
+        lambda login_code, _request=None: {"openid": "wx-openid-unbound", "unionid": "wx-union-unbound", "session_key": "session-key"},
     )
     monkeypatch.setattr(
         routes_module,
         "fetch_wechat_phone_number",
-        lambda phone_code: "13911112222",
+        lambda phone_code, _request=None: "13911112222",
     )
 
     try:
@@ -2043,6 +2043,63 @@ def test_wechat_login_uses_local_mock_phone_when_wechat_credentials_are_missing(
         assert response.status_code == 200
         data = response.json()["data"]
         assert data["source"] == "wechat"
+        assert data["user"]["account"] == "b_user"
+        assert data["user"]["phone"] == "13800000000"
+    finally:
+        app_module.app.dependency_overrides.clear()
+
+
+def test_wechat_login_allows_local_devtools_placeholders_without_env_mock(monkeypatch):
+    monkeypatch.delenv("WECHAT_MINIAPP_APPID", raising=False)
+    monkeypatch.delenv("WECHAT_MINIAPP_SECRET", raising=False)
+    monkeypatch.delenv("WECHAT_MINIAPP_MOCK_PHONE_NUMBER", raising=False)
+    client, session_factory = make_test_client(monkeypatch)
+
+    try:
+        db = session_factory()
+        user = db.query(app_module.User).filter(app_module.User.account == "b_user").one()
+        user.phone = "13800000000"
+        db.commit()
+        db.close()
+
+        response = client.post(
+            "/auth/wechat-login",
+            json={
+                "code": "local-devtools-login-code",
+                "phone_code": "local-devtools-phone-code",
+                "name": "开发工具用户",
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert data["source"] == "wechat"
+        assert data["user"]["account"] == "b_user"
+        assert data["user"]["phone"] == "13800000000"
+    finally:
+        app_module.app.dependency_overrides.clear()
+
+
+def test_wechat_login_allows_any_local_request_without_wechat_credentials(monkeypatch):
+    monkeypatch.delenv("WECHAT_MINIAPP_APPID", raising=False)
+    monkeypatch.delenv("WECHAT_MINIAPP_SECRET", raising=False)
+    monkeypatch.delenv("WECHAT_MINIAPP_MOCK_PHONE_NUMBER", raising=False)
+    client, session_factory = make_test_client(monkeypatch)
+
+    try:
+        db = session_factory()
+        user = db.query(app_module.User).filter(app_module.User.account == "b_user").one()
+        user.phone = "13800000000"
+        db.commit()
+        db.close()
+
+        response = client.post(
+            "/auth/wechat-login",
+            json={"code": "wx-devtools-code", "phone_code": "wx-devtools-phone", "name": "开发工具用户"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()["data"]
         assert data["user"]["account"] == "b_user"
         assert data["user"]["phone"] == "13800000000"
     finally:
