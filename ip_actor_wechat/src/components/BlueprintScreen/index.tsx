@@ -6,12 +6,18 @@ import classNames from 'classnames'
 import {
   BusinessList,
   CandidateField,
+  DecisionCockpit,
   FormField,
   KeyValueGrid,
+  LifecycleTimeline,
   ScreenHeader,
   ScreenHero,
   ScreenState,
+  ScenarioStrip,
   TaskBatchList,
+  ValueEvidencePanel,
+  VariancePanel,
+  WorkBriefing,
 } from '@/components/ScreenPrimitives'
 import { useProjectDraft } from '@/hooks/useProjectDraft'
 import { useMiniappScreenData } from '@/hooks/useMiniappScreenData'
@@ -626,6 +632,32 @@ export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
 
   const secondaryTarget = screenId === 'S01' ? 'S06' : screenId === 'S10' ? 'S80' : screenId === 'S47' ? 'S35' : ''
   const showBackControl = screenId !== 'S01' && !tabIds.has(screenId)
+  const options = screenData?.options || {}
+  const valueEvidence = Array.isArray(options.value_evidence) ? options.value_evidence as Array<{
+    title: string, metric?: string | null, source_label: string
+  }> : []
+  const cockpit = (screenId === 'S11' ? options.decision_cockpit : options.finance_cockpit) as {
+    neutral_profit?: number | null
+    breakeven_attendance?: number | null
+    maximum_funding_gap?: number | null
+    status?: string | null
+    combination?: Record<string, unknown>
+    missing_fields?: string[]
+    scenarios?: Record<string, { profit?: number | null, attendance?: number | null }>
+  } | undefined
+  const briefing = options.work_briefing as {
+    today_change_count?: number
+    top_task?: { title?: string, status?: string, project_name?: string } | null
+    active_project_count?: number
+  } | undefined
+  const ticketingLoop = options.ticketing_loop as { current_sold_count?: number | null } | undefined
+  const actualsSummary = options.actuals_summary as { actual_profit?: number | null } | undefined
+  const calibrationLoop = options.calibration_loop as {
+    forecast_profit?: number | null
+    actual_profit?: number | null
+    profit_variance?: number | null
+    notes?: string | null
+  } | undefined
 
   return (
     <ScrollView className={styles.page} scrollY enhanced showScrollbar={false}>
@@ -645,25 +677,21 @@ export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
         context={`产品蓝图 · ${screen.id}`}
       />
 
-      {['财务', '判断', '风险', '版本', '复盘'].includes(screen.group) && (
-        <View className={styles.chartSection}>
-          <View className={styles.chartHeader}>
-            <Text>项目收益边界</Text>
-            <Text className={styles.chartCaption}>finance-v1</Text>
-          </View>
-          <View className={styles.chart}>
-            {[22, 34, 48, 62, 79, 92].map((height, index) => (
-              <View key={height} className={styles.chartColumn}>
-                <View className={classNames(styles.chartBar, index < 2 && styles.chartBarRisk)} style={{ height: `${height}%` }} />
-                <Text>{50 + index * 10}%</Text>
-              </View>
-            ))}
-          </View>
-          <View className={styles.breakEven}>
-            <View className={styles.breakEvenDot} />
-            <Text>63.2% 保本线 · 低于边界需重新测算</Text>
-          </View>
-        </View>
+      {screenId === 'S04' && <ValueEvidencePanel evidence={valueEvidence} />}
+      {(screenId === 'S11' || screenId === 'S25') && cockpit && (
+        <>
+          <DecisionCockpit cockpit={cockpit} />
+          <ScenarioStrip scenarios={cockpit.scenarios} />
+        </>
+      )}
+      {screenId === 'S52' && <WorkBriefing briefing={briefing} />}
+      {['S64', 'S65', 'S66'].includes(screenId) && (
+        <>
+          <LifecycleTimeline currentStage={screenId === 'S64' ? '售票' : screenId === 'S65' ? '结算' : '校准'} />
+          {screenId === 'S66' && <VariancePanel loop={calibrationLoop} />}
+          {screenId === 'S64' && ticketingLoop?.current_sold_count !== undefined && <KeyValueGrid items={[{ label: '当前已售', value: String(ticketingLoop.current_sold_count) }]} />}
+          {screenId === 'S65' && actualsSummary?.actual_profit !== undefined && <KeyValueGrid items={[{ label: '实际利润', value: String(actualsSummary.actual_profit) }]} />}
+        </>
       )}
 
       {renderForm()}

@@ -5,6 +5,14 @@
     <view class="subtitle">{{screen.subtitle}}</view>
     <view class="highlight">{{screen.highlight}}</view>
   </view>
+
+  <view wx:if="{{options.value_evidence.length}}" class="panel">
+    <view class="panel-title">价值证据</view>
+    <view wx:for="{{options.value_evidence}}" wx:key="title" class="item">
+      <view class="item-main"><view class="item-title">{{item.title}}</view><view class="item-desc">{{item.source_label}}</view></view>
+      <view class="badge">{{item.metric}}</view>
+    </view>
+  </view>
   <view wx:if="{{isForm}}" class="panel">
     <view class="panel-title">输入与联调</view>
     <input class="input" value="{{keyword}}" bindinput="onInput" placeholder="{{placeholder}}" />

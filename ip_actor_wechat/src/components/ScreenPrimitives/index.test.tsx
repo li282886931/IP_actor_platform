@@ -6,12 +6,18 @@ import type { DisplayItem } from '@/types/domain'
 import {
   BusinessList,
   CandidateField,
+  DecisionCockpit,
   FormField,
   KeyValueGrid,
+  LifecycleTimeline,
   ScreenHeader,
   ScreenHero,
   ScreenState,
+  ScenarioStrip,
   TaskBatchList,
+  ValueEvidencePanel,
+  VariancePanel,
+  WorkBriefing,
 } from './index'
 
 vi.mock('@tarojs/components', () => ({
@@ -114,6 +120,25 @@ describe('ScreenPrimitives', () => {
     expect(onOpenDetail).toHaveBeenCalledTimes(1)
   })
 
+  it('shows real task actionability and evidence requirements', () => {
+    render(
+      <BusinessList
+        items={[{
+          ...items[0],
+          context: {
+            task_id: 3,
+            actionability: ['accept', 'reject', 'block'],
+            evidence_required: true,
+          },
+        }]}
+        onOpenDetail={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('可接受 · 可拒绝 · 可阻塞')).toBeInTheDocument()
+    expect(screen.getByText('需补证据')).toBeInTheDocument()
+  })
+
   it('delegates task selection, expansion and detail navigation', () => {
     const onToggleSelection = vi.fn()
     const onToggleDetails = vi.fn()
@@ -135,5 +160,69 @@ describe('ScreenPrimitives', () => {
     expect(onToggleSelection).toHaveBeenCalledWith(3)
     expect(onToggleDetails).toHaveBeenCalledWith(3)
     expect(onOpenDetail).toHaveBeenCalledWith(items[0])
+  })
+
+  it('renders value evidence only with its real source label', () => {
+    render(<ValueEvidencePanel evidence={[{
+      title: '杭州现场演出',
+      metric: '480-1280',
+      source_label: '当前机会',
+    }]} />)
+
+    expect(screen.getByText('杭州现场演出')).toBeInTheDocument()
+    expect(screen.getByText('当前机会')).toBeInTheDocument()
+    expect(screen.getByText('480-1280')).toBeInTheDocument()
+  })
+
+  it('renders a decision cockpit and calculated scenario strip', () => {
+    render(
+      <>
+        <DecisionCockpit
+          cockpit={{
+            neutral_profit: 2860000,
+            breakeven_attendance: 8040,
+            maximum_funding_gap: 480000,
+            status: 'calculated',
+            combination: { artist: '艺人组合 B', city: '南京', venue: '奥体中心' },
+            missing_fields: [],
+          }}
+        />
+        <ScenarioStrip scenarios={{
+          conservative: { profit: 1200000, attendance: 8000 },
+          neutral: { profit: 2860000, attendance: 10000 },
+          optimistic: { profit: 3600000, attendance: 12000 },
+        }} />
+      </>,
+    )
+
+    expect(screen.getByText('中性利润')).toBeInTheDocument()
+    expect(screen.getAllByText('2860000').length).toBeGreaterThan(0)
+    expect(screen.getByText('保守')).toBeInTheDocument()
+    expect(screen.getByText('乐观')).toBeInTheDocument()
+  })
+
+  it('renders a work briefing and lifecycle variance without fabricated values', () => {
+    render(
+      <>
+        <WorkBriefing briefing={{
+          today_change_count: 3,
+          top_task: { title: '确认场馆报价', status: 'pending', project_name: '南京站' },
+          active_project_count: 2,
+        }} />
+        <LifecycleTimeline currentStage='售票' />
+        <VariancePanel loop={{
+          forecast_profit: 1800000,
+          actual_profit: 1400000,
+          profit_variance: -400000,
+          notes: '已完成结算',
+        }} />
+      </>,
+    )
+
+    expect(screen.getByText('今日变化 3 项')).toBeInTheDocument()
+    expect(screen.getByText('确认场馆报价')).toBeInTheDocument()
+    expect(screen.getByText('售票')).toBeInTheDocument()
+    expect(screen.getByText('预测利润')).toBeInTheDocument()
+    expect(screen.getByText('-400000')).toBeInTheDocument()
   })
 })

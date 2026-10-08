@@ -51,6 +51,16 @@ const taskItemsWxml = `<view class="task-selection">已选择 {{selectedTaskIds.
       <view wx:if="{{item.detailRef}}" class="detail-chevron" data-entity-type="{{item.detailRef.entity_type}}" data-entity-id="{{item.detailRef.entity_id}}" catchtap="onBusinessItemTap">›</view>
     </view>`
 
+const planItemsWxml = `<view wx:for="{{items}}" wx:key="id" class="item">
+      <view class="item-main">
+        <view class="item-title">{{item.title}}</view>
+        <view class="item-desc">{{item.description}}</view>
+        <view wx:if="{{item.context.actionability.length}}" class="item-desc">可处理：{{item.context.actionability.join(' · ')}}</view>
+        <view wx:if="{{item.context.evidence_required}}" class="item-desc">需补证据</view>
+      </view>
+      <view class="badge">{{item.status}}</view>
+    </view>`
+
 const defaultActionsWxml = `<block wx:if="{{screen.id === 'S01'}}">
     <button class="primary" open-type="getPhoneNumber" bindgetphonenumber="onGetPhoneNumber">{{screen.primaryAction}}</button>
   </block>
@@ -63,16 +73,52 @@ const taskActionsWxml = `<view class="task-actions">
     <button class="reject" data-action="reject" disabled="{{loadState === 'loading' || !selectedTaskIds.length}}" bindtap="onBatchTaskAction">拒绝接单</button>
   </view>`
 
+const valueEvidenceWxml = `
+  <view wx:if="{{options.value_evidence.length}}" class="panel">
+    <view class="panel-title">价值证据</view>
+    <view wx:for="{{options.value_evidence}}" wx:key="title" class="item">
+      <view class="item-main"><view class="item-title">{{item.title}}</view><view class="item-desc">{{item.source_label}}</view></view>
+      <view class="badge">{{item.metric}}</view>
+    </view>
+  </view>`
+
+const cockpitWxml = `
+  <view wx:if="{{options.cockpit}}" class="panel">
+    <view class="panel-title">项目收益边界</view>
+    <view class="item"><view class="item-main"><view class="item-title">中性利润</view></view><view class="badge">{{options.cockpit.neutral_profit}}</view></view>
+    <view class="item"><view class="item-main"><view class="item-title">保本人数</view></view><view class="badge">{{options.cockpit.breakeven_attendance}}</view></view>
+  </view>`
+
+const workBriefingWxml = `
+  <view wx:if="{{options.work_briefing}}" class="panel">
+    <view class="panel-title">今日变化 {{options.work_briefing.today_change_count}} 项</view>
+    <view wx:if="{{options.work_briefing.top_task}}" class="item"><view class="item-title">{{options.work_briefing.top_task.title}}</view></view>
+  </view>`
+
+const calibrationWxml = `
+  <view wx:if="{{options.calibration_loop}}" class="panel">
+    <view class="panel-title">预测与实际差异</view>
+    <view class="item"><view class="item-main"><view class="item-title">预测利润</view></view><view class="badge">{{options.calibration_loop.forecast_profit}}</view></view>
+    <view class="item"><view class="item-main"><view class="item-title">实际利润</view></view><view class="badge">{{options.calibration_loop.actual_profit}}</view></view>
+  </view>`
+
 export const buildScreenWxml = (screenId, { includeBack = false } = {}) => {
   const projectSearch = ['S13', 'S14', 'S15', 'S16'].includes(screenId) ? projectSearchWxml : ''
   const taskScreen = screenId === 'S56'
+  const planScreen = screenId === 'S53'
+  const pptV2 = screenId === 'S04' ? valueEvidenceWxml
+    : ['S11', 'S25'].includes(screenId) ? cockpitWxml
+    : screenId === 'S52' ? workBriefingWxml
+    : screenId === 'S66' ? calibrationWxml
+    : ''
+  const pptSection = pptV2 ? `\n${pptV2}` : ''
   return `<view class="page">${includeBack ? '\n  <button class="home-button" bindtap="onBackTap">‹</button>' : ''}
   <view class="hero">
     <view class="eyebrow">{{screen.group}} · {{screen.id}}</view>
     <view class="title">{{screen.title}}</view>
     <view class="subtitle">{{screen.subtitle}}</view>
     <view class="highlight">{{screen.highlight}}</view>
-  </view>
+  </view>${pptSection}
   <view wx:if="{{isForm}}" class="panel">
     <view class="panel-title">输入与联调</view>
     <input class="input" value="{{keyword}}" bindinput="onInput" placeholder="{{placeholder}}" />${projectSearch}
@@ -82,7 +128,7 @@ export const buildScreenWxml = (screenId, { includeBack = false } = {}) => {
       <view class="panel-title">业务记录</view>
       <view class="state {{loadState}}">{{loadState}}</view>
     </view>
-    ${taskScreen ? taskItemsWxml : businessItemsWxml}
+    ${taskScreen ? taskItemsWxml : planScreen ? planItemsWxml : businessItemsWxml}
   </view>
   <view class="message" wx:if="{{message}}">{{message}}</view>
   ${taskScreen ? taskActionsWxml : defaultActionsWxml}

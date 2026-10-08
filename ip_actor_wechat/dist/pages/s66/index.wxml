@@ -6,6 +6,12 @@
     <view class="subtitle">{{screen.subtitle}}</view>
     <view class="highlight">{{screen.highlight}}</view>
   </view>
+
+  <view wx:if="{{options.calibration_loop}}" class="panel">
+    <view class="panel-title">预测与实际差异</view>
+    <view class="item"><view class="item-main"><view class="item-title">预测利润</view></view><view class="badge">{{options.calibration_loop.forecast_profit}}</view></view>
+    <view class="item"><view class="item-main"><view class="item-title">实际利润</view></view><view class="badge">{{options.calibration_loop.actual_profit}}</view></view>
+  </view>
   <view wx:if="{{isForm}}" class="panel">
     <view class="panel-title">输入与联调</view>
     <input class="input" value="{{keyword}}" bindinput="onInput" placeholder="{{placeholder}}" />

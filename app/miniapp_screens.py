@@ -211,6 +211,15 @@ def _discovery_screen(
                 | (Show.venue.like(like))
             )
         shows = shows_query.order_by(Show.id.desc()).all()
+        value_evidence = [
+            {
+                "title": show.title,
+                "metric": show.price or None,
+                "source_label": "当前机会",
+                "context": {"show_id": show.id},
+            }
+            for show in shows[:3]
+        ]
         return {
             "screen_id": screen_id,
             "summary": {
@@ -240,7 +249,11 @@ def _discovery_screen(
                 }
                 for show in shows
             ],
-            "options": {"keyword": keyword},
+            "options": {
+                "keyword": keyword,
+                "value_evidence": value_evidence if screen_id == "S04" else [],
+                "quick_start": {"target_screen": "S13"} if screen_id == "S04" else None,
+            },
             "context": _screen_context(context),
             "empty_state": _empty_state("暂无演出", "当前没有可展示的真实演出") if not shows else None,
         }
@@ -525,6 +538,19 @@ def _project_detail_screen(db: Session, context: ScreenRequestContext) -> dict:
     current_version = _get_current_version(db, project)
     response_context = _screen_context(context)
     response_context["version_id"] = current_version.id if current_version else None
+    finance_result = (
+        current_version.finance_result
+        if current_version and isinstance(current_version.finance_result, dict)
+        else {}
+    )
+    neutral = (finance_result.get("scenarios") or {}).get("neutral")
+    total_cost = finance_result.get("total_cost")
+    available_funds = project.available_funds
+    funding_gap = (
+        max(total_cost - available_funds, 0)
+        if total_cost is not None and available_funds is not None
+        else None
+    )
     return {
         "screen_id": "S11",
         "summary": {
@@ -550,6 +576,22 @@ def _project_detail_screen(db: Session, context: ScreenRequestContext) -> dict:
         "options": {
             "project": serialize_project(project),
             "current_version": serialize_version(current_version) if current_version else None,
+            "decision_cockpit": {
+                "neutral_profit": neutral.get("profit") if neutral else None,
+                "breakeven_attendance": finance_result.get("breakeven_attendance"),
+                "maximum_funding_gap": funding_gap,
+                "status": finance_result.get("status") or "pending_input",
+                "combination": {
+                    "artist": project.artist_name or None,
+                    "city": project.city or None,
+                    "schedule": project.schedule or None,
+                    "venue": project.venue or None,
+                    "venue_capacity": project.venue_capacity,
+                    "ticket_tiers": project.ticket_tiers or [],
+                    "available_funds": available_funds,
+                },
+                "missing_fields": finance_result.get("missing_fields") or [],
+            },
         },
         "context": response_context,
         "empty_state": None,
@@ -941,6 +983,19 @@ def _finance_input_screen(db: Session, context: ScreenRequestContext) -> dict:
             "project": serialize_project(project),
             "finance_result": finance_result,
             "missing_fields": missing_fields,
+            "finance_cockpit": {
+                "scenarios": finance_result.get("scenarios") if finance_result else {},
+                "breakeven_attendance": finance_result.get("breakeven_attendance") if finance_result else None,
+                "total_cost": finance_result.get("total_cost") if finance_result else None,
+                "available_funds": project.available_funds,
+                "maximum_funding_gap": (
+                    max(finance_result["total_cost"] - project.available_funds, 0)
+                    if finance_result and finance_result.get("total_cost") is not None
+                    and project.available_funds is not None
+                    else None
+                ),
+                "missing_fields": missing_fields,
+            },
         },
         "context": response_context,
         "empty_state": {
@@ -1943,6 +1998,12 @@ def _tenant_task_rows(db: Session, tenant_id: int):
 
 
 def _task_item(task: Task, project_name: str, assignee_name: Optional[str]) -> dict:
+    actionability = (
+        ["accept", "reject", "block"]
+        if task.status in {"pending", "in_progress"}
+        else ["submit"] if task.status == "accepted"
+        else []
+    )
     return {
         "id": f"task-{task.id}",
         "entity_type": "task",
@@ -1960,6 +2021,10 @@ def _task_item(task: Task, project_name: str, assignee_name: Optional[str]) -> d
             "evidence_ids": task.evidence_ids or [],
             "evidence_count": len(task.evidence_ids or []),
             "rejection_reason": task.rejection_reason or "",
+            "actionability": actionability,
+            "evidence_required": task.status in {"accepted", "in_progress"},
+            "due_label": task.due_date or "未设置期限",
+            "owner_label": assignee_name or "待分配",
         },
     }
 
@@ -2065,6 +2130,7 @@ def _agent_dashboard_screen(db: Session, context: ScreenRequestContext) -> dict:
         Project.tenant_id == context.tenant_id,
         Project.status != "archived",
     ).order_by(Project.id.desc()).all()
+    top_task = items[0] if items else None
     return {
         "screen_id": "S52",
         "summary": {
@@ -2083,6 +2149,19 @@ def _agent_dashboard_screen(db: Session, context: ScreenRequestContext) -> dict:
                 }
                 for project in projects
             ],
+            "work_briefing": {
+                "today_change_count": len(items),
+                "top_task": (
+                    {
+                        "task_id": top_task["context"]["task_id"],
+                        "title": top_task["title"],
+                        "status": top_task["status"],
+                        "project_name": top_task["context"]["project_name"],
+                    }
+                    if top_task else None
+                ),
+                "active_project_count": len(projects),
+            },
         },
         "context": _screen_context(context),
         "empty_state": _empty_state("暂无待办", "当前没有分配给你的未完成任务") if not items else None,
@@ -2283,6 +2362,13 @@ def _project_review_screen(
             "gross_revenue": snapshot.gross_revenue,
             "source": snapshot.source,
         } if snapshot else None)
+        current_version = _get_current_version(db, project)
+        finance_result = (
+            current_version.finance_result
+            if current_version and isinstance(current_version.finance_result, dict)
+            else {}
+        )
+        forecast = (finance_result.get("scenarios") or {}).get("neutral")
         return {
             "screen_id": screen_id,
             "summary": {
@@ -2298,7 +2384,20 @@ def _project_review_screen(
                 "value": str(snapshot.gross_revenue) if snapshot.gross_revenue is not None else None,
                 "context": payload,
             }] if snapshot else []),
-            "options": {"snapshot": payload},
+            "options": {
+                "snapshot": payload,
+                "ticketing_loop": {
+                    "forecast_attendance": forecast.get("attendance") if forecast else None,
+                    "current_sold_count": snapshot.sold_count if snapshot else None,
+                    "gross_revenue": snapshot.gross_revenue if snapshot else None,
+                    "attendance_variance": (
+                        snapshot.sold_count - forecast["attendance"]
+                        if snapshot and forecast and forecast.get("attendance") is not None
+                        else None
+                    ),
+                    "source": snapshot.source if snapshot else None,
+                },
+            },
             "context": _screen_context(context),
             "empty_state": _empty_state("暂无售票快照", "同步售票数据后可查看进度") if not snapshot else None,
         }
@@ -2332,7 +2431,17 @@ def _project_review_screen(
                 "highlight": actual.status if actual else None,
             },
             "items": items,
-            "options": {"actual": actual_data},
+            "options": {
+                "actual": actual_data,
+                "actuals_summary": {
+                    "actual_attendance": actual.actual_attendance if actual else None,
+                    "actual_revenue": actual.actual_revenue if actual else None,
+                    "actual_cost": actual.actual_cost if actual else None,
+                    "actual_profit": actual.actual_profit if actual else None,
+                    "status": actual.status if actual else None,
+                    "notes": actual.notes if actual else None,
+                },
+            },
             "context": _screen_context(context),
             "empty_state": _empty_state("暂无实际结果", "完成结算后录入实际结果") if not actual else None,
         }
@@ -2389,6 +2498,14 @@ def _project_review_screen(
             "forecast": forecast,
             "actual": actual_data,
             "variance": variance,
+            "calibration_loop": {
+                "forecast_profit": forecast.get("profit") if forecast else None,
+                "actual_profit": actual.actual_profit if actual else None,
+                "forecast_attendance": forecast.get("attendance") if forecast else None,
+                "actual_attendance": actual.actual_attendance if actual else None,
+                "profit_variance": variance.get("profit") if variance else None,
+                "notes": actual.notes if actual else None,
+            },
         },
         "context": _screen_context(context),
         "empty_state": (

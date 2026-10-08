@@ -135,6 +135,27 @@ describe('BlueprintScreen aggregated loading', () => {
     expect(taroMocks.getMiniappScreen).toHaveBeenCalledWith('S10', {})
   })
 
+  it('renders real value evidence returned for the discovery homepage', async () => {
+    taroMocks.getMiniappScreen.mockResolvedValue(response({
+      screen_id: 'S04',
+      summary: { title: '这场演出，值得做吗？' },
+      options: {
+        value_evidence: [{
+          title: '杭州现场演出',
+          metric: '480-1280',
+          source_label: '当前机会',
+        }],
+      },
+      items: [],
+    }))
+
+    render(<BlueprintScreen screenId='S04' />)
+
+    expect(await screen.findByText('价值证据')).toBeInTheDocument()
+    expect(screen.getByText('杭州现场演出')).toBeInTheDocument()
+    expect(screen.getByText('当前机会')).toBeInTheDocument()
+  })
+
   it('renders persisted project statuses with Chinese labels', async () => {
     taroMocks.getMiniappScreen.mockResolvedValue(response({
       items: [{

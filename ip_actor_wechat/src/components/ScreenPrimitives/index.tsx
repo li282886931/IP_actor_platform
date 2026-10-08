@@ -133,6 +133,141 @@ export function KeyValueGrid({ items }: { items: KeyValueItem[] }) {
   )
 }
 
+export function ValueEvidencePanel({
+  evidence,
+}: {
+  evidence: Array<{ title: string, metric?: string | null, source_label: string }>
+}) {
+  if (!evidence.length) return null
+  return (
+    <View className={styles.insightPanel}>
+      <Text className={styles.insightTitle}>价值证据</Text>
+      {evidence.map((item) => (
+        <View className={styles.insightRow} key={`${item.title}-${item.source_label}`}>
+          <View className={styles.listMain}>
+            <Text className={styles.itemTitle}>{item.title}</Text>
+            <Text className={styles.sourceLabel}>{item.source_label}</Text>
+          </View>
+          {item.metric && <Text className={styles.itemValue}>{item.metric}</Text>}
+        </View>
+      ))}
+    </View>
+  )
+}
+
+export function DecisionCockpit({
+  cockpit,
+}: {
+  cockpit: {
+    neutral_profit?: number | null
+    breakeven_attendance?: number | null
+    maximum_funding_gap?: number | null
+    status?: string | null
+    combination?: Record<string, unknown>
+    missing_fields?: string[]
+  }
+}) {
+  const missing = cockpit.missing_fields || []
+  const value = (item: number | null | undefined) => item === null || item === undefined ? '待补齐' : String(item)
+  return (
+    <View className={styles.insightPanel}>
+      <Text className={styles.insightTitle}>项目收益边界</Text>
+      <KeyValueGrid items={[
+        { label: '中性利润', value: missing.length ? '待补齐' : value(cockpit.neutral_profit) },
+        { label: '保本人数', value: missing.length ? '待补齐' : value(cockpit.breakeven_attendance) },
+        { label: '资金缺口', value: missing.length ? '待补齐' : value(cockpit.maximum_funding_gap) },
+        { label: '测算状态', value: cockpit.status || '待补齐' },
+      ]} />
+      {cockpit.combination && <KeyValueGrid items={Object.entries(cockpit.combination)
+        .filter(([, item]) => item !== null && item !== undefined && item !== '')
+        .map(([label, item]) => ({ label, value: Array.isArray(item) ? item.join(' / ') : String(item) }))} />}
+    </View>
+  )
+}
+
+export function ScenarioStrip({
+  scenarios,
+}: {
+  scenarios: Record<string, { profit?: number | null, attendance?: number | null }> | undefined
+}) {
+  const entries = [['conservative', '保守'], ['neutral', '中性'], ['optimistic', '乐观']] as const
+  if (!scenarios || !Object.keys(scenarios).length) return null
+  return (
+    <View className={styles.scenarioStrip}>
+      {entries.map(([key, label]) => {
+        const scenario = scenarios[key]
+        if (!scenario) return null
+        return (
+          <View className={styles.scenarioItem} key={key}>
+            <Text className={styles.sourceLabel}>{label}</Text>
+            <Text className={styles.itemValue}>{scenario.profit ?? '待补齐'}</Text>
+            <Text className={styles.itemDescription}>预计人数 {scenario.attendance ?? '待补齐'}</Text>
+          </View>
+        )
+      })}
+    </View>
+  )
+}
+
+export function WorkBriefing({
+  briefing,
+}: {
+  briefing?: {
+    today_change_count?: number
+    top_task?: { title?: string, status?: string, project_name?: string } | null
+    active_project_count?: number
+  } | null
+}) {
+  if (!briefing) return null
+  return (
+    <View className={styles.insightPanel}>
+      <Text className={styles.insightTitle}>今日变化 {briefing.today_change_count || 0} 项</Text>
+      {briefing.top_task && (
+        <View className={styles.insightRow}>
+          <View className={styles.listMain}>
+            <Text className={styles.itemTitle}>{briefing.top_task.title || '暂无最重要事项'}</Text>
+            <Text className={styles.itemDescription}>{briefing.top_task.project_name || ''}</Text>
+          </View>
+          <Text className={styles.status}>{briefing.top_task.status || ''}</Text>
+        </View>
+      )}
+    </View>
+  )
+}
+
+export function LifecycleTimeline({ currentStage }: { currentStage?: string | null }) {
+  const stages = ['预测', '决策', '执行', '售票', '结算', '校准']
+  return (
+    <View className={styles.timeline}>
+      {stages.map((stage) => <Text className={classNames(styles.timelineStep, stage === currentStage && styles.timelineStepActive)} key={stage}>{stage}</Text>)}
+    </View>
+  )
+}
+
+export function VariancePanel({
+  loop,
+}: {
+  loop?: {
+    forecast_profit?: number | null
+    actual_profit?: number | null
+    profit_variance?: number | null
+    notes?: string | null
+  } | null
+}) {
+  if (!loop) return null
+  return (
+    <View className={styles.insightPanel}>
+      <Text className={styles.insightTitle}>预测与实际差异</Text>
+      <KeyValueGrid items={[
+        { label: '预测利润', value: loop.forecast_profit === null || loop.forecast_profit === undefined ? '待补齐' : String(loop.forecast_profit) },
+        { label: '实际利润', value: loop.actual_profit === null || loop.actual_profit === undefined ? '待补齐' : String(loop.actual_profit) },
+        { label: '利润差异', value: loop.profit_variance === null || loop.profit_variance === undefined ? '待补齐' : String(loop.profit_variance) },
+      ]} />
+      {loop.notes && <Text className={styles.itemDescription}>{loop.notes}</Text>}
+    </View>
+  )
+}
+
 export function FormField({
   label,
   value,
@@ -197,6 +332,15 @@ export function BusinessList({
           <View className={styles.listMain}>
             <Text className={styles.itemTitle}>{item.title}</Text>
             <Text className={styles.itemDescription}>{item.description}</Text>
+            {Array.isArray(item.context?.actionability) && (
+              <Text className={styles.sourceLabel}>
+                {item.context.actionability
+                  .map((action) => ({ accept: '可接受', reject: '可拒绝', block: '可阻塞', submit: '可提交' }[String(action)]))
+                  .filter(Boolean)
+                  .join(' · ')}
+              </Text>
+            )}
+            {item.context?.evidence_required === true && <Text className={styles.sourceLabel}>需补证据</Text>}
           </View>
           <View className={styles.itemAside}>
             {item.value && <Text className={styles.itemValue}>{item.value}</Text>}

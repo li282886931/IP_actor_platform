@@ -164,6 +164,80 @@
   border-radius: $radius-lg;
 }
 
+.insightPanel,
+.scenarioStrip,
+.timeline {
+  width: calc(100% - 64rpx);
+  max-width: $max-content-width;
+  margin: 24rpx auto 0;
+  box-sizing: border-box;
+}
+
+.insightPanel {
+  padding: 28rpx 32rpx;
+  background: $color-bg-card;
+  border: 1rpx solid $color-border;
+  border-radius: $radius-lg;
+}
+
+.insightTitle {
+  display: block;
+  margin-bottom: 16rpx;
+  font-size: $font-size-md;
+  font-weight: $font-weight-bold;
+}
+
+.insightRow {
+  display: flex;
+  gap: 20rpx;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16rpx 0;
+  border-top: 1rpx solid $color-divider;
+}
+
+.sourceLabel {
+  display: block;
+  margin-top: 6rpx;
+  color: $color-text-tertiary;
+  font-size: $font-size-xs;
+}
+
+.scenarioStrip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16rpx;
+}
+
+.scenarioItem {
+  min-width: 0;
+  padding: 24rpx 16rpx;
+  background: #f7f9fc;
+  border: 1rpx solid $color-border;
+  border-radius: $radius-sm;
+}
+
+.timeline {
+  display: flex;
+  gap: 10rpx;
+  overflow-x: auto;
+  padding: 8rpx 0;
+}
+
+.timelineStep {
+  flex: 0 0 auto;
+  padding: 10rpx 16rpx;
+  color: $color-text-tertiary;
+  font-size: $font-size-xs;
+  background: #f7f9fc;
+  border-radius: $radius-sm;
+}
+
+.timelineStepActive {
+  color: $color-text-white;
+  background: $color-primary;
+}
+
 .keyValueItem {
   min-width: 0;
   padding-bottom: 20rpx;

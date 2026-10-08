@@ -737,6 +737,18 @@ test('uses WeChat phone authorization for mini program login', () => {
   assert.doesNotMatch(source, /wechatLogin\(\{ code, name: '微信用户', group_code: 'B' \}\)/)
 })
 
+test('generates PPT V2 value, cockpit, work and calibration sections', () => {
+  const generator = readFileSync(resolve(root, 'tools/wechat-screen-templates.mjs'), 'utf8')
+  const runtime = readFileSync(resolve(root, 'tools/generate-wechat-dist.mjs'), 'utf8')
+
+  assert.match(generator, /价值证据/)
+  assert.match(generator, /项目收益边界/)
+  assert.match(generator, /今日变化/)
+  assert.match(generator, /预测与实际差异/)
+  assert.match(generator, /需补证据/)
+  assert.match(runtime, /options: data && data\.options/)
+})
+
 test('generated runtime uses local placeholders for login in WeChat devtools', async () => {
   const runtimePath = resolve(root, 'dist/common/runtime.js')
   const storage = new Map()

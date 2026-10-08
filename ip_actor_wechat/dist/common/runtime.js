@@ -52,6 +52,7 @@ const normalizeItems = (values) => {
     status: statusLabel(String(value.status || '')),
     value: value.value == null ? '' : String(value.value),
     details: String(value.details || ''),
+    context: value.context || {},
     detailRef: value.detail_ref || null
   }))
 }
@@ -103,6 +104,7 @@ const createScreenPage = (screenId) => {
       items: [],
       loadState: 'idle',
       message: '',
+      options: {},
       keyword: '',
       placeholder: screenId === 'S82' ? DEFAULT_API_BASE : screenId === 'S13' ? '输入艺人、IP 或项目名称' : '输入关键词或补充信息',
       apiBase: apiBase(),
@@ -271,6 +273,17 @@ const createScreenPage = (screenId) => {
         this.setData({
           screen: Object.assign({}, screen, data.summary || {}),
           items,
+          options: data && data.options ? Object.assign({
+            value_evidence: [],
+            cockpit: null,
+            work_briefing: null,
+            calibration_loop: null,
+          }, {
+            value_evidence: data.options.value_evidence || [],
+            cockpit: data.options.decision_cockpit || data.options.finance_cockpit || null,
+            work_briefing: data.options.work_briefing || null,
+            calibration_loop: data.options.calibration_loop || null,
+          }) : {},
           candidateGroups: data && data.options && Array.isArray(data.options.candidate_groups)
             ? data.options.candidate_groups
             : [],

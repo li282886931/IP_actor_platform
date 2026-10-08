@@ -2135,6 +2135,14 @@ def test_agent_screens_aggregate_current_user_tasks_and_analysis_jobs(monkeypatc
     }
     assert data_by_screen["S54"]["options"]["latest_analysis"]["id"] == analysis_id
     assert data_by_screen["S54"]["options"]["latest_analysis"]["result"]["recommendation"] == "conditional_advance"
+    assert data_by_screen["S52"]["options"]["work_briefing"]["today_change_count"] == 1
+    assert data_by_screen["S52"]["options"]["work_briefing"]["top_task"]["task_id"] == task_id
+    task_item = next(
+        item for item in data_by_screen["S53"]["items"]
+        if item["context"].get("task_id") == task_id
+    )
+    assert task_item["context"]["actionability"] == ["accept", "reject", "block"]
+    assert task_item["context"]["evidence_required"] is True
     assert data_by_screen["S60"]["items"] == []
     assert data_by_screen["S60"]["summary"]["title"] == "工作权限"
     assert data_by_screen["S60"]["summary"]["subtitle"] == "当前用户已保存的工作授权"
@@ -2432,6 +2440,13 @@ def test_discovery_screens_use_real_shows_and_empty_business_sources(monkeypatch
     assert [item["context"]["show_id"] for item in discovery_data["items"]] == [show_id]
     assert discovery_data["items"][0]["context"]["artist_id"] == artist_id
     assert discovery_data["items"][0]["context"]["poster_url"] == "https://assets.example.com/show.jpg"
+    assert discovery_data["options"]["quick_start"]["target_screen"] == "S13"
+    assert discovery_data["options"]["value_evidence"] == [{
+        "title": "真实发现演出",
+        "metric": "480-1280",
+        "source_label": "当前机会",
+        "context": {"show_id": show_id},
+    }]
     assert cases.json()["data"]["items"] == []
     assert cases.json()["data"]["empty_state"]["title"] == "暂无真实案例"
     assert opportunity.json()["data"]["items"] == []
@@ -2662,13 +2677,17 @@ def test_tour_and_review_screens_use_ordered_stops_latest_snapshot_and_actuals(m
     assert responses["S63"]["items"][0]["context"]["project_id"] == project_id
     assert responses["S64"]["options"]["snapshot"]["sold_count"] == 5800
     assert responses["S64"]["options"]["snapshot"]["gross_revenue"] == 3500000
+    assert responses["S64"]["options"]["ticketing_loop"]["current_sold_count"] == 5800
     assert responses["S65"]["options"]["actual"]["actual_profit"] == 1400000
+    assert responses["S65"]["options"]["actuals_summary"]["actual_profit"] == 1400000
     assert responses["S66"]["options"]["variance"] == {
         "attendance": -800,
         "revenue": -300000,
         "cost": 100000,
         "profit": -400000,
     }
+    assert responses["S66"]["options"]["calibration_loop"]["forecast_profit"] == 1800000
+    assert responses["S66"]["options"]["calibration_loop"]["actual_profit"] == 1400000
 
 
 def test_project_review_does_not_invent_variance_without_actuals(monkeypatch):
