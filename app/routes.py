@@ -29,6 +29,13 @@ from .config import (
     WECHAT_MINIAPP_SECRET,
 )
 from .cache import redis_delete, redis_get_json, redis_set_json
+from .connectors import (
+    connector_credential_is_configured,
+    fetch_amap_venue_search,
+    fetch_qweather_daily_forecast,
+    is_managed_connector,
+    resolve_connector_credential,
+)
 from .database import get_db
 from .models import (
     AIGeneration,
@@ -1969,6 +1976,13 @@ def health_check_data_source(source_id: int, db: Session = Depends(get_db)):
     if not source:
         raise HTTPException(status_code=404, detail='Data source not found')
     can_fetch, reason = connector_health(source)
+    if (
+        can_fetch
+        and is_managed_connector(source.connector_key)
+        and not connector_credential_is_configured(source.connector_key, source.credential_ref)
+    ):
+        can_fetch = False
+        reason = 'Connector credential is not configured'
     return json_ok({
         "data_source_id": source.id,
         "connector_key": source.connector_key,
@@ -2811,6 +2825,7 @@ def run_external_data_job(job_id: int, db: Session = Depends(get_db)):
     if job.status == 'completed':
         return json_ok(serialize_external_data_job(job))
     data_source_id = (job.parameters or {}).get('data_source_id')
+    source = None
     if data_source_id:
         source = db.query(DataSource).filter(
             DataSource.id == data_source_id,
@@ -2831,8 +2846,91 @@ def run_external_data_job(job_id: int, db: Session = Depends(get_db)):
             db.commit()
             db.refresh(job)
             return json_ok(serialize_external_data_job(job))
+        if (
+            is_managed_connector(source.connector_key)
+            and not connector_credential_is_configured(source.connector_key, source.credential_ref)
+        ):
+            job.status = 'blocked'
+            job.error_message = 'Connector credential is not configured'
+            job.result = {
+                "data_source_id": source.id,
+                "connector_key": source.connector_key,
+                "reason": job.error_message,
+                "network_called": False,
+            }
+            db.commit()
+            db.refresh(job)
+            return json_ok(serialize_external_data_job(job))
     job.status = 'running'
     job.started_at = datetime.now(timezone.utc)
+    if source and source.connector_key in {'amap', 'qweather'}:
+        try:
+            credential = resolve_connector_credential(source.connector_key, source.credential_ref)
+            if source.connector_key == 'amap':
+                connector_payload = fetch_amap_venue_search(credential, job.parameters or {}, requests.get)
+            else:
+                connector_payload = fetch_qweather_daily_forecast(credential, job.parameters or {}, requests.get)
+        except (requests.RequestException, ValueError):
+            job.status = 'failed'
+            job.error_message = 'Connector request failed'
+            job.result = {
+                "data_source_id": source.id,
+                "connector_key": source.connector_key,
+                "network_called": True,
+            }
+            db.commit()
+            db.refresh(job)
+            return json_ok(serialize_external_data_job(job))
+        raw_payload = connector_payload.pop("raw_payload")
+        asset = DataAsset(
+            tenant_id=tenant_id,
+            project_id=job.project_id,
+            data_source_id=source.id,
+            asset_type=connector_payload["asset_type"],
+            source_uri=connector_payload["source_uri"],
+            content_hash=hashlib.sha256(
+                json.dumps(raw_payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
+            ).hexdigest(),
+            visibility='project',
+            status='parsed',
+            raw_payload_ref=f"connector://{source.connector_key}/jobs/{job.id}",
+            created_by=job.requested_by,
+        )
+        db.add(asset)
+        db.flush()
+        records = [
+            DataRecord(
+                tenant_id=tenant_id,
+                asset_id=asset.id,
+                entity_type=item["entity_type"],
+                entity_id=item["entity_id"],
+                metric_key=item["metric_key"],
+                value_json=item["value_json"],
+                confidence=item["confidence"],
+                record_status='observed',
+                lineage={
+                    "connector_key": source.connector_key,
+                    "operation": connector_payload["operation"],
+                    "source_id": source.id,
+                },
+            )
+            for item in connector_payload["records"]
+        ]
+        db.add_all(records)
+        db.flush()
+        job.result = {
+            "data_source_id": source.id,
+            "connector_key": source.connector_key,
+            "network_called": True,
+            "asset": serialize_data_asset(asset, records),
+            "item_count": len(records),
+            "requires_human_verification": True,
+        }
+        job.status = 'completed'
+        job.completed_at = datetime.now(timezone.utc)
+        db.commit()
+        db.refresh(job)
+        return json_ok(serialize_external_data_job(job))
     job.result = {
         "summary": f"已预留通过 {job.provider} 获取 {job.source_type} 数据的异步采集流程。",
         "query": job.query,

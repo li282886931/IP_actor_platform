@@ -588,6 +588,289 @@ def test_data_source_assets_and_disabled_connector_execution_are_traceable(monke
         app_module.app.dependency_overrides.clear()
 
 
+def test_active_amap_and_qweather_connectors_block_without_resolvable_credentials(monkeypatch):
+    client, _ = make_test_client(monkeypatch)
+    network_calls = []
+
+    def fail_get(*args, **kwargs):
+        network_calls.append((args, kwargs))
+        raise AssertionError("Connector must not call the network without a resolved credential")
+
+    monkeypatch.setattr(routes_module.requests, "get", fail_get)
+    monkeypatch.delenv("DATA_CONNECTOR_SECRET_AMAP_PROD", raising=False)
+    monkeypatch.delenv("DATA_CONNECTOR_SECRET_QWEATHER_PROD", raising=False)
+
+    try:
+        project = client.post(
+            "/projects",
+            json={"name": "连接器阻断项目", "city": "杭州"},
+        ).json()["data"]
+        sources = []
+        for name, connector_key, credential_ref in (
+            ("高德场馆与交通", "amap", "amap_prod"),
+            ("和风天气", "qweather", "qweather_prod"),
+        ):
+            source_response = client.post(
+                "/data-sources",
+                json={
+                    "name": name,
+                    "source_kind": "authorized_api",
+                    "connector_key": connector_key,
+                    "status": "active",
+                    "credential_ref": credential_ref,
+                },
+            )
+            assert source_response.status_code == 200
+            sources.append(source_response.json()["data"])
+
+        for source in sources:
+            health = client.post(f"/data-sources/{source['id']}/health-check")
+            assert health.status_code == 200
+            assert health.json()["data"]["can_fetch"] is False
+            assert health.json()["data"]["reason"] == "Connector credential is not configured"
+            job = client.post(
+                "/external-data/jobs",
+                json={
+                    "project_id": project["id"],
+                    "source_type": "api",
+                    "provider": source["connector_key"],
+                    "query": "杭州",
+                    "parameters": {"data_source_id": source["id"]},
+                },
+            ).json()["data"]
+            response = client.post(f"/external-data/jobs/{job['id']}/run")
+            assert response.status_code == 200
+            result = response.json()["data"]
+            assert result["status"] == "blocked"
+            assert result["result"]["network_called"] is False
+            assert result["result"]["reason"] == "Connector credential is not configured"
+    finally:
+        app_module.app.dependency_overrides.clear()
+
+    assert network_calls == []
+
+
+def test_amap_connector_normalizes_venue_poi_response_without_exposing_credentials(monkeypatch):
+    client, _ = make_test_client(monkeypatch)
+    calls = []
+
+    class FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "status": "1",
+                "pois": [{
+                    "id": "B0FFH0",
+                    "name": "杭州奥体中心体育馆",
+                    "address": "浙江省杭州市滨江区飞虹路3号",
+                    "location": "120.217,30.229",
+                    "type": "体育休闲服务;运动场馆",
+                    "tel": "0571-00000000",
+                }],
+            }
+
+    def fake_get(url, **kwargs):
+        calls.append({"url": url, **kwargs})
+        return FakeResponse()
+
+    monkeypatch.setattr(routes_module.requests, "get", fake_get)
+    monkeypatch.setenv("DATA_CONNECTOR_SECRET_AMAP_PROD", "amap-secret")
+
+    try:
+        project = client.post(
+            "/projects",
+            json={"name": "高德场馆项目", "city": "杭州"},
+        ).json()["data"]
+        source = client.post(
+            "/data-sources",
+            json={
+                "name": "高德场馆",
+                "source_kind": "authorized_api",
+                "connector_key": "amap",
+                "status": "active",
+                "credential_ref": "amap_prod",
+            },
+        ).json()["data"]
+        job = client.post(
+            "/external-data/jobs",
+            json={
+                "project_id": project["id"],
+                "source_type": "api",
+                "provider": "amap",
+                "query": "杭州奥体中心",
+                "purpose": "venue_search",
+                "parameters": {
+                    "data_source_id": source["id"],
+                    "operation": "venue_search",
+                    "city": "杭州",
+                    "keywords": "奥体中心",
+                },
+            },
+        ).json()["data"]
+
+        response = client.post(f"/external-data/jobs/{job['id']}/run")
+        assert response.status_code == 200
+        result = response.json()["data"]
+        assert result["status"] == "completed"
+        assert result["result"]["asset"]["asset_type"] == "venue_registry"
+        assert result["result"]["asset"]["status"] == "parsed"
+        assert result["result"]["asset"]["records"][0] == {
+            "id": result["result"]["asset"]["records"][0]["id"],
+            "asset_id": result["result"]["asset"]["id"],
+            "entity_type": "venue",
+            "entity_id": "B0FFH0",
+            "metric_key": "venue_poi",
+            "value_json": {
+                "name": "杭州奥体中心体育馆",
+                "address": "浙江省杭州市滨江区飞虹路3号",
+                "location": "120.217,30.229",
+                "type": "体育休闲服务;运动场馆",
+                "telephone": "0571-00000000",
+            },
+            "unit": "",
+            "confidence": 90,
+            "record_status": "observed",
+            "lineage": {
+                "connector_key": "amap",
+                "operation": "venue_search",
+                "source_id": source["id"],
+            },
+        }
+        assert "amap-secret" not in str(result)
+    finally:
+        app_module.app.dependency_overrides.clear()
+
+    assert calls == [{
+        "url": "https://restapi.amap.com/v5/place/text",
+        "params": {"key": "amap-secret", "keywords": "奥体中心", "city": "杭州"},
+        "timeout": 10,
+    }]
+
+
+def test_qweather_connector_normalizes_daily_forecast_response_without_exposing_credentials(monkeypatch):
+    client, _ = make_test_client(monkeypatch)
+    calls = []
+
+    class FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "code": "200",
+                "updateTime": "2026-10-10T09:00+08:00",
+                "daily": [{
+                    "fxDate": "2026-10-11",
+                    "tempMax": "25",
+                    "tempMin": "16",
+                    "textDay": "晴",
+                    "textNight": "多云",
+                    "windScaleDay": "3",
+                    "humidity": "60",
+                }],
+            }
+
+    def fake_get(url, **kwargs):
+        calls.append({"url": url, **kwargs})
+        return FakeResponse()
+
+    monkeypatch.setattr(routes_module.requests, "get", fake_get)
+    monkeypatch.setenv("DATA_CONNECTOR_SECRET_QWEATHER_PROD", "qweather-secret")
+
+    try:
+        project = client.post(
+            "/projects",
+            json={"name": "天气风险项目", "city": "杭州"},
+        ).json()["data"]
+        source = client.post(
+            "/data-sources",
+            json={
+                "name": "和风天气",
+                "source_kind": "authorized_api",
+                "connector_key": "qweather",
+                "status": "active",
+                "credential_ref": "qweather_prod",
+            },
+        ).json()["data"]
+        job = client.post(
+            "/external-data/jobs",
+            json={
+                "project_id": project["id"],
+                "source_type": "api",
+                "provider": "qweather",
+                "query": "杭州天气",
+                "purpose": "weather_risk",
+                "parameters": {
+                    "data_source_id": source["id"],
+                    "operation": "daily_forecast",
+                    "location": "101210101",
+                },
+            },
+        ).json()["data"]
+
+        response = client.post(f"/external-data/jobs/{job['id']}/run")
+        assert response.status_code == 200
+        result = response.json()["data"]
+        assert result["status"] == "completed"
+        assert result["result"]["asset"]["asset_type"] == "weather_forecast"
+        assert result["result"]["asset"]["records"][0]["entity_type"] == "city"
+        assert result["result"]["asset"]["records"][0]["entity_id"] == "101210101"
+        assert result["result"]["asset"]["records"][0]["metric_key"] == "weather_forecast_daily"
+        assert result["result"]["asset"]["records"][0]["value_json"] == {
+            "date": "2026-10-11",
+            "temp_max": 25,
+            "temp_min": 16,
+            "text_day": "晴",
+            "text_night": "多云",
+            "wind_scale_day": "3",
+            "humidity": 60,
+        }
+        assert result["result"]["asset"]["records"][0]["lineage"]["connector_key"] == "qweather"
+        assert "qweather-secret" not in str(result)
+    finally:
+        app_module.app.dependency_overrides.clear()
+
+    assert calls == [{
+        "url": "https://devapi.qweather.com/v7/weather/3d",
+        "params": {"key": "qweather-secret", "location": "101210101"},
+        "timeout": 10,
+    }]
+
+
+def test_active_unmanaged_connector_keeps_existing_placeholder_execution(monkeypatch):
+    client, _ = make_test_client(monkeypatch)
+
+    try:
+        source = client.post(
+            "/data-sources",
+            json={
+                "name": "主办方接口预留",
+                "source_kind": "authorized_api",
+                "connector_key": "organizer_files",
+                "status": "active",
+                "credential_ref": "organizer_secret_ref",
+            },
+        ).json()["data"]
+        job = client.post(
+            "/external-data/jobs",
+            json={
+                "source_type": "api",
+                "provider": "organizer_files",
+                "query": "同步主办方资料",
+                "parameters": {"data_source_id": source["id"]},
+            },
+        ).json()["data"]
+
+        response = client.post(f"/external-data/jobs/{job['id']}/run")
+        assert response.status_code == 200
+        assert response.json()["data"]["status"] == "completed"
+        assert response.json()["data"]["result"]["requires_human_verification"] is True
+    finally:
+        app_module.app.dependency_overrides.clear()
+
+
 def test_data_quality_issue_can_only_be_resolved_within_current_tenant(monkeypatch):
     client, session_factory = make_test_client(monkeypatch)
 
