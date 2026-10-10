@@ -13,7 +13,7 @@
   </view>
   <view wx:if="{{isForm}}" class="panel">
     <view class="panel-title">输入与联调</view>
-    <input class="input" value="{{keyword}}" bindinput="onInput" placeholder="{{placeholder}}" />
+    <input wx:if="{{screen.id !== 'S25'}}" class="input" value="{{keyword}}" bindinput="onInput" placeholder="{{placeholder}}" />
   </view>
   <view class="panel">
     <view class="panel-head">

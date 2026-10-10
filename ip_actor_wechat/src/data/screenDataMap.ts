@@ -37,7 +37,7 @@ export const screenDataMap: Record<string, ScreenDataMapping> = {
   S22: { requiredContext: ['tenant_id', 'project_id'], writeActions: [] },
   S23: { requiredContext: ['tenant_id', 'project_id'], writeActions: [] },
   S24: { requiredContext: ['tenant_id', 'project_id'], writeActions: [] },
-  S25: { requiredContext: ['tenant_id', 'project_id'], writeActions: ['calculate_finance'] },
+  S25: { requiredContext: ['tenant_id', 'project_id'], writeActions: ['calculate_show'] },
   S26: { requiredContext: ['tenant_id', 'project_id'], writeActions: ['save_ticket_tiers'] },
   S27: { requiredContext: ['tenant_id', 'project_id'], writeActions: [] },
   S28: { requiredContext: ['tenant_id', 'project_id'], writeActions: [] },

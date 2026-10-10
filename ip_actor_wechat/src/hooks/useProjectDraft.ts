@@ -16,12 +16,16 @@ const initialDraft: ProjectDraft = {
 const numericKeys = new Set<keyof ProjectDraft>([
   'artist_id', 'venue_id', 'source_project_id', 'expected_attendance', 'available_funds',
   'avg_ticket_price', 'artist_fee', 'venue_cost', 'marketing_cost', 'production_cost', 'venue_capacity',
+  'security_cost', 'travel_cost', 'accommodation_cost', 'insurance_cost', 'approval_cost',
+  'contingency_cost', 'sponsorship_income', 'merchandise_income', 'target_profit',
 ])
 
 const candidatePatchKeys = new Set<keyof ProjectDraft>([
   'name', 'type', 'artist_id', 'artist_name', 'city', 'venue_id', 'venue', 'source_project_id',
   'schedule', 'expected_attendance', 'available_funds', 'avg_ticket_price', 'artist_fee',
   'venue_cost', 'marketing_cost', 'production_cost', 'venue_capacity',
+  'security_cost', 'travel_cost', 'accommodation_cost', 'insurance_cost', 'approval_cost',
+  'contingency_cost', 'sponsorship_income', 'merchandise_income', 'target_profit',
 ])
 
 const readDraft = (): ProjectDraft => {

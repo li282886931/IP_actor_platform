@@ -115,6 +115,7 @@ export const api = {
   createProjectVersion: (id: number, data: Record<string, unknown>) => request<Record<string, unknown>>(`/projects/${id}/versions`, { method: 'POST', data }),
   calculateFinance: (data: Record<string, unknown>) => request<Record<string, unknown>>('/finance/calculate', { method: 'POST', data }),
   calculateBreakeven: (data: Record<string, unknown>) => request<Record<string, unknown>>('/finance/breakeven', { method: 'POST', data }),
+  calculateShow: (data: Record<string, unknown>) => request<Record<string, unknown>>('/finance/show-calculation', { method: 'POST', data }),
   createDecision: (data: Record<string, unknown>) => request<Record<string, unknown>>('/decisions', { method: 'POST', data }),
   listTasks: (projectId?: number) => request<unknown[]>(`/tasks${query({ project_id: projectId })}`),
   createTask: (data: Record<string, unknown>) => request<Record<string, unknown>>('/tasks', { method: 'POST', data }),

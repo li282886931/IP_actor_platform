@@ -108,6 +108,7 @@ const createScreenPage = (screenId) => {
       keyword: '',
       placeholder: screenId === 'S82' ? DEFAULT_API_BASE : screenId === 'S13' ? '输入艺人、IP 或项目名称' : '输入关键词或补充信息',
       apiBase: apiBase(),
+      financeDraft: wx.getStorageSync(STORAGE_KEYS.projectDraft) || {},
       candidateGroups: [],
       candidateSearchGroups: [],
       candidateSearchOpen: false,
@@ -127,6 +128,16 @@ const createScreenPage = (screenId) => {
       const keyword = event.detail.value
       this.setData({ keyword })
       if (['S13', 'S14', 'S15', 'S16'].includes(screenId)) this.onCandidateSearchInput(keyword)
+    },
+    onFinanceInput(event) {
+      if (screenId !== 'S25') return
+      const field = event.currentTarget.dataset.field
+      if (!field) return
+      const value = event.detail && event.detail.value
+      const draft = Object.assign({}, wx.getStorageSync(STORAGE_KEYS.projectDraft) || {}, this.data.financeDraft || {})
+      draft[field] = value === '' ? undefined : Number(value)
+      wx.setStorageSync(STORAGE_KEYS.projectDraft, draft)
+      this.setData({ financeDraft: draft })
     },
     applyCandidate(candidate) {
       const patch = candidate && candidate.patch
@@ -357,6 +368,27 @@ const createScreenPage = (screenId) => {
         }).catch((error) => {
           console.error('[S17] create project failed', error)
           this.setData({ loadState: 'error', message: '项目创建失败，输入已保留，请重试。' })
+        })
+      }
+      if (screenId === 'S25') {
+        const projectId = Number(wx.getStorageSync(STORAGE_KEYS.projectId) || 0)
+        if (!projectId) {
+          this.setData({ loadState: 'error', message: '项目缺失，请先选择项目。' })
+          return Promise.resolve()
+        }
+        const draft = Object.assign({}, wx.getStorageSync(STORAGE_KEYS.projectDraft) || {}, this.data.financeDraft || {})
+        this.setData({ loadState: 'loading', message: '' })
+        return request('/finance/show-calculation', 'POST', Object.assign({}, draft, {
+          project_id: projectId,
+          tax_fee_rate: 0.06,
+          ticketing_fee_rate: 0.04
+        })).then((result) => {
+          if (result.version_id) wx.setStorageSync(STORAGE_KEYS.versionId, Number(result.version_id))
+          this.setData({ loadState: 'success', message: result.status === 'pending_input' ? '测算输入待补齐。' : '测算完成。' })
+          this.goNext()
+        }).catch((error) => {
+          console.error('[S25] show calculation failed', error)
+          this.setData({ loadState: 'error', message: '测算失败，输入已保留，请重试。' })
         })
       }
       if (screenId === 'S82') {

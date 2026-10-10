@@ -19,6 +19,7 @@ const apiPaths = [
   '/tenants/switch',
   '/projects',
   '/finance/calculate',
+  '/finance/show-calculation',
   '/finance/breakeven',
   '/decisions',
   '/tasks',
@@ -749,6 +750,17 @@ test('generates PPT V2 value, cockpit, work and calibration sections', () => {
   assert.match(generator, /需补证据/)
   assert.match(runtime, /options: data && data\.options/)
   assert.match(runtime, /project_work: data\.options\.project_work/)
+})
+
+test('generated runtime supports complete show calculation on S25', () => {
+  const generator = readFileSync(resolve(root, 'tools/wechat-screen-templates.mjs'), 'utf8')
+  const runtime = readFileSync(resolve(root, 'tools/generate-wechat-dist.mjs'), 'utf8')
+
+  assert.match(generator, /场馆容量/)
+  assert.match(generator, /不可预见费/)
+  assert.match(runtime, /financeDraft/)
+  assert.match(runtime, /onFinanceInput/)
+  assert.match(runtime, /\/finance\/show-calculation/)
 })
 
 test('generated runtime uses local placeholders for login in WeChat devtools', async () => {

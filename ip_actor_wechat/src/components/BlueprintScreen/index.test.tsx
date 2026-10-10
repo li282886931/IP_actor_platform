@@ -6,6 +6,7 @@ import type { MiniappScreenData } from '@/types/domain'
 
 const taroMocks = vi.hoisted(() => ({
   getMiniappScreen: vi.fn(),
+  calculateShow: vi.fn(),
   navigateTo: vi.fn(),
   navigateBack: vi.fn(),
   redirectTo: vi.fn(),
@@ -71,6 +72,7 @@ vi.mock('@/services/api', async () => {
     api: {
       ...actual.api,
       getMiniappScreen: taroMocks.getMiniappScreen,
+      calculateShow: taroMocks.calculateShow,
       wechatLogin: taroMocks.wechatLogin,
     },
   }
@@ -105,6 +107,7 @@ const response = (overrides: Partial<MiniappScreenData> = {}): MiniappScreenData
 describe('BlueprintScreen aggregated loading', () => {
   beforeEach(() => {
     taroMocks.getMiniappScreen.mockReset()
+    taroMocks.calculateShow.mockReset()
     taroMocks.navigateTo.mockReset()
     taroMocks.navigateBack.mockReset()
     taroMocks.redirectTo.mockReset()
@@ -454,6 +457,44 @@ describe('BlueprintScreen aggregated loading', () => {
     fireEvent.click(await screen.findByText('预计利润'))
 
     expect(taroMocks.navigateTo).not.toHaveBeenCalled()
+  })
+
+  it('runs the complete show calculation from the finance screen and stores the returned version', async () => {
+    taroMocks.storage.set('starhub-project-id', 42)
+    taroMocks.storage.set('starhub-project-draft', {
+      name: '测算项目',
+      type: 'concert',
+      artist_name: '',
+      city: '',
+      venue: '',
+      schedule: '',
+      artist_fee: 1800000,
+      venue_cost: 700000,
+      marketing_cost: 400000,
+      production_cost: 900000,
+    })
+    taroMocks.getMiniappScreen.mockResolvedValue(response({
+      screen_id: 'S25',
+      summary: { title: '完整演出测算' },
+      items: [],
+    }))
+    taroMocks.calculateShow.mockResolvedValue({ version_id: 88, status: 'calculated' })
+
+    render(<BlueprintScreen screenId='S25' />)
+    fireEvent.click(await screen.findByRole('button', { name: '保存并计算三种情景' }))
+
+    await waitFor(() => {
+      expect(taroMocks.calculateShow).toHaveBeenCalledWith(expect.objectContaining({
+        project_id: 42,
+        artist_fee: 1800000,
+        venue_cost: 700000,
+        marketing_cost: 400000,
+        production_cost: 900000,
+        tax_fee_rate: 0.06,
+        ticketing_fee_rate: 0.04,
+      }))
+    })
+    expect(taroMocks.storage.get('starhub-version-id')).toBe(88)
   })
 
   it('stores the S52 default project before opening the agent plan', async () => {

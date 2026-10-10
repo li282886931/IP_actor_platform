@@ -973,6 +973,7 @@ def _finance_input_screen(db: Session, context: ScreenRequestContext) -> dict:
     )
     response_context = _screen_context(context)
     response_context["version_id"] = current_version.id if current_version else None
+    neutral = (finance_result.get("scenarios") or {}).get("neutral") if finance_result else None
     return {
         "screen_id": "S25",
         "summary": {
@@ -987,15 +988,28 @@ def _finance_input_screen(db: Session, context: ScreenRequestContext) -> dict:
             "missing_fields": missing_fields,
             "finance_cockpit": {
                 "scenarios": finance_result.get("scenarios") if finance_result else {},
+                "neutral_profit": (
+                    finance_result.get("net_profit")
+                    if finance_result and finance_result.get("net_profit") is not None
+                    else neutral.get("profit") if neutral else None
+                ),
                 "breakeven_attendance": finance_result.get("breakeven_attendance") if finance_result else None,
                 "total_cost": finance_result.get("total_cost") if finance_result else None,
                 "available_funds": project.available_funds,
                 "maximum_funding_gap": (
-                    max(finance_result["total_cost"] - project.available_funds, 0)
-                    if finance_result and finance_result.get("total_cost") is not None
-                    and project.available_funds is not None
+                    finance_result.get("funding_gap")
+                    if finance_result and finance_result.get("funding_gap") is not None
+                    else max(finance_result["total_cost"] - project.available_funds, 0)
+                    if finance_result and finance_result.get("total_cost") is not None and project.available_funds is not None
                     else None
                 ),
+                "status": finance_result.get("status") if finance_result else "pending_input",
+                "combination": {
+                    "建议最低票价": finance_result.get("recommended_min_ticket_price") if finance_result else None,
+                    "目标利润票价": finance_result.get("recommended_target_ticket_price") if finance_result else None,
+                    "利润率": finance_result.get("profit_margin") if finance_result else None,
+                    "非票收入": finance_result.get("non_ticket_income") if finance_result else None,
+                },
                 "missing_fields": missing_fields,
             },
         },

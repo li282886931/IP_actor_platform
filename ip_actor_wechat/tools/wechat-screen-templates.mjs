@@ -30,6 +30,26 @@ const projectSearchWxml = `
       <view wx:else class="search-state">未找到匹配数据</view>
     </view>`
 
+const financeCalculationWxml = `
+    <view wx:if="{{screen.id === 'S25'}}" class="finance-grid">
+      <view class="field-label">艺人费用</view><input class="input" data-field="artist_fee" value="{{financeDraft.artist_fee}}" bindinput="onFinanceInput" placeholder="艺人费用 / 元" />
+      <view class="field-label">场馆费用</view><input class="input" data-field="venue_cost" value="{{financeDraft.venue_cost}}" bindinput="onFinanceInput" placeholder="场馆费用 / 元" />
+      <view class="field-label">宣发费用</view><input class="input" data-field="marketing_cost" value="{{financeDraft.marketing_cost}}" bindinput="onFinanceInput" placeholder="宣发费用 / 元" />
+      <view class="field-label">制作费用</view><input class="input" data-field="production_cost" value="{{financeDraft.production_cost}}" bindinput="onFinanceInput" placeholder="制作费用 / 元" />
+      <view class="field-label">场馆容量</view><input class="input" data-field="venue_capacity" value="{{financeDraft.venue_capacity}}" bindinput="onFinanceInput" placeholder="场馆容量 / 人" />
+      <view class="field-label">预计到场</view><input class="input" data-field="expected_attendance" value="{{financeDraft.expected_attendance}}" bindinput="onFinanceInput" placeholder="预计到场 / 人" />
+      <view class="field-label">平均实收票价</view><input class="input" data-field="avg_ticket_price" value="{{financeDraft.avg_ticket_price}}" bindinput="onFinanceInput" placeholder="平均实收票价 / 元" />
+      <view class="field-label">安保费用</view><input class="input" data-field="security_cost" value="{{financeDraft.security_cost}}" bindinput="onFinanceInput" placeholder="安保费用 / 元" />
+      <view class="field-label">差旅费用</view><input class="input" data-field="travel_cost" value="{{financeDraft.travel_cost}}" bindinput="onFinanceInput" placeholder="差旅费用 / 元" />
+      <view class="field-label">住宿费用</view><input class="input" data-field="accommodation_cost" value="{{financeDraft.accommodation_cost}}" bindinput="onFinanceInput" placeholder="住宿费用 / 元" />
+      <view class="field-label">保险费用</view><input class="input" data-field="insurance_cost" value="{{financeDraft.insurance_cost}}" bindinput="onFinanceInput" placeholder="保险费用 / 元" />
+      <view class="field-label">报批费用</view><input class="input" data-field="approval_cost" value="{{financeDraft.approval_cost}}" bindinput="onFinanceInput" placeholder="报批费用 / 元" />
+      <view class="field-label">不可预见费</view><input class="input" data-field="contingency_cost" value="{{financeDraft.contingency_cost}}" bindinput="onFinanceInput" placeholder="不可预见费 / 元" />
+      <view class="field-label">赞助收入</view><input class="input" data-field="sponsorship_income" value="{{financeDraft.sponsorship_income}}" bindinput="onFinanceInput" placeholder="赞助收入 / 元" />
+      <view class="field-label">周边收入</view><input class="input" data-field="merchandise_income" value="{{financeDraft.merchandise_income}}" bindinput="onFinanceInput" placeholder="周边收入 / 元" />
+      <view class="field-label">目标利润</view><input class="input" data-field="target_profit" value="{{financeDraft.target_profit}}" bindinput="onFinanceInput" placeholder="目标利润 / 元" />
+    </view>`
+
 const businessItemsWxml = `<view wx:for="{{items}}" wx:key="id" class="item" data-entity-type="{{item.detailRef.entity_type}}" data-entity-id="{{item.detailRef.entity_id}}" bindtap="onBusinessItemTap">
       <view class="item-main">
         <view class="item-title">{{item.title}}</view>
@@ -110,6 +130,7 @@ const calibrationWxml = `
 
 export const buildScreenWxml = (screenId, { includeBack = false } = {}) => {
   const projectSearch = ['S13', 'S14', 'S15', 'S16'].includes(screenId) ? projectSearchWxml : ''
+  const financeCalculation = screenId === 'S25' ? financeCalculationWxml : ''
   const taskScreen = screenId === 'S56'
   const planScreen = screenId === 'S53'
   const pptV2 = screenId === 'S04' ? valueEvidenceWxml
@@ -128,7 +149,7 @@ export const buildScreenWxml = (screenId, { includeBack = false } = {}) => {
   </view>${pptSection}
   <view wx:if="{{isForm}}" class="panel">
     <view class="panel-title">输入与联调</view>
-    <input class="input" value="{{keyword}}" bindinput="onInput" placeholder="{{placeholder}}" />${projectSearch}
+    <input wx:if="{{screen.id !== 'S25'}}" class="input" value="{{keyword}}" bindinput="onInput" placeholder="{{placeholder}}" />${projectSearch}${financeCalculation}
   </view>
   <view class="panel">
     <view class="panel-head">

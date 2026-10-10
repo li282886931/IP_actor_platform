@@ -27,6 +27,15 @@ export interface ProjectDraft {
   marketing_cost?: number
   production_cost?: number
   venue_capacity?: number
+  security_cost?: number
+  travel_cost?: number
+  accommodation_cost?: number
+  insurance_cost?: number
+  approval_cost?: number
+  contingency_cost?: number
+  sponsorship_income?: number
+  merchandise_income?: number
+  target_profit?: number
 }
 
 export interface SessionData {

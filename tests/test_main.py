@@ -2473,6 +2473,99 @@ def test_full_backend_plan_api_flow(monkeypatch):
         assert breakeven["breakeven_attendance"] == 13033
         assert breakeven["target_profit_attendance"] == 15539
 
+        show_calculation_response = client.post(
+            "/finance/show-calculation",
+            json={
+                "project_id": project["id"],
+                "venue_capacity": 20000,
+                "expected_attendance": 16000,
+                "avg_ticket_price": 399,
+                "security_cost": 120000,
+                "travel_cost": 180000,
+                "accommodation_cost": 100000,
+                "insurance_cost": 50000,
+                "approval_cost": 30000,
+                "contingency_cost": 200000,
+                "tax_fee_rate": 0.06,
+                "ticketing_fee_rate": 0.04,
+                "sponsorship_income": 300000,
+                "merchandise_income": 200000,
+                "target_profit": 1000000,
+                "conservative_occupancy_rate": 60,
+                "neutral_occupancy_rate": 80,
+                "optimistic_occupancy_rate": 95,
+            },
+        )
+        assert show_calculation_response.status_code == 200
+        show_calculation = show_calculation_response.json()["data"]
+        assert show_calculation["formula_version"] == "show-calculation-v1"
+        assert show_calculation["status"] == "calculated"
+        assert show_calculation["total_cost"] == 5880000
+        assert show_calculation["non_ticket_income"] == 500000
+        assert show_calculation["net_ticket_revenue"] == 5745600
+        assert show_calculation["total_revenue"] == 6245600
+        assert show_calculation["net_profit"] == 365600
+        assert show_calculation["profit_margin"] == 0.0585
+        assert show_calculation["breakeven_attendance"] == 14982
+        assert show_calculation["breakeven_occupancy_rate"] == 0.7491
+        assert show_calculation["funding_gap"] == 5880000
+        assert show_calculation["recommended_min_ticket_price"] == 374
+        assert show_calculation["recommended_target_ticket_price"] == 444
+        assert show_calculation["scenarios"]["conservative"]["profit"] == -1070800
+        assert show_calculation["scenarios"]["neutral"]["profit"] == 365600
+        assert show_calculation["scenarios"]["optimistic"]["profit"] == 1442900
+        assert show_calculation["version_id"]
+
+        root_login = login_with_captcha(client, monkeypatch, "root", "123456")
+        assert root_login.status_code == 200
+        root_token = root_login.json()["data"]["token"]
+        screen_response = client.get(
+            f"/miniapp/screens/S25?project_id={project['id']}",
+            headers={
+                "Authorization": f"Bearer {root_token}",
+                "X-Tenant-Id": str(project["tenant_id"]),
+            },
+        )
+        assert screen_response.status_code == 200
+        cockpit = screen_response.json()["data"]["options"]["finance_cockpit"]
+        assert cockpit["neutral_profit"] == 365600
+        assert cockpit["maximum_funding_gap"] == 5880000
+        assert cockpit["combination"]["建议最低票价"] == 374
+        assert cockpit["combination"]["目标利润票价"] == 444
+
+        incomplete_project = client.post(
+            "/projects",
+            json={
+                "name": "缺字段测算项目",
+                "expected_attendance": 16000,
+                "avg_ticket_price": 399,
+                "artist_fee": 2600000,
+                "venue_cost": 900000,
+            },
+        ).json()["data"]
+        missing_response = client.post(
+            "/finance/show-calculation",
+            json={
+                "project_id": incomplete_project["id"],
+                "security_cost": 120000,
+            },
+        )
+        assert missing_response.status_code == 200
+        missing = missing_response.json()["data"]
+        assert missing["status"] == "pending_input"
+        assert missing["total_cost"] is None
+        assert missing["recommended_min_ticket_price"] is None
+        assert set(missing["missing_fields"]) >= {
+            "venue_capacity",
+            "marketing_cost",
+            "production_cost",
+            "travel_cost",
+            "accommodation_cost",
+            "insurance_cost",
+            "approval_cost",
+            "contingency_cost",
+        }
+
         fact_response = client.post(
             "/facts",
             json={

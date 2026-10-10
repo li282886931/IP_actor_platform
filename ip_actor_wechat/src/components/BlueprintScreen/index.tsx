@@ -454,14 +454,26 @@ export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
           return
         }
       } else if (screenId === 'S25') {
-        const result = await api.calculateFinance({
+        const result = await api.calculateShow({
           project_id: projectId,
+          venue_capacity: draft.venue_capacity,
           expected_attendance: draft.expected_attendance,
           avg_ticket_price: draft.avg_ticket_price,
           artist_fee: draft.artist_fee,
           venue_cost: draft.venue_cost,
           marketing_cost: draft.marketing_cost,
           production_cost: draft.production_cost,
+          security_cost: draft.security_cost,
+          travel_cost: draft.travel_cost,
+          accommodation_cost: draft.accommodation_cost,
+          insurance_cost: draft.insurance_cost,
+          approval_cost: draft.approval_cost,
+          contingency_cost: draft.contingency_cost,
+          sponsorship_income: draft.sponsorship_income,
+          merchandise_income: draft.merchandise_income,
+          target_profit: draft.target_profit,
+          tax_fee_rate: 0.06,
+          ticketing_fee_rate: 0.04,
         })
         const record = asRecord(result)
         if (record.version_id) Taro.setStorageSync(STORAGE_KEYS.versionId, Number(record.version_id))
@@ -599,6 +611,23 @@ export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
           <CandidateNumberField label='场馆费用 / 元' field='venue_cost' draft={draft} initialSections={initialCandidateSections(['venue_cost'])} onInput={updateDraft} onSearch={localCandidateSearch(['venue_cost'])} onSelect={applyCandidate} />
           <CandidateNumberField label='宣发费用 / 元' field='marketing_cost' draft={draft} initialSections={initialCandidateSections(['marketing_cost'])} onInput={updateDraft} onSearch={localCandidateSearch(['marketing_cost'])} onSelect={applyCandidate} />
           <CandidateNumberField label='制作费用 / 元' field='production_cost' draft={draft} initialSections={initialCandidateSections(['production_cost'])} onInput={updateDraft} onSearch={localCandidateSearch(['production_cost'])} onSelect={applyCandidate} />
+          {screenId === 'S25' && (
+            <>
+              <CandidateNumberField label='场馆容量 / 人' field='venue_capacity' draft={draft} initialSections={initialCandidateSections(['venue_capacity'])} onInput={updateDraft} onSearch={localCandidateSearch(['venue_capacity'])} onSelect={applyCandidate} />
+              <CandidateNumberField label='预计到场 / 人' field='expected_attendance' draft={draft} initialSections={initialCandidateSections(['expected_attendance'])} onInput={updateDraft} onSearch={localCandidateSearch(['expected_attendance'])} onSelect={applyCandidate} />
+              <CandidateNumberField label='平均实收票价 / 元' field='avg_ticket_price' draft={draft} initialSections={initialCandidateSections(['avg_ticket_price'])} onInput={updateDraft} onSearch={localCandidateSearch(['avg_ticket_price'])} onSelect={applyCandidate} />
+              <CandidateNumberField label='可用资金 / 元' field='available_funds' draft={draft} initialSections={initialCandidateSections(['available_funds'])} onInput={updateDraft} onSearch={localCandidateSearch(['available_funds'])} onSelect={applyCandidate} />
+              <CandidateNumberField label='安保费用 / 元' field='security_cost' draft={draft} initialSections={initialCandidateSections(['security_cost'])} onInput={updateDraft} onSearch={localCandidateSearch(['security_cost'])} onSelect={applyCandidate} />
+              <CandidateNumberField label='差旅费用 / 元' field='travel_cost' draft={draft} initialSections={initialCandidateSections(['travel_cost'])} onInput={updateDraft} onSearch={localCandidateSearch(['travel_cost'])} onSelect={applyCandidate} />
+              <CandidateNumberField label='住宿费用 / 元' field='accommodation_cost' draft={draft} initialSections={initialCandidateSections(['accommodation_cost'])} onInput={updateDraft} onSearch={localCandidateSearch(['accommodation_cost'])} onSelect={applyCandidate} />
+              <CandidateNumberField label='保险费用 / 元' field='insurance_cost' draft={draft} initialSections={initialCandidateSections(['insurance_cost'])} onInput={updateDraft} onSearch={localCandidateSearch(['insurance_cost'])} onSelect={applyCandidate} />
+              <CandidateNumberField label='报批费用 / 元' field='approval_cost' draft={draft} initialSections={initialCandidateSections(['approval_cost'])} onInput={updateDraft} onSearch={localCandidateSearch(['approval_cost'])} onSelect={applyCandidate} />
+              <CandidateNumberField label='不可预见费 / 元' field='contingency_cost' draft={draft} initialSections={initialCandidateSections(['contingency_cost'])} onInput={updateDraft} onSearch={localCandidateSearch(['contingency_cost'])} onSelect={applyCandidate} />
+              <CandidateNumberField label='赞助收入 / 元' field='sponsorship_income' draft={draft} initialSections={initialCandidateSections(['sponsorship_income'])} onInput={updateDraft} onSearch={localCandidateSearch(['sponsorship_income'])} onSelect={applyCandidate} />
+              <CandidateNumberField label='周边收入 / 元' field='merchandise_income' draft={draft} initialSections={initialCandidateSections(['merchandise_income'])} onInput={updateDraft} onSearch={localCandidateSearch(['merchandise_income'])} onSelect={applyCandidate} />
+              <CandidateNumberField label='目标利润 / 元' field='target_profit' draft={draft} initialSections={initialCandidateSections(['target_profit'])} onInput={updateDraft} onSearch={localCandidateSearch(['target_profit'])} onSelect={applyCandidate} />
+            </>
+          )}
         </View>
       )
     }
@@ -812,6 +841,16 @@ interface CandidateNumberFieldProps {
     | 'venue_cost'
     | 'marketing_cost'
     | 'production_cost'
+    | 'venue_capacity'
+    | 'security_cost'
+    | 'travel_cost'
+    | 'accommodation_cost'
+    | 'insurance_cost'
+    | 'approval_cost'
+    | 'contingency_cost'
+    | 'sponsorship_income'
+    | 'merchandise_income'
+    | 'target_profit'
   >
   draft: ProjectDraft
   initialSections: Array<SearchSelectSection<MiniappCandidateItem>>
