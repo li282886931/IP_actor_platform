@@ -1,30 +1,46 @@
 // ============================================
-// 主题配色变量（第二阶段模型可修改此文件）
+// 主题配色变量 —— 影院深色 + 鎏金（与 Web 工作台同一视觉世界）
 // ============================================
 
-// 锐音场品牌主题色
-$color-primary: #2864dc;
-$color-primary-light: #5f8ee8;
-$color-primary-dark: #1748a7;
+// 锐音场品牌主题色（鎏金）
+$color-primary: #d4af37;
+$color-primary-light: #e7c65c;
+$color-primary-dark: #e2bd55;
+$color-on-primary: #1a1405; // 金色底面上的文字/图标
 
-// 功能色
-$color-success: #168a55;
-$color-warning: #d7781f;
-$color-error: #c74332;
-$color-info: #2864dc;
+// 功能色（深色底上提高明度，保证对比）
+$color-success: #5cc793;
+$color-warning: #e2ab57;
+$color-error: #f0837f;
+$color-info: #d4af37;
 
-// 背景色
-$color-bg-page: #f4f6f9;
-$color-bg-card: #ffffff;
-$color-bg-hover: #eef2f7;
+// 背景色（深色层级）
+$color-bg-page: #101012;
+$color-bg-card: #1b1b1e;
+$color-bg-hover: #26262b;
+$color-bg-input: #202024;
+$color-bg-elevated: #2b2b2f;
 
 // 文本色
-$color-text-primary: #172033;
-$color-text-secondary: #566176;
-$color-text-tertiary: #8893a7;
-$color-text-disabled: #c9cdd4;
+$color-text-primary: #f5f5f5;
+$color-text-secondary: #a3a3ab;
+$color-text-tertiary: #8b8b93;
+$color-text-disabled: #5b5b63;
 $color-text-white: #ffffff;
 
-// 边框色
-$color-border: #dce2ec;
-$color-divider: #edf0f5;
+// 边框/分隔线
+$color-border: rgba(255, 255, 255, 0.1);
+$color-divider: rgba(255, 255, 255, 0.07);
+
+// 品牌软底（标签、徽章、次要按钮、提示条）
+$color-primary-soft: rgba(212, 175, 55, 0.12);
+$color-primary-soft-border: rgba(212, 175, 55, 0.3);
+$color-success-soft: rgba(92, 199, 147, 0.12);
+$color-success-soft-border: rgba(92, 199, 147, 0.3);
+$color-error-soft: rgba(240, 131, 127, 0.12);
+$color-error-soft-border: rgba(240, 131, 127, 0.32);
+
+// 软底上的文字色
+$color-text-on-success-soft: #8fdcb4;
+$color-text-on-error-soft: #f4a5a2;
+$color-text-on-warning-soft: #e8bd83;

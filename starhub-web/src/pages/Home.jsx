@@ -14,6 +14,7 @@ import {
   listTasks,
 } from '../api'
 import ShowCard from '../components/ShowCard'
+import { MetricIcon } from '../components/icons'
 
 const dashboardByRole = {
   B: {
@@ -74,7 +75,10 @@ function MetricGrid({ metrics }) {
     <section className="metric-grid" aria-label="关键指标">
       {metrics.map((metric) => (
         <article className={`metric-card${metric.tone ? ` ${metric.tone}` : ''}`} key={metric.label}>
-          <span>{metric.label}</span>
+          <div className="metric-head">
+            <span className="metric-icon" aria-hidden="true"><MetricIcon label={metric.label} size={20} /></span>
+            <span className="metric-label">{metric.label}</span>
+          </div>
           <strong>{metric.value}</strong>
           <small>{metric.delta}</small>
         </article>

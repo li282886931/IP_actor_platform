@@ -1,40 +1,42 @@
 import { NavLink } from 'react-router-dom'
 
+import { BrandMark, NavIcon } from './icons'
+
 const navigationByRole = {
   C: [
-    { to: '/', label: '演出发现', mark: '01' },
-    { to: '/artist', label: '艺人查询', mark: '02' },
+    { to: '/', label: '演出发现' },
+    { to: '/artist', label: '艺人查询' },
   ],
   B: [
-    { to: '/', label: '工作台', mark: '01' },
-    { to: '/artist', label: '艺人智策', mark: '02' },
-    { to: '/generate', label: 'AI 宣发', mark: '03' },
+    { to: '/', label: '工作台' },
+    { to: '/artist', label: '艺人智策' },
+    { to: '/generate', label: 'AI 宣发' },
   ],
   Brand: [
-    { to: '/', label: '品牌概览', mark: '01' },
-    { to: '/artist', label: '受众洞察', mark: '02' },
-    { to: '/generate', label: 'AI 品宣', mark: '03' },
+    { to: '/', label: '品牌概览' },
+    { to: '/artist', label: '受众洞察' },
+    { to: '/generate', label: 'AI 品宣' },
   ],
   G: [
-    { to: '/', label: '城市概览', mark: '01' },
-    { to: '/artist', label: '艺人洞察', mark: '02' },
-    { to: '/generate', label: 'AI 宣发', mark: '03' },
+    { to: '/', label: '城市概览' },
+    { to: '/artist', label: '艺人洞察' },
+    { to: '/generate', label: 'AI 宣发' },
   ],
 }
 
 export default function Sidebar({ role, canManageUsers = false }) {
   const baseItems = navigationByRole[role] || navigationByRole.C
   const items = canManageUsers
-    ? [...baseItems, { to: '/users', label: '用户管理', mark: '04' }]
+    ? [...baseItems, { to: '/users', label: '用户管理' }]
     : baseItems
 
   return (
     <aside className="app-sidebar">
       <div className="sidebar-brand">
-        <span className="brand-mark" aria-hidden="true">✦</span>
+        <BrandMark />
         <span>
           <strong>锐音场</strong>
-          <small>StarHub</small>
+          <small>StarHub Studio</small>
         </span>
       </div>
 
@@ -47,7 +49,7 @@ export default function Sidebar({ role, canManageUsers = false }) {
             end={item.to === '/'}
             to={item.to}
           >
-            <span className="sidebar-link-mark" aria-hidden="true">{item.mark}</span>
+            <span className="sidebar-link-icon" aria-hidden="true"><NavIcon to={item.to} size={20} /></span>
             <span>{item.label}</span>
           </NavLink>
         ))}

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 
 import Sidebar from './components/Sidebar'
+import { BrandMark } from './components/icons'
 import { getAuthCaptcha, webLogin } from './api'
 import Artist from './pages/Artist'
 import Generate from './pages/Generate'
@@ -61,7 +62,7 @@ function LoginView({
     <main className="login-page">
       <section className="login-intro">
         <div className="login-brand">
-          <span className="brand-mark" aria-hidden="true">✦</span>
+          <BrandMark />
           <span>
             <strong>锐音场</strong>
             <small>StarHub</small>
