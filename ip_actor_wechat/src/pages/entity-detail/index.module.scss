@@ -20,7 +20,7 @@
   align-items: center;
   min-height: 96rpx;
   padding: 0 $page-padding;
-  background: $color-bg-card;
+  background: rgba(13, 13, 15, 0.92);
   border-bottom: 1rpx solid $color-divider;
 }
 
@@ -51,7 +51,7 @@
   display: block;
   width: 100%;
   height: 420rpx;
-  background: #e9edf4;
+  background: $color-bg-input;
 }
 
 .hero,
@@ -99,10 +99,10 @@
   min-height: 48rpx;
   padding: 0 18rpx;
   margin-top: 24rpx;
-  color: $color-primary-dark;
+  color: $color-primary;
   font-size: $font-size-xs;
   font-weight: $font-weight-semibold;
-  background: #e8f0ff;
+  background: $color-primary-soft;
   border-radius: $radius-round;
 }
 
@@ -166,6 +166,11 @@
   align-items: center;
   min-height: 112rpx;
   border-bottom: 1rpx solid $color-divider;
+  transition: background-color $transition-fast;
+
+  &:active {
+    background: $color-bg-hover;
+  }
 }
 
 .relatedText {
@@ -242,13 +247,15 @@
 }
 
 .primaryButton {
-  color: $color-text-white;
-  background: $color-primary;
+  color: $color-on-primary;
+  font-weight: $font-weight-bold;
+  background: linear-gradient(145deg, $color-gold-highlight, $color-primary 55%, $color-gold-deep);
 }
 
 .secondaryButton {
   color: $color-primary;
-  background: #e8f0ff;
+  background: $color-primary-soft;
+  border: 1rpx solid $color-primary-soft-border;
 }
 
 @media (max-width: 360px) {

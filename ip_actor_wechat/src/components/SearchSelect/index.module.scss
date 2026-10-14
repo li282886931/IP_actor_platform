@@ -9,8 +9,9 @@
   width: 100%;
   height: 88rpx;
   padding: 0 24rpx;
+  color: $color-text-primary;
   font-size: $font-size-md;
-  background: #f7f9fc;
+  background: $color-bg-input;
   border: 1rpx solid $color-border;
   border-radius: $radius-sm;
   box-sizing: border-box;

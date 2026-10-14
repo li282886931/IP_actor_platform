@@ -37,7 +37,8 @@
   color: $color-primary;
   font-size: $font-size-sm;
   font-weight: $font-weight-semibold;
-  background: #e8f0ff;
+  background: $color-primary-soft;
+  border: 1rpx solid $color-primary-soft-border;
   border-radius: $radius-button;
 }
 
@@ -55,11 +56,12 @@
   @include flex-center;
   width: 64rpx;
   height: 64rpx;
-  color: $color-text-white;
+  color: $color-on-primary;
   font-size: 30rpx;
   font-weight: $font-weight-bold;
-  background: $color-primary;
+  background: linear-gradient(145deg, $color-gold-highlight, $color-primary 55%, $color-gold-deep);
   border-radius: 12rpx;
+  box-shadow: 0 8rpx 24rpx rgba(212, 175, 55, 0.28);
 }
 
 .brandName,
@@ -89,6 +91,10 @@
   font-weight: $font-weight-bold;
 }
 
+.brandName {
+  color: $color-primary;
+}
+
 .brandMeta {
   color: $color-text-tertiary;
   font-size: 18rpx;
@@ -105,7 +111,7 @@
   font-size: $font-size-sm;
   font-weight: $font-weight-semibold;
   text-align: center;
-  background: #e8f0ff;
+  background: $color-primary-soft;
   border-radius: $radius-sm;
 }
 
@@ -143,7 +149,7 @@
 }
 
 .highlight {
-  color: $color-primary-dark;
+  color: $color-primary;
   font-size: $font-size-lg;
   font-weight: $font-weight-bold;
 }
@@ -212,7 +218,7 @@
 .scenarioItem {
   min-width: 0;
   padding: 24rpx 16rpx;
-  background: #f7f9fc;
+  background: $color-bg-input;
   border: 1rpx solid $color-border;
   border-radius: $radius-sm;
 }
@@ -229,12 +235,13 @@
   padding: 10rpx 16rpx;
   color: $color-text-tertiary;
   font-size: $font-size-xs;
-  background: #f7f9fc;
+  background: $color-bg-input;
   border-radius: $radius-sm;
 }
 
 .timelineStepActive {
-  color: $color-text-white;
+  color: $color-on-primary;
+  font-weight: $font-weight-semibold;
   background: $color-primary;
 }
 
@@ -272,8 +279,9 @@
   width: 100%;
   height: 88rpx;
   padding: 0 24rpx;
+  color: $color-text-primary;
   font-size: $font-size-md;
-  background: #f7f9fc;
+  background: $color-bg-input;
   border: 1rpx solid $color-border;
   border-radius: $radius-sm;
   box-sizing: border-box;
@@ -290,6 +298,12 @@
 
 .clickableItem {
   cursor: pointer;
+  border-radius: $radius-sm;
+  transition: background-color $transition-fast;
+
+  &:active {
+    background: $color-bg-hover;
+  }
 }
 
 .listMain {
@@ -328,17 +342,17 @@
 }
 
 .itemValue {
-  color: $color-primary-dark;
+  color: $color-primary;
   font-size: $font-size-md;
   font-weight: $font-weight-bold;
 }
 
 .status {
   padding: 6rpx 12rpx;
-  color: $color-primary-dark;
+  color: $color-primary;
   font-size: $font-size-xs;
   white-space: nowrap;
-  background: #edf3ff;
+  background: $color-primary-soft;
   border-radius: $radius-xs;
 }
 
@@ -373,7 +387,7 @@
   height: 38rpx;
   padding: 0;
   margin: 2rpx 0 0;
-  color: $color-text-white;
+  color: $color-on-primary;
   font-size: $font-size-xs;
   background: transparent;
   border: 2rpx solid $color-border;
@@ -391,9 +405,9 @@
   color: $color-text-secondary;
   font-size: $font-size-xs;
   line-height: 1.6;
-  background: $color-bg-hover;
-  border-left: 4rpx solid $color-primary;
-  border-radius: $radius-xs;
+  background: $color-primary-soft;
+  border: 1rpx solid $color-primary-soft-border;
+  border-radius: $radius-sm;
 }
 
 .loadingLine,
@@ -421,10 +435,10 @@
   height: 72rpx;
   padding: 0 24rpx;
   margin-top: 24rpx;
-  color: $color-primary-dark;
+  color: $color-primary;
   font-size: $font-size-sm;
-  background: $color-bg-card;
-  border: 1rpx solid #a8bfeb;
+  background: $color-primary-soft;
+  border: 1rpx solid $color-primary-soft-border;
   border-radius: $radius-button;
 }
 

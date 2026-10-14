@@ -62,7 +62,7 @@
   color: $color-on-primary;
   font-size: 30rpx;
   font-weight: $font-weight-bold;
-  background: linear-gradient(145deg, #f0d678, $color-primary 55%, #b8932a);
+  background: linear-gradient(145deg, $color-gold-highlight, $color-primary 55%, $color-gold-deep);
   border-radius: 12rpx;
   box-shadow: 0 8rpx 24rpx rgba(212, 175, 55, 0.28);
 }
@@ -93,7 +93,7 @@
   color: $color-primary;
   font-size: $font-size-sm;
   font-weight: $font-weight-semibold;
-  background: #e8f0ff;
+  background: $color-primary-soft;
   border-radius: $radius-sm;
   box-sizing: border-box;
 }
@@ -149,11 +149,11 @@
   justify-content: space-between;
   padding-top: 32rpx;
   margin-top: 32rpx;
-  border-top: 1rpx solid rgba(22, 93, 255, 0.16);
+  border-top: 1rpx solid $color-divider;
 }
 
 .highlight {
-  color: $color-primary-dark;
+  color: $color-primary;
   font-size: $font-size-lg;
   font-weight: $font-weight-bold;
 }
@@ -173,6 +173,7 @@
   border: 1rpx solid $color-border;
   border-radius: $radius-lg;
   box-shadow: $shadow-card;
+  transition: border-color $transition-fast, transform $transition-fast;
 }
 
 .sectionHeading,
@@ -210,6 +211,12 @@
 
 .clickableItem {
   cursor: pointer;
+  border-radius: $radius-sm;
+  transition: background-color $transition-fast;
+
+  &:active {
+    background: $color-bg-hover;
+  }
 }
 
 .listMain {
@@ -264,7 +271,7 @@
   width: 38rpx;
   height: 38rpx;
   margin-top: 2rpx;
-  color: $color-text-white;
+  color: $color-on-primary;
   font-size: $font-size-xs;
   font-weight: $font-weight-bold;
   border: 2rpx solid $color-border;
@@ -282,9 +289,9 @@
   color: $color-text-secondary;
   font-size: $font-size-xs;
   line-height: 1.6;
-  background: $color-bg-hover;
-  border-left: 4rpx solid $color-primary;
-  border-radius: $radius-xs;
+  background: $color-primary-soft;
+  border: 1rpx solid $color-primary-soft-border;
+  border-radius: $radius-sm;
 }
 
 .itemAside {
@@ -298,17 +305,17 @@
 
 .itemValue {
   margin-bottom: 8rpx;
-  color: $color-primary-dark;
+  color: $color-primary;
   font-size: $font-size-md;
   font-weight: $font-weight-bold;
 }
 
 .status {
   padding: 6rpx 12rpx;
-  color: $color-primary-dark;
+  color: $color-primary;
   font-size: $font-size-xs;
   white-space: nowrap;
-  background: #edf3ff;
+  background: $color-primary-soft;
   border-radius: $radius-xs;
 }
 
@@ -351,11 +358,11 @@
   min-width: 200rpx;
   height: 72rpx;
   margin-top: 24rpx;
-  color: $color-primary-dark;
+  color: $color-primary;
   font-size: $font-size-sm;
   font-weight: $font-weight-semibold;
-  background: $color-bg-card;
-  border: 1rpx solid #a8bfeb;
+  background: $color-primary-soft;
+  border: 1rpx solid $color-primary-soft-border;
   border-radius: $radius-button;
 }
 
@@ -383,12 +390,12 @@
 .chartBar {
   width: 100%;
   min-height: 12rpx;
-  background: linear-gradient(180deg, $color-primary-light, $color-primary);
+  background: linear-gradient(180deg, $color-primary-light, $color-gold-deep);
   border-radius: 8rpx 8rpx 0 0;
 }
 
 .chartBarRisk {
-  background: linear-gradient(180deg, #ffb45c, $color-warning);
+  background: linear-gradient(180deg, $color-gold-highlight, $color-warning);
 }
 
 .breakEven {
@@ -433,11 +440,16 @@
   width: 100%;
   height: 88rpx;
   padding: 0 24rpx;
+  color: $color-text-primary;
   font-size: $font-size-md;
-  background: #f7f9fc;
+  background: $color-bg-input;
   border: 1rpx solid $color-border;
   border-radius: $radius-sm;
   box-sizing: border-box;
+}
+
+.input:focus {
+  border-color: $color-primary-soft-border;
 }
 
 .searchDropdown {
@@ -562,8 +574,8 @@
   color: $color-text-secondary;
   font-size: $font-size-sm;
   line-height: 1.65;
-  background: #eef6ff;
-  border-left: 6rpx solid $color-info;
+  background: $color-primary-soft;
+  border: 1rpx solid $color-primary-soft-border;
   border-radius: $radius-sm;
 }
 
@@ -572,27 +584,27 @@
   flex: 0 0 auto;
   width: 36rpx;
   height: 36rpx;
-  color: $color-text-white;
+  color: $color-on-primary;
   font-size: $font-size-xs;
   font-weight: $font-weight-bold;
-  background: $color-info;
+  background: $color-primary;
   border-radius: $radius-round;
 }
 
 .message {
   padding: 24rpx;
   margin-top: 24rpx;
-  color: #176b35;
+  color: $color-text-on-success-soft;
   font-size: $font-size-sm;
-  background: #edf9f1;
-  border: 1rpx solid #b9e6c8;
+  background: $color-success-soft;
+  border: 1rpx solid $color-success-soft-border;
   border-radius: $radius-sm;
 }
 
 .messageError {
-  color: #a72424;
-  background: #fff1f0;
-  border-color: #ffc4c0;
+  color: $color-text-on-error-soft;
+  background: $color-error-soft;
+  border-color: $color-error-soft-border;
 }
 
 .actions {
@@ -620,20 +632,24 @@
 }
 
 .primaryButton {
-  color: $color-text-white;
-  background: $color-primary;
+  color: $color-on-primary;
+  font-weight: $font-weight-bold;
+  background: linear-gradient(145deg, $color-gold-highlight, $color-primary 55%, $color-gold-deep);
   border: 1rpx solid $color-primary;
+  box-shadow: 0 10rpx 28rpx rgba(212, 175, 55, 0.22);
 }
 
 .cautionButton {
-  background: #bb4b36;
-  border-color: #bb4b36;
+  color: $color-on-primary;
+  font-weight: $font-weight-bold;
+  background: $color-error;
+  border-color: $color-error;
 }
 
 .secondaryButton {
-  color: $color-primary-dark;
-  background: $color-bg-card;
-  border: 1rpx solid #a8bfeb;
+  color: $color-primary;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1rpx solid $color-primary-soft-border;
 }
 
 .taskActions {
@@ -643,9 +659,9 @@
 }
 
 .rejectButton {
-  color: #a72424;
-  background: $color-bg-card;
-  border: 1rpx solid #e6a5a0;
+  color: $color-text-on-error-soft;
+  background: $color-error-soft;
+  border: 1rpx solid $color-error-soft-border;
 }
 
 .progress {

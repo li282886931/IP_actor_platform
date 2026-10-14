@@ -88,15 +88,15 @@
   ],
   "window": {
     "backgroundTextStyle": "light",
-    "navigationBarBackgroundColor": "#ffffff",
+    "navigationBarBackgroundColor": "#0d0d0f",
     "navigationBarTitleText": "锐音场",
-    "navigationBarTextStyle": "black"
+    "navigationBarTextStyle": "white"
   },
   "tabBar": {
-    "color": "#86909c",
-    "selectedColor": "#2864dc",
-    "backgroundColor": "#ffffff",
-    "borderStyle": "white",
+    "color": "#8b8b93",
+    "selectedColor": "#d4af37",
+    "backgroundColor": "#0d0d0f",
+    "borderStyle": "black",
     "list": [
       {
         "pagePath": "pages/s04/index",
