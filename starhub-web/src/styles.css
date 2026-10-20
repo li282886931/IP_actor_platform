@@ -2245,6 +2245,21 @@ select:focus {
   font-size: 12px;
 }
 
+.captcha-retry-button {
+  padding: 0;
+  border: 1px solid rgba(224, 102, 102, 0.55);
+  border-radius: 10px;
+  background: var(--surface-inset);
+  color: #e8a0a0;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.captcha-retry-button:hover {
+  border-color: var(--gold-border);
+  color: var(--text-primary);
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     animation-duration: 0.01ms !important;

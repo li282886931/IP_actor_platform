@@ -25,6 +25,7 @@ const routeTitles = {
 }
 
 const APP_FAVICON_PATH = '/favicon.svg'
+const CAPTCHA_LOAD_ERROR = '验证码加载失败，请点击右侧区域重试。'
 
 function roleFromUser(user) {
   if (!user) return null
@@ -54,6 +55,7 @@ function LoginView({
   captchaImage,
   onRefreshCaptcha,
   captchaLoading,
+  captchaFailed,
   onLogin,
   loginStatus,
   loginError,
@@ -131,6 +133,14 @@ function LoginView({
                 >
                   <img alt="登录验证码" className="captcha-image" src={captchaImage} />
                 </button>
+              ) : captchaFailed && !captchaLoading ? (
+                <button
+                  type="button"
+                  className="captcha-image captcha-image-placeholder captcha-retry-button"
+                  onClick={onRefreshCaptcha}
+                >
+                  点击重试
+                </button>
               ) : (
                 <div aria-hidden="true" className="captcha-image captcha-image-placeholder">加载中</div>
               )}
@@ -161,6 +171,7 @@ export default function App() {
   const [captchaCode, setCaptchaCode] = useState('')
   const [captchaImage, setCaptchaImage] = useState('')
   const [captchaLoading, setCaptchaLoading] = useState(false)
+  const [captchaFailed, setCaptchaFailed] = useState(false)
   const [loginStatus, setLoginStatus] = useState('idle')
   const [loginError, setLoginError] = useState('')
   const activeRole = roleFromUser(currentUser) || normalizeRole(role)
@@ -183,16 +194,22 @@ export default function App() {
 
   const loadCaptcha = async () => {
     setCaptchaLoading(true)
+    setCaptchaFailed(false)
     try {
       const response = await getAuthCaptcha()
       const data = response.data?.data || {}
-      setCaptchaId(data.captcha_id || '')
-      setCaptchaImage(data.captcha_image || '')
+      if (!data.captcha_id || !data.captcha_image) {
+        throw new Error('invalid captcha payload')
+      }
+      setCaptchaId(data.captcha_id)
+      setCaptchaImage(data.captcha_image)
       setCaptchaCode('')
+      setLoginError((prev) => (prev === CAPTCHA_LOAD_ERROR ? '' : prev))
     } catch {
       setCaptchaId('')
       setCaptchaImage('')
-      setLoginError('验证码加载失败，请刷新页面重试。')
+      setCaptchaFailed(true)
+      setLoginError(CAPTCHA_LOAD_ERROR)
     } finally {
       setCaptchaLoading(false)
     }
@@ -301,6 +318,7 @@ export default function App() {
         captchaImage={captchaImage}
         onRefreshCaptcha={loadCaptcha}
         captchaLoading={captchaLoading}
+        captchaFailed={captchaFailed}
         onLogin={handleLoginSubmit}
         loginStatus={loginStatus}
         loginError={loginError}
@@ -340,6 +358,7 @@ export default function App() {
                 setCaptchaId('')
                 setCaptchaCode('')
                 setCaptchaImage('')
+                setCaptchaFailed(false)
                 setLoginError('')
                 setLoginStatus('idle')
                 setCurrentUser(null)

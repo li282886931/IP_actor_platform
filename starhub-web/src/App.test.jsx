@@ -278,6 +278,33 @@ describe('App workbench shell', () => {
     expect(getAuthCaptcha).toHaveBeenCalledTimes(2)
   })
 
+  it('shows a retry button and recovers when the captcha request fails', async () => {
+    localStorage.clear()
+    getAuthCaptcha.mockRejectedValueOnce(new Error('network down'))
+    const user = userEvent.setup()
+
+    render(
+      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <App />
+      </BrowserRouter>,
+    )
+
+    const retryButton = await screen.findByRole('button', { name: '点击重试' })
+    expect(retryButton).toBeInTheDocument()
+    expect(screen.getByText('验证码加载失败，请点击右侧区域重试。')).toBeInTheDocument()
+    expect(screen.queryByRole('img', { name: '登录验证码' })).not.toBeInTheDocument()
+    expect(getAuthCaptcha).toHaveBeenCalledTimes(1)
+
+    await user.click(retryButton)
+
+    expect(await screen.findByRole('img', { name: '登录验证码' })).toBeInTheDocument()
+    expect(getAuthCaptcha).toHaveBeenCalledTimes(2)
+    expect(screen.queryByRole('button', { name: '点击重试' })).not.toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.queryByText('验证码加载失败，请点击右侧区域重试。')).not.toBeInTheDocument()
+    })
+  })
+
   it('refreshes the captcha after logging out to the login screen', async () => {
     const user = userEvent.setup()
 

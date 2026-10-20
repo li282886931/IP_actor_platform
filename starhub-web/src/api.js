@@ -1,6 +1,10 @@
 import axios from 'axios'
 
-const API = axios.create({ baseURL: 'http://localhost:8000' })
+// macOS 上 localhost 会优先解析到 IPv6 ::1，而本地 uvicorn 默认只绑定 IPv4，
+// 会导致验证码等接口随机连接失败；统一用 127.0.0.1，并允许部署时通过环境变量覆盖。
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000'
+
+const API = axios.create({ baseURL: API_BASE_URL })
 
 const stripThinkContent = (value = '') => value
   .replace(/<think\b[^>]*>[\s\S]*?<\/think>/gi, '')
