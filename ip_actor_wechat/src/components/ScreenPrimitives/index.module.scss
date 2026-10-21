@@ -85,6 +85,17 @@
   display: block;
 }
 
+.metricValue,
+.metricLabelText,
+.metricHint,
+.ringValue,
+.ringLabel,
+.ringCaption,
+.barLabel,
+.barValue {
+  display: block;
+}
+
 .brandName,
 .headerTitle {
   font-size: 30rpx;
@@ -172,7 +183,9 @@
 
 .insightPanel,
 .scenarioStrip,
-.timeline {
+.timeline,
+.metricGrid,
+.ringPanel {
   width: calc(100% - 64rpx);
   max-width: $max-content-width;
   margin: 24rpx auto 0;
@@ -243,6 +256,176 @@
   color: $color-on-primary;
   font-weight: $font-weight-semibold;
   background: $color-primary;
+}
+
+// KPI 统计卡片（参考图 12 / 28 / 16 / 8 卡片网格）
+.metricGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16rpx;
+}
+
+.metricCard {
+  min-width: 0;
+  padding: 24rpx 28rpx;
+  background: $color-bg-card;
+  border: 1rpx solid $color-border;
+  border-radius: $radius-lg;
+}
+
+.metricValue {
+  font-size: 44rpx;
+  font-weight: $font-weight-bold;
+  line-height: 1.2;
+  color: $color-primary;
+  font-variant-numeric: tabular-nums;
+}
+
+.metricValueSuccess {
+  color: $color-success;
+}
+
+.metricValueWarning {
+  color: $color-warning;
+}
+
+.metricValueDanger {
+  color: $color-error;
+}
+
+.metricLabelText {
+  margin-top: 8rpx;
+  color: $color-text-secondary;
+  font-size: $font-size-sm;
+}
+
+.metricHint {
+  margin-top: 6rpx;
+  color: $color-text-tertiary;
+  font-size: $font-size-xs;
+  @include text-ellipsis;
+}
+
+.metricCardTap {
+  transition: transform $transition-fast, border-color $transition-fast;
+
+  &:active {
+    border-color: $color-primary-soft-border;
+    transform: scale(0.97);
+  }
+}
+
+// 环形进度图（参考图 72% 项目进度环）
+.ringPanel {
+  display: flex;
+  gap: 28rpx;
+  align-items: center;
+  padding: 28rpx 32rpx;
+  background: $color-bg-card;
+  border: 1rpx solid $color-border;
+  border-radius: $radius-lg;
+}
+
+.ringChart {
+  position: relative;
+  flex: 0 0 168rpx;
+  width: 168rpx;
+  height: 168rpx;
+  border-radius: 50%;
+}
+
+.ringInner {
+  position: absolute;
+  top: 16rpx;
+  right: 16rpx;
+  bottom: 16rpx;
+  left: 16rpx;
+  @include flex-center;
+  background: $color-bg-card;
+  border-radius: 50%;
+}
+
+.ringValue {
+  font-size: 40rpx;
+  font-weight: $font-weight-bold;
+  color: $color-text-primary;
+  font-variant-numeric: tabular-nums;
+}
+
+.ringMeta {
+  flex: 1;
+  min-width: 0;
+}
+
+.ringLabel {
+  font-size: $font-size-md;
+  font-weight: $font-weight-semibold;
+}
+
+.ringCaption {
+  margin-top: 10rpx;
+  color: $color-text-tertiary;
+  font-size: $font-size-xs;
+  line-height: 1.6;
+}
+
+// 情景利润分歧柱状图（零线居中，正金负红）
+.barRow {
+  display: flex;
+  gap: 16rpx;
+  align-items: center;
+  padding: 14rpx 0;
+}
+
+.barLabel {
+  flex: 0 0 80rpx;
+  color: $color-text-secondary;
+  font-size: $font-size-xs;
+}
+
+.barTrack {
+  position: relative;
+  flex: 1;
+  height: 24rpx;
+  background: $color-bg-input;
+  border-radius: $radius-round;
+}
+
+.barZero {
+  position: absolute;
+  top: -6rpx;
+  bottom: -6rpx;
+  left: 50%;
+  width: 2rpx;
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.barFill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: $radius-round;
+}
+
+.barFillPositive {
+  background: linear-gradient(90deg, $color-gold-deep, $color-primary-light);
+}
+
+.barFillNegative {
+  background: linear-gradient(90deg, #c66865, $color-error);
+}
+
+.barValue {
+  flex: 0 0 132rpx;
+  color: $color-primary;
+  font-size: $font-size-xs;
+  font-weight: $font-weight-semibold;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.barValueNegative {
+  color: $color-error;
 }
 
 .keyValueItem {

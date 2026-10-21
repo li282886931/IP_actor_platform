@@ -25,6 +25,7 @@ import {
   verifyFact,
 } from '../api'
 import { zhaoYazhiMarketDossier } from '../data/marketDossier'
+import { ProgressRing, ScenarioBarChart } from '../components/Charts'
 
 const emptyFactForm = { title: '', content: '', source: '' }
 const emptyEvidenceForm = { name: '', file_url: '', source: '', evidence_type: 'document' }
@@ -135,6 +136,15 @@ export default function ProjectDetail() {
     { label: '保本人数', value: finance?.breakeven_attendance ? formatNumber(finance.breakeven_attendance) : '-', delta: finance?.total_cost ? `总成本 ¥${formatNumber(finance.total_cost)}` : '成本待补齐' },
     { label: '开放风险', value: String(risks.filter((risk) => risk.status === 'open').length), delta: `${gates.length} 个关卡待跟进`, tone: risks.some((risk) => risk.level === 'high') ? 'danger' : undefined },
   ], [finance, gates.length, neutral, project, risks])
+
+  const doneTasks = tasks.filter((task) => task.status === 'submitted' || task.status === 'completed').length
+  const taskCompletion = tasks.length ? (doneTasks / tasks.length) * 100 : 0
+  const scenarioChartItems = [
+    { label: '保守', value: finance?.scenarios?.conservative?.profit },
+    { label: '中性', value: finance?.scenarios?.neutral?.profit },
+    { label: '乐观', value: finance?.scenarios?.optimistic?.profit },
+  ].filter((item) => typeof item.value === 'number')
+  const hasScenarioChart = scenarioChartItems.length > 0
 
   const setField = (setter, field, value) => setter((current) => ({ ...current, [field]: value }))
 
@@ -326,6 +336,39 @@ export default function ProjectDetail() {
           </article>
         ))}
       </section>
+
+      {(tasks.length > 0 || hasScenarioChart) && (
+        <section className="content-grid content-grid-wide">
+          <article className="panel">
+            <div className="panel-heading">
+              <div>
+                <span className="eyebrow">EXECUTION</span>
+                <h3>项目进度</h3>
+              </div>
+            </div>
+            {tasks.length > 0 && (
+              <ProgressRing
+                percent={taskCompletion}
+                label="任务完成率"
+                caption={`已完成 ${Math.round(taskCompletion)}% · 剩余 ${100 - Math.round(taskCompletion)}%（${doneTasks}/${tasks.length} 项）`}
+                tone="green"
+              />
+            )}
+          </article>
+
+          {hasScenarioChart && (
+            <article className="panel">
+              <div className="panel-heading">
+                <div>
+                  <span className="eyebrow">SCENARIOS</span>
+                  <h3>三情景利润对比</h3>
+                </div>
+              </div>
+              <ScenarioBarChart items={scenarioChartItems} note="同一测算公式版本 · 金额单位为元" />
+            </article>
+          )}
+        </section>
+      )}
 
       {(shareUrl || message) && (
         <section className="panel">

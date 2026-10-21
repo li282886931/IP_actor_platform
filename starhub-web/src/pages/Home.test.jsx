@@ -15,6 +15,8 @@ import {
   listProjects,
   listShows,
   listTasks,
+  shareReport,
+  submitTask,
 } from '../api'
 
 vi.mock('../api', () => ({
@@ -28,6 +30,8 @@ vi.mock('../api', () => ({
   listProjects: vi.fn(),
   listShows: vi.fn(),
   listTasks: vi.fn(),
+  shareReport: vi.fn(),
+  submitTask: vi.fn(),
 }))
 
 describe('Home', () => {
@@ -164,7 +168,7 @@ describe('Home', () => {
     expect(document.querySelector('.task-panel-icon')).not.toBeInTheDocument()
     expect(screen.getByText('北京大型演唱会测算 · 截止 2026-08-01')).toBeInTheDocument()
     expect(screen.getByText('补齐场地方安全承诺与消防批复')).toBeInTheDocument()
-    expect(screen.getByText('待处理')).toBeInTheDocument()
+    expect(screen.getAllByText('待处理').length).toBe(2)
     expect(screen.getByText('证据 2 份')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: '查看项目' })).toHaveAttribute('href', '/projects/1')
     expect(listProjects).toHaveBeenCalled()
@@ -176,6 +180,154 @@ describe('Home', () => {
     expect(screen.getByText('预约人数')).toBeInTheDocument()
     expect(screen.getByText('42 人')).toBeInTheDocument()
     expect(screen.getByText('票务预约汇总')).toBeInTheDocument()
+
+    expect(screen.getByText('项目推进')).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: '任务完成率 0%' })).toBeInTheDocument()
+    expect(screen.getByText('已完成 0 / 共 1 项任务')).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: '测算覆盖率 100%' })).toBeInTheDocument()
+    expect(screen.getByText('项目状态分布')).toBeInTheDocument()
+    expect(screen.getAllByText('已测算').length).toBe(2)
+    expect(screen.queryByText('推进中 / 草稿')).not.toBeInTheDocument()
+  })
+
+  it('renders quick action cards that open modules and focus the create form', async () => {
+    const user = userEvent.setup()
+    listProjects.mockResolvedValue({ data: { data: [] } })
+    listTasks.mockResolvedValue({ data: { data: [] } })
+
+    render(
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <Home role="B" />
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByRole('heading', { name: '艺人智策' })).toBeInTheDocument()
+    const moduleLinks = screen.getAllByRole('link', { name: /进入模块/ })
+    expect(moduleLinks[0]).toHaveAttribute('href', '/artist')
+    expect(moduleLinks[1]).toHaveAttribute('href', '/generate')
+    await user.click(screen.getByRole('button', { name: /填写项目信息/ }))
+    expect(screen.getByLabelText('项目名称')).toHaveFocus()
+  })
+
+  it('opens the project more-menu and shares the project report', async () => {
+    const user = userEvent.setup()
+    shareReport.mockResolvedValue({
+      data: { data: { share_url: '/shared/reports/abc123', expires_in_days: 7 } },
+    })
+    listProjects.mockResolvedValue({
+      data: {
+        data: [{
+          id: 1,
+          name: '北京大型演唱会测算',
+          artist_name: '周杰伦',
+          city: '北京',
+          venue: '国家体育场',
+          status: 'calculated',
+        }],
+      },
+    })
+    listTasks.mockResolvedValue({ data: { data: [] } })
+
+    render(
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <Home role="B" />
+      </MemoryRouter>,
+    )
+
+    await screen.findByText('北京大型演唱会测算')
+    await user.click(screen.getByRole('button', { name: '北京大型演唱会测算更多操作' }))
+
+    expect(screen.getByRole('menuitem', { name: '查看详情' })).toHaveAttribute('href', '/projects/1')
+    await user.click(screen.getByRole('menuitem', { name: '分享报告' }))
+
+    await waitFor(() => {
+      expect(shareReport).toHaveBeenCalledWith(1, { expires_in_days: 7 })
+    })
+    expect(await screen.findByText(/报告分享链接已生成/)).toBeInTheDocument()
+  })
+
+  it('closes the project more-menu when clicking outside', async () => {
+    const user = userEvent.setup()
+    listProjects.mockResolvedValue({
+      data: {
+        data: [{ id: 1, name: '北京大型演唱会测算', status: 'draft' }],
+      },
+    })
+    listTasks.mockResolvedValue({ data: { data: [] } })
+
+    render(
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <Home role="B" />
+      </MemoryRouter>,
+    )
+
+    await screen.findByText('北京大型演唱会测算')
+    await user.click(screen.getByRole('button', { name: '北京大型演唱会测算更多操作' }))
+    expect(screen.getByRole('menu')).toBeInTheDocument()
+
+    await user.click(document.body)
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+  })
+
+  it('checks off a pending task with a result and moves it into the completed group', async () => {
+    const user = userEvent.setup()
+    listProjects.mockResolvedValue({
+      data: {
+        data: [{
+          id: 1,
+          name: '北京大型演唱会测算',
+          artist_name: '周杰伦',
+          city: '北京',
+          venue: '国家体育场',
+          status: 'calculated',
+        }],
+      },
+    })
+    listTasks.mockResolvedValue({
+      data: {
+        data: [{
+          id: 11,
+          project_id: 1,
+          title: '确认场地安全资料',
+          description: '补齐场地方安全承诺',
+          status: 'pending',
+          due_date: '2026-08-01',
+        }],
+      },
+    })
+    submitTask.mockResolvedValue({
+      data: {
+        data: {
+          id: 11,
+          project_id: 1,
+          title: '确认场地安全资料',
+          description: '补齐场地方安全承诺',
+          status: 'submitted',
+          due_date: '2026-08-01',
+          result: '资料已上传',
+        },
+      },
+    })
+
+    render(
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <Home role="B" />
+      </MemoryRouter>,
+    )
+
+    await screen.findByText('确认场地安全资料')
+    expect(screen.getByText('已完成 0 / 共 1 项任务')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '标记「确认场地安全资料」完成' }))
+
+    const resultInput = screen.getByLabelText('确认场地安全资料完成结果')
+    await user.type(resultInput, '资料已上传')
+    await user.click(screen.getByRole('button', { name: '提交完成' }))
+
+    await waitFor(() => {
+      expect(submitTask).toHaveBeenCalledWith(11, { result: '资料已上传', evidence_ids: [] })
+    })
+    expect(await screen.findByText('任务「确认场地安全资料」已提交，等待负责人核验。')).toBeInTheDocument()
+    expect(screen.getByText('已完成 1 / 共 1 项任务')).toBeInTheDocument()
   })
 
   it('keeps showing projects when dashboard or ticketing summary is unavailable', async () => {

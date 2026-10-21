@@ -10,6 +10,9 @@ import {
   FormField,
   KeyValueGrid,
   LifecycleTimeline,
+  MetricGrid,
+  ProgressRing,
+  ScenarioBars,
   ScreenHeader,
   ScreenHero,
   ScreenState,
@@ -18,6 +21,7 @@ import {
   ValueEvidencePanel,
   VariancePanel,
   WorkBriefing,
+  formatWan,
 } from './index'
 
 vi.mock('@tarojs/components', () => ({
@@ -224,5 +228,83 @@ describe('ScreenPrimitives', () => {
     expect(screen.getByText('售票')).toBeInTheDocument()
     expect(screen.getByText('预测利润')).toBeInTheDocument()
     expect(screen.getByText('-400000')).toBeInTheDocument()
+  })
+
+  it('renders KPI metric cards and hides an empty grid', () => {
+    const view = render(
+      <MetricGrid items={[
+        { label: '项目总数', value: '12', hint: '进行中 5' },
+        { label: '风险告警', value: '2', tone: 'danger' },
+      ]} />,
+    )
+
+    expect(screen.getByText('12')).toBeInTheDocument()
+    expect(screen.getByText('项目总数')).toBeInTheDocument()
+    expect(screen.getByText('进行中 5')).toBeInTheDocument()
+    expect(screen.getByText('2')).toBeInTheDocument()
+
+    view.rerender(<MetricGrid items={[]} />)
+    expect(screen.queryByText('项目总数')).not.toBeInTheDocument()
+  })
+
+  it('invokes the metric card tap handler only for actionable cards', () => {
+    const onTap = vi.fn()
+    render(
+      <MetricGrid items={[
+        { label: '待办任务', value: '3', onTap },
+        { label: '全部项目', value: '8' },
+      ]} />,
+    )
+
+    fireEvent.click(screen.getByText('待办任务'))
+    expect(onTap).toHaveBeenCalledOnce()
+    fireEvent.click(screen.getByText('全部项目'))
+    expect(onTap).toHaveBeenCalledTimes(1)
+  })
+
+  it('renders a progress ring with clamped arc and accessible label', () => {
+    const view = render(<ProgressRing percent={72} label='项目进度' caption='已完成 72% · 剩余 28%' />)
+
+    expect(screen.getByText('72%')).toBeInTheDocument()
+    expect(screen.getByText('项目进度')).toBeInTheDocument()
+    expect(screen.getByText('已完成 72% · 剩余 28%')).toBeInTheDocument()
+    // jsdom 会丢弃 conic-gradient 声明，但保留 CSS 自定义属性，足以验证弧度换算
+    const ringStyle = screen.getByRole('img', { name: '项目进度 72%' }).getAttribute('style') ?? ''
+    expect(ringStyle).toContain('--ring-progress: 259.2deg')
+
+    view.rerender(<ProgressRing percent={150} label='售票进度' />)
+    expect(screen.getByText('150%')).toBeInTheDocument()
+    const overshootStyle = screen.getByRole('img', { name: '售票进度 150%' }).getAttribute('style') ?? ''
+    expect(overshootStyle).toContain('--ring-progress: 360deg')
+  })
+
+  it('renders diverging scenario bars with compact wan values and filters missing data', () => {
+    render(
+      <ScenarioBars
+        title='三情景利润对比'
+        items={[
+          { label: '保守', value: -128600 },
+          { label: '中性', value: 1181900 },
+          { label: '乐观', value: null },
+        ]}
+        note='同一公式版本'
+      />,
+    )
+
+    expect(screen.getByText('三情景利润对比')).toBeInTheDocument()
+    expect(screen.getByText('-12.9万')).toBeInTheDocument()
+    expect(screen.getByText('118.2万')).toBeInTheDocument()
+    expect(screen.queryByText('乐观')).not.toBeInTheDocument()
+    expect(screen.getByText('同一公式版本')).toBeInTheDocument()
+  })
+
+  it('does not render scenario bars without numeric values and formats wan compactly', () => {
+    const { container } = render(
+      <ScenarioBars title='空图表' items={[{ label: '中性', value: null }]} />,
+    )
+    expect(container).toBeEmptyDOMElement()
+    expect(formatWan(2235300)).toBe('223.5万')
+    expect(formatWan(9800)).toBe('9800')
+    expect(formatWan(123000000)).toBe('1.2亿')
   })
 })

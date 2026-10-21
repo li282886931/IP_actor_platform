@@ -128,18 +128,73 @@ const calibrationWxml = `
     <view class="item"><view class="item-main"><view class="item-title">实际利润</view></view><view class="badge">{{options.calibration_loop.actual_profit}}</view></view>
   </view>`
 
+const metricGridWxml = `
+  <view wx:if="{{options.metrics.length}}" class="metric-grid">
+    <view
+      wx:for="{{options.metrics}}"
+      wx:key="label"
+      class="metric-card {{item.url ? 'metric-card-tap' : ''}}"
+      data-url="{{item.url}}"
+      data-tab="{{item.tab}}"
+      bindtap="onMetricTap"
+    >
+      <view class="metric-value metric-value-{{item.tone}}">{{item.value}}</view>
+      <view class="metric-label">{{item.label}}</view>
+      <view wx:if="{{item.hint}}" class="metric-hint">{{item.hint}}</view>
+    </view>
+  </view>`
+
+const breakevenRingWxml = `
+  <view wx:if="{{options.breakevenRing}}" class="ring-panel">
+    <view class="ring-chart" style="{{options.breakevenRing.style}}">
+      <view class="ring-inner"><view class="ring-value">{{options.breakevenRing.percent}}%</view></view>
+    </view>
+    <view class="ring-meta">
+      <view class="ring-label">{{options.breakevenRing.label}}</view>
+      <view class="ring-caption">{{options.breakevenRing.caption}}</view>
+    </view>
+  </view>`
+
+const scenarioBarsWxml = `
+  <view wx:if="{{options.scenarioBars.length}}" class="panel">
+    <view class="panel-title">三情景利润对比</view>
+    <view wx:for="{{options.scenarioBars}}" wx:key="label" class="bar-row">
+      <view class="bar-label">{{item.label}}</view>
+      <view class="bar-track"><view class="bar-zero"></view><view class="bar-fill {{item.negative ? 'negative' : 'positive'}}" style="{{item.fillStyle}}"></view></view>
+      <view class="bar-value {{item.negative ? 'negative' : ''}}">{{item.valueText}}</view>
+    </view>
+    <view class="bar-note">同一测算公式版本 · 金额单位为元</view>
+  </view>`
+
+const ticketingRingWxml = `
+  <view wx:if="{{options.ticketingRing}}" class="ring-panel">
+    <view class="ring-chart" style="{{options.ticketingRing.style}}">
+      <view class="ring-inner"><view class="ring-value">{{options.ticketingRing.percent}}%</view></view>
+    </view>
+    <view class="ring-meta">
+      <view class="ring-label">{{options.ticketingRing.label}}</view>
+      <view class="ring-caption">{{options.ticketingRing.caption}}</view>
+    </view>
+  </view>`
+
 export const buildScreenWxml = (screenId, { includeBack = false } = {}) => {
   const projectSearch = ['S13', 'S14', 'S15', 'S16'].includes(screenId) ? projectSearchWxml : ''
   const financeCalculation = screenId === 'S25' ? financeCalculationWxml : ''
   const taskScreen = screenId === 'S56'
   const planScreen = screenId === 'S53'
-  const pptV2 = screenId === 'S04' ? valueEvidenceWxml
-    : ['S11', 'S25'].includes(screenId) ? cockpitWxml
-    : screenId === 'S52' ? workBriefingWxml
-    : screenId === 'S53' ? projectWorkWxml
-    : screenId === 'S66' ? calibrationWxml
-    : ''
-  const pptSection = pptV2 ? `\n${pptV2}` : ''
+  const specialPanels = []
+  if (['S04', 'S10', 'S52'].includes(screenId)) specialPanels.push(metricGridWxml)
+  if (screenId === 'S04') specialPanels.push(valueEvidenceWxml)
+  if (['S11', 'S25'].includes(screenId)) {
+    specialPanels.push(cockpitWxml)
+    specialPanels.push(breakevenRingWxml)
+  }
+  if (screenId === 'S25') specialPanels.push(scenarioBarsWxml)
+  if (screenId === 'S52') specialPanels.push(workBriefingWxml)
+  if (screenId === 'S53') specialPanels.push(projectWorkWxml)
+  if (screenId === 'S64') specialPanels.push(ticketingRingWxml)
+  if (screenId === 'S66') specialPanels.push(calibrationWxml)
+  const pptSection = specialPanels.length ? `\n${specialPanels.join('\n')}` : ''
   return `<view class="page">${includeBack ? '\n  <button class="home-button" bindtap="onBackTap">‹</button>' : ''}
   <view class="hero">
     <view class="eyebrow">{{screen.group}} · {{screen.id}}</view>

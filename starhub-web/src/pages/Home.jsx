@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import {
@@ -12,8 +12,12 @@ import {
   listProjects,
   listShows,
   listTasks,
+  shareReport,
+  submitTask,
 } from '../api'
 import ShowCard from '../components/ShowCard'
+import CardMenu from '../components/CardMenu'
+import { ProgressRing, SegmentedBar } from '../components/Charts'
 import { MetricIcon } from '../components/icons'
 
 const dashboardByRole = {
@@ -167,6 +171,9 @@ function BusinessWorkbench() {
   const [projectActionStatus, setProjectActionStatus] = useState({})
   const [message, setMessage] = useState('')
   const [messageTone, setMessageTone] = useState('success')
+  const [completingTaskId, setCompletingTaskId] = useState(null)
+  const [quickTaskResult, setQuickTaskResult] = useState('')
+  const createNameInputRef = useRef(null)
   const [form, setForm] = useState({
     name: '',
     artist_name: '',
@@ -388,6 +395,43 @@ function BusinessWorkbench() {
     }
   }
 
+  const focusCreateForm = () => {
+    createNameInputRef.current?.focus()
+    createNameInputRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'center' })
+  }
+
+  const handleQuickCompleteTask = async (task) => {
+    const result = quickTaskResult.trim()
+    if (!result) {
+      setMessageTone('error')
+      setMessage('请填写任务结果后再标记完成。')
+      return
+    }
+    try {
+      const response = await submitTask(task.id, { result, evidence_ids: [] })
+      setTasks((current) => current.map((item) => (item.id === task.id ? response.data.data : item)))
+      setCompletingTaskId(null)
+      setQuickTaskResult('')
+      setMessageTone('success')
+      setMessage(`任务「${task.title}」已提交，等待负责人核验。`)
+    } catch {
+      setMessageTone('error')
+      setMessage('任务提交失败，请刷新后重试。')
+    }
+  }
+
+  const handleShareProject = async (projectId, close) => {
+    try {
+      const response = await shareReport(projectId, { expires_in_days: 7 })
+      setMessageTone('success')
+      setMessage(`报告分享链接已生成：${response.data.data.share_url}`)
+      close()
+    } catch {
+      setMessageTone('error')
+      setMessage('分享链接生成失败，请稍后重试。')
+    }
+  }
+
   const activeProjects = projects.filter((project) => project.status !== 'archived').length
   const pendingTasks = tasks.filter((task) => task.status === 'pending').length
   const analyticsSummary = analytics?.summary || {}
@@ -401,6 +445,19 @@ function BusinessWorkbench() {
     { label: '待办任务', value: String(analyticsSummary.pending_tasks ?? pendingTasks), delta: 'Agent / 人工任务池', tone: (analyticsSummary.pending_tasks ?? pendingTasks) ? 'danger' : undefined },
   ]
 
+  const doneTasks = tasks.filter((task) => task.status === 'submitted' || task.status === 'completed').length
+  const taskCompletion = tasks.length ? (doneTasks / tasks.length) * 100 : 0
+  const calculatedProjects = analyticsSummary.calculated_projects
+    ?? projects.filter((project) => project.status === 'calculated').length
+  const pendingConfirmationProjects = analyticsSummary.pending_confirmation_projects
+    ?? projects.filter((project) => project.status === 'pending_confirmation').length
+  const archivedProjects = projects.filter((project) => project.status === 'archived').length
+  const draftProjects = Math.max(
+    projects.length - calculatedProjects - pendingConfirmationProjects - archivedProjects,
+    0,
+  )
+  const calculationRate = projects.length ? (calculatedProjects / projects.length) * 100 : 0
+
   return (
     <div className="page-stack">
       <section className="page-lead">
@@ -413,6 +470,68 @@ function BusinessWorkbench() {
       </section>
 
       <MetricGrid metrics={metrics} />
+
+      <section className="module-grid" aria-label="快捷操作">
+        <Link className="module-card" to="/artist">
+          <span className="module-index">01</span>
+          <h3>艺人智策</h3>
+          <p>查询艺人热度、粉丝画像与风险信号，辅助选择合作对象。</p>
+          <span className="module-link">进入模块 →</span>
+        </Link>
+        <Link className="module-card" to="/generate">
+          <span className="module-index">02</span>
+          <h3>AI 宣发</h3>
+          <p>基于项目资料生成宣发文案与投放内容，流式输出可核验。</p>
+          <span className="module-link">进入模块 →</span>
+        </Link>
+        <button type="button" className="module-card module-card-button" onClick={focusCreateForm}>
+          <span className="module-index">03</span>
+          <h3>创建项目</h3>
+          <p>录入项目名称、艺人、城市与场馆，开始第一轮财务测算。</p>
+          <span className="module-link">填写项目信息 →</span>
+        </button>
+      </section>
+
+      <section className="content-grid content-grid-wide">
+        <article className="panel">
+          <div className="panel-heading">
+            <div>
+              <span className="eyebrow">PROGRESS</span>
+              <h3>项目推进</h3>
+            </div>
+            <span className="status-badge positive">实时汇总</span>
+          </div>
+          <div className="ring-grid">
+            <ProgressRing
+              percent={taskCompletion}
+              label="任务完成率"
+              caption={`已完成 ${doneTasks} / 共 ${tasks.length} 项任务`}
+              tone="green"
+            />
+            <ProgressRing
+              percent={calculationRate}
+              label="测算覆盖率"
+              caption={`已测算 ${calculatedProjects} / ${projects.length} 个项目`}
+            />
+          </div>
+        </article>
+
+        <article className="panel">
+          <div className="panel-heading">
+            <div>
+              <span className="eyebrow">PORTFOLIO</span>
+              <h3>项目状态分布</h3>
+            </div>
+            <span className="section-count">{projects.length} 个项目</span>
+          </div>
+          <SegmentedBar segments={[
+            { label: '已测算', value: calculatedProjects, tone: 'gold' },
+            { label: '待确认', value: pendingConfirmationProjects, tone: 'amber' },
+            { label: '推进中 / 草稿', value: draftProjects, tone: 'muted' },
+            { label: '已归档', value: archivedProjects, tone: 'muted2' },
+          ]} />
+        </article>
+      </section>
 
       <section className="content-grid content-grid-wide">
         <article className="panel">
@@ -444,7 +563,23 @@ function BusinessWorkbench() {
                 return (
                   <article className="project-list-row" key={project.id}>
                     <div className="project-list-main">
-                      <Link className="summary-title-link" to={`/projects/${project.id}`}>{project.name}</Link>
+                      <div className="project-row-title">
+                        <Link className="summary-title-link" to={`/projects/${project.id}`}>{project.name}</Link>
+                        <CardMenu ariaLabel={`${project.name}更多操作`}>
+                          {({ close }) => (
+                            <>
+                              <Link role="menuitem" to={`/projects/${project.id}`} onClick={close}>查看详情</Link>
+                              <button
+                                type="button"
+                                role="menuitem"
+                                onClick={() => handleShareProject(project.id, close)}
+                              >
+                                分享报告
+                              </button>
+                            </>
+                          )}
+                        </CardMenu>
+                      </div>
                       <small>{[project.artist_name, project.city, project.venue].filter(Boolean).join(' · ') || '基础信息待补充'}</small>
                       {(neutralScenario || financeResult?.breakeven_attendance) && (
                         <div className="project-list-metrics">
@@ -594,31 +729,95 @@ function BusinessWorkbench() {
           {tasks.length === 0 ? (
             <div className="state-panel">暂无待办任务</div>
           ) : (
-            <div className="activity-list">
-              {tasks.map((task) => {
-                const project = projectsById[task.project_id]
-                const projectName = task.project_name || project?.name || `项目 #${task.project_id}`
-                const taskSummary = task.result || task.description || '待补充执行说明'
-                const evidenceCount = task.evidence_count ?? (Array.isArray(task.evidence_ids) ? task.evidence_ids.length : 0)
-                return (
-                  <div className="task-card" key={task.id}>
-                    <span className={`activity-mark ${taskTone(task.status)}`} />
-                    <div className="task-card-body">
-                      <div className="task-card-head">
-                        <strong>{task.title}</strong>
-                        <span className={`status-badge ${taskTone(task.status)}`}>{formatTaskStatus(task.status)}</span>
+            <div className="task-groups">
+              <div className="task-group">
+                <div className="task-group-head">
+                  <span>待处理</span>
+                  <small>{tasks.filter((task) => task.status === 'pending').length} 项</small>
+                </div>
+                <div className="activity-list">
+                  {tasks.filter((task) => task.status === 'pending').map((task) => {
+                    const project = projectsById[task.project_id]
+                    const projectName = task.project_name || project?.name || `项目 #${task.project_id}`
+                    const taskSummary = task.result || task.description || '待补充执行说明'
+                    const evidenceCount = task.evidence_count ?? (Array.isArray(task.evidence_ids) ? task.evidence_ids.length : 0)
+                    const completing = completingTaskId === task.id
+                    return (
+                      <div className="task-card" key={task.id}>
+                        <button
+                          type="button"
+                          className={`task-check${completing ? ' active' : ''}`}
+                          aria-label={`标记「${task.title}」完成`}
+                          aria-pressed={completing}
+                          onClick={() => {
+                            setCompletingTaskId(completing ? null : task.id)
+                            setQuickTaskResult('')
+                          }}
+                        />
+                        <div className="task-card-body">
+                          <div className="task-card-head">
+                            <strong>{task.title}</strong>
+                            <span className={`status-badge ${taskTone(task.status)}`}>{formatTaskStatus(task.status)}</span>
+                          </div>
+                          <small>{`${projectName} · 截止 ${task.due_date || '待设置'}`}</small>
+                          <p>{taskSummary}</p>
+                          {completing && (
+                            <div className="task-quick-complete">
+                              <input
+                                value={quickTaskResult}
+                                onChange={(event) => setQuickTaskResult(event.target.value)}
+                                placeholder="填写完成结果，提交后等待负责人核验"
+                                aria-label={`${task.title}完成结果`}
+                              />
+                              <button type="button" className="button button-primary" onClick={() => handleQuickCompleteTask(task)}>
+                                提交完成
+                              </button>
+                            </div>
+                          )}
+                          <div className="task-card-foot">
+                            <small>{task.assignee_name ? `负责人：${task.assignee_name}` : '负责人待分配'}</small>
+                            <small>{`证据 ${evidenceCount} 份`}</small>
+                            <Link className="summary-title-link" to={`/projects/${task.project_id}`}>查看项目</Link>
+                          </div>
+                        </div>
                       </div>
-                      <small>{`${projectName} · 截止 ${task.due_date || '待设置'}`}</small>
-                      <p>{taskSummary}</p>
-                      <div className="task-card-foot">
-                        <small>{task.assignee_name ? `负责人：${task.assignee_name}` : '负责人待分配'}</small>
-                        <small>{`证据 ${evidenceCount} 份`}</small>
-                        <Link className="summary-title-link" to={`/projects/${task.project_id}`}>查看项目</Link>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <div className="task-group">
+                <div className="task-group-head">
+                  <span>已完成</span>
+                  <small>{tasks.filter((task) => task.status !== 'pending').length} 项</small>
+                </div>
+                <div className="activity-list">
+                  {tasks.filter((task) => task.status !== 'pending').map((task) => {
+                    const project = projectsById[task.project_id]
+                    const projectName = task.project_name || project?.name || `项目 #${task.project_id}`
+                    const taskSummary = task.result || task.description || '待补充执行说明'
+                    const evidenceCount = task.evidence_count ?? (Array.isArray(task.evidence_ids) ? task.evidence_ids.length : 0)
+                    return (
+                      <div className="task-card task-card-done" key={task.id}>
+                        <span className="task-check checked" aria-hidden="true">✓</span>
+                        <div className="task-card-body">
+                          <div className="task-card-head">
+                            <strong>{task.title}</strong>
+                            <span className={`status-badge ${taskTone(task.status)}`}>{formatTaskStatus(task.status)}</span>
+                          </div>
+                          <small>{`${projectName} · 截止 ${task.due_date || '待设置'}`}</small>
+                          <p>{taskSummary}</p>
+                          <div className="task-card-foot">
+                            <small>{task.assignee_name ? `负责人：${task.assignee_name}` : '负责人待分配'}</small>
+                            <small>{`证据 ${evidenceCount} 份`}</small>
+                            <Link className="summary-title-link" to={`/projects/${task.project_id}`}>查看项目</Link>
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  </div>
-                )
-              })}
+                    )
+                  })}
+                </div>
+              </div>
             </div>
           )}
         </article>
@@ -662,7 +861,7 @@ function BusinessWorkbench() {
           <div className="form-grid">
             <label className="field">
               <span>项目名称</span>
-              <input value={form.name} onChange={(event) => handleFieldChange('name', event.target.value)} />
+              <input ref={createNameInputRef} value={form.name} onChange={(event) => handleFieldChange('name', event.target.value)} />
             </label>
             <label className="field">
               <span>艺人</span>

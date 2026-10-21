@@ -10,7 +10,10 @@ import {
   FormField,
   KeyValueGrid,
   LifecycleTimeline,
+  MetricGrid,
+  ProgressRing,
   ProjectWorkPanel,
+  ScenarioBars,
   ScreenHeader,
   ScreenHero,
   ScreenState,
@@ -19,6 +22,7 @@ import {
   ValueEvidencePanel,
   VariancePanel,
   WorkBriefing,
+  type MetricItem,
 } from '@/components/ScreenPrimitives'
 import { useProjectDraft } from '@/hooks/useProjectDraft'
 import { useMiniappScreenData } from '@/hooks/useMiniappScreenData'
@@ -686,7 +690,87 @@ export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
     recommendation?: string
     human_gate?: string
   } | undefined
-  const ticketingLoop = options.ticketing_loop as { current_sold_count?: number | null } | undefined
+  const ticketingLoop = options.ticketing_loop as {
+    current_sold_count?: number | null
+    forecast_attendance?: number | null
+    attendance_variance?: number | null
+  } | undefined
+  const projectOption = options.project as { venue_capacity?: number | null } | undefined
+  const availableProjects = Array.isArray(options.available_projects)
+    ? options.available_projects as Array<{ id?: number; name?: string; status?: string }>
+    : []
+
+  const dashboardMetrics: MetricItem[] = useMemo(() => {
+    if (screenId === 'S04') {
+      const countByStatus = (status: string) => items.filter((item) => item.status === status).length
+      return [
+        { label: '全部演出', value: String(items.length), hint: '来自真实演出数据' },
+        { label: '售票中', value: String(countByStatus('on_sale')), tone: 'success' },
+        { label: '已完成案例', value: String(countByStatus('completed')) },
+        { label: '待评估机会', value: String(countByStatus('opportunity')) },
+      ]
+    }
+    if (screenId === 'S10') {
+      const active = items.filter((item) => item.status !== 'archived').length
+      const calculated = items.filter((item) => item.status === 'calculated').length
+      const pendingConfirmation = items.filter((item) => item.status === 'pending_confirmation').length
+      return [
+        { label: '全部项目', value: String(items.length) },
+        { label: '进行中', value: String(active), tone: 'success' },
+        { label: '已测算', value: String(calculated) },
+        { label: '待确认', value: String(pendingConfirmation), tone: pendingConfirmation ? 'warning' : 'default' },
+      ]
+    }
+    if (screenId === 'S52') {
+      const activeProjectCount = briefing?.active_project_count ?? availableProjects.length
+      return [
+        {
+          label: '待办任务',
+          value: String(items.length),
+          tone: items.length ? 'danger' : 'default',
+          onTap: () => { void navigateToScreen('S55') },
+        },
+        {
+          label: '进行中项目',
+          value: String(activeProjectCount),
+          tone: 'success',
+          onTap: () => { void Taro.switchTab({ url: routeFor('S10') }) },
+        },
+        {
+          label: '今日首要',
+          value: briefing?.top_task?.title || '无待办',
+          hint: briefing?.top_task ? briefing.top_task.project_name || '' : '',
+          onTap: briefing?.top_task?.title ? () => { void navigateToScreen('S55') } : undefined,
+        },
+      ]
+    }
+    return []
+  }, [availableProjects.length, briefing, items, screenId])
+
+  const breakevenRing = useMemo(() => {
+    if (screenId !== 'S11' && screenId !== 'S25') return null
+    const breakeven = Number(cockpit?.breakeven_attendance)
+    const capacity = screenId === 'S11'
+      ? Number((cockpit?.combination as Record<string, unknown> | undefined)?.venue_capacity)
+      : Number(projectOption?.venue_capacity)
+    if (!Number.isFinite(breakeven) || breakeven <= 0 || !Number.isFinite(capacity) || capacity <= 0) return null
+    const percent = (breakeven / capacity) * 100
+    return (
+      <ProgressRing
+        percent={percent}
+        label='保本上座率'
+        caption={`保本 ${breakeven.toLocaleString('zh-CN')} 人 · 容量 ${capacity.toLocaleString('zh-CN')} 人`}
+        tone={percent > 90 ? 'danger' : percent >= 75 ? 'warning' : 'gold'}
+      />
+    )
+  }, [cockpit, projectOption?.venue_capacity, screenId])
+
+  const scenarioBarItems = useMemo(() => {
+    if (screenId !== 'S25' || !cockpit?.scenarios) return []
+    const entries: Array<[string, string]> = [['conservative', '保守'], ['neutral', '中性'], ['optimistic', '乐观']]
+    return entries
+      .map(([key, label]) => ({ label, value: cockpit.scenarios?.[key]?.profit ?? null }))
+  }, [cockpit?.scenarios, screenId])
   const actualsSummary = options.actuals_summary as { actual_profit?: number | null } | undefined
   const calibrationLoop = options.calibration_loop as {
     forecast_profit?: number | null
@@ -713,11 +797,23 @@ export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
         context={`产品蓝图 · ${screen.id}`}
       />
 
+      {(screenId === 'S04' || screenId === 'S10' || screenId === 'S52') && (
+        <MetricGrid items={dashboardMetrics} />
+      )}
+
       {screenId === 'S04' && <ValueEvidencePanel evidence={valueEvidence} />}
       {(screenId === 'S11' || screenId === 'S25') && cockpit && (
         <>
           <DecisionCockpit cockpit={cockpit} />
           <ScenarioStrip scenarios={cockpit.scenarios} />
+          {breakevenRing}
+          {screenId === 'S25' && (
+            <ScenarioBars
+              title='三情景利润对比'
+              items={scenarioBarItems}
+              note='同一测算公式版本 · 金额单位为元'
+            />
+          )}
         </>
       )}
       {screenId === 'S52' && <WorkBriefing briefing={briefing} />}
@@ -726,6 +822,20 @@ export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
         <>
           <LifecycleTimeline currentStage={screenId === 'S64' ? '售票' : screenId === 'S65' ? '结算' : '校准'} />
           {screenId === 'S66' && <VariancePanel loop={calibrationLoop} />}
+          {screenId === 'S64' && ticketingLoop?.current_sold_count != null
+            && ticketingLoop.forecast_attendance
+            && (
+              <ProgressRing
+                percent={(ticketingLoop.current_sold_count / ticketingLoop.forecast_attendance) * 100}
+                label='售票进度 · 对比中性预计'
+                caption={`已售 ${ticketingLoop.current_sold_count.toLocaleString('zh-CN')} 张 · 预计 ${ticketingLoop.forecast_attendance.toLocaleString('zh-CN')} 张${
+                  ticketingLoop.attendance_variance == null
+                    ? ''
+                    : ` · 偏差 ${ticketingLoop.attendance_variance > 0 ? '+' : ''}${ticketingLoop.attendance_variance.toLocaleString('zh-CN')}`
+                }`}
+                tone={(ticketingLoop.attendance_variance ?? 0) < 0 ? 'warning' : 'success'}
+              />
+            )}
           {screenId === 'S64' && ticketingLoop?.current_sold_count !== undefined && <KeyValueGrid items={[{ label: '当前已售', value: String(ticketingLoop.current_sold_count) }]} />}
           {screenId === 'S65' && actualsSummary?.actual_profit !== undefined && <KeyValueGrid items={[{ label: '实际利润', value: String(actualsSummary.actual_profit) }]} />}
         </>

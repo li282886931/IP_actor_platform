@@ -719,6 +719,416 @@ select option {
   font-size: 10.5px;
 }
 
+/* 环形进度图 */
+.ring-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  margin-top: 22px;
+}
+
+.progress-ring-block {
+  display: flex;
+  gap: 18px;
+  align-items: center;
+  min-width: 0;
+}
+
+.progress-ring {
+  position: relative;
+  flex: 0 0 108px;
+  width: 108px;
+  height: 108px;
+  border-radius: 50%;
+}
+
+.progress-ring-inner {
+  position: absolute;
+  inset: 10px;
+  display: grid;
+  place-items: center;
+  background: var(--surface);
+  border-radius: 50%;
+}
+
+.progress-ring-inner strong {
+  font-size: 22px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+.progress-ring-meta {
+  min-width: 0;
+}
+
+.progress-ring-label {
+  display: block;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.progress-ring-meta small {
+  display: block;
+  margin-top: 6px;
+  color: var(--text-muted);
+  font-size: 11.5px;
+  line-height: 1.6;
+}
+
+/* 分歧柱状图（零线居中，正金负红） */
+.scenario-chart {
+  display: grid;
+  gap: 16px;
+  margin-top: 20px;
+}
+
+.scenario-row {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) 82px;
+  gap: 12px;
+  align-items: center;
+}
+
+.scenario-label {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.scenario-track {
+  position: relative;
+  height: 12px;
+  background: var(--surface-inset);
+  border-radius: 999px;
+}
+
+.scenario-zero {
+  position: absolute;
+  top: -5px;
+  bottom: -5px;
+  left: 50%;
+  width: 1px;
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.scenario-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 999px;
+}
+
+.scenario-fill.positive {
+  background: linear-gradient(90deg, var(--gold-deep), var(--gold-hover));
+}
+
+.scenario-fill.negative {
+  background: linear-gradient(90deg, #c66865, var(--red));
+}
+
+.scenario-value {
+  font-size: 12px;
+  font-weight: 600;
+  text-align: right;
+  color: var(--gold);
+  font-variant-numeric: tabular-nums;
+}
+
+.scenario-value.negative {
+  color: var(--red);
+}
+
+.scenario-chart-note {
+  color: var(--text-soft);
+  font-size: 11px;
+}
+
+/* 分段状态条 */
+.segmented-wrap {
+  margin-top: 22px;
+}
+
+.segmented-bar {
+  display: flex;
+  height: 14px;
+  overflow: hidden;
+  background: var(--surface-inset);
+  border-radius: 999px;
+}
+
+.segment {
+  height: 100%;
+}
+
+.segment + .segment {
+  border-left: 2px solid var(--surface);
+}
+
+.seg-gold {
+  background: linear-gradient(180deg, var(--gold-hover), var(--gold-deep));
+}
+
+.seg-amber {
+  background: var(--amber);
+}
+
+.seg-green {
+  background: var(--green);
+}
+
+.seg-muted {
+  background: #4a4a52;
+}
+
+.seg-muted2 {
+  background: #34343a;
+}
+
+.segmented-legend {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 18px;
+  margin: 16px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.segmented-legend li {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  color: var(--text-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.segmented-legend i {
+  flex: 0 0 8px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.segmented-legend strong {
+  margin-left: auto;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.segmented-empty {
+  margin-top: 22px;
+  color: var(--text-soft);
+  font-size: 12px;
+}
+
+/* 快捷操作卡片（参考图交互 ③：悬停轻微上浮） */
+.module-card-button {
+  width: 100%;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.module-card-button:hover {
+  border-color: var(--gold-border);
+  transform: translateY(-2px);
+}
+
+.module-index {
+  color: var(--text-soft);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+}
+
+.module-link {
+  display: block;
+  margin-top: 14px;
+  color: var(--gold);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* 项目卡片“…”更多操作（参考图交互 ④） */
+.project-row-title {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.project-row-title .summary-title-link {
+  min-width: 0;
+  flex: 1;
+}
+
+.summary-list > .project-list-row {
+  border-radius: 10px;
+  transition: background-color 160ms ease;
+}
+
+.summary-list > .project-list-row:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.card-menu {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.card-menu-trigger {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  color: var(--text-muted);
+  font-size: 17px;
+  line-height: 1;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: color 160ms ease, border-color 160ms ease, background-color 160ms ease;
+}
+
+.card-menu-trigger:hover,
+.card-menu.open .card-menu-trigger {
+  color: var(--gold);
+  background: var(--gold-soft);
+  border-color: rgba(212, 175, 55, 0.22);
+}
+
+.card-menu-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 40;
+  display: grid;
+  gap: 2px;
+  min-width: 148px;
+  padding: 6px;
+  background: var(--elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+}
+
+.card-menu.align-left .card-menu-popover {
+  right: auto;
+  left: 0;
+}
+
+.card-menu-popover a,
+.card-menu-popover button {
+  display: block;
+  width: 100%;
+  padding: 9px 12px;
+  margin: 0;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  text-decoration: none;
+  white-space: nowrap;
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+  cursor: pointer;
+}
+
+.card-menu-popover a:hover,
+.card-menu-popover button:hover {
+  color: var(--gold);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* 待办打勾与分组（参考图交互 ⑤：打勾后移入已完成） */
+.task-groups {
+  margin-top: 18px;
+}
+
+.task-group + .task-group {
+  margin-top: 20px;
+}
+
+.task-group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 2px 8px;
+  color: var(--text-muted);
+  font-size: 12.5px;
+  font-weight: 600;
+  border-bottom: 1px solid var(--border);
+}
+
+.task-group-head small {
+  color: var(--text-soft);
+  font-weight: 400;
+}
+
+.task-check {
+  flex: 0 0 22px;
+  width: 22px;
+  height: 22px;
+  margin-top: 2px;
+  padding: 0;
+  background: transparent;
+  border: 1.5px solid var(--border-strong);
+  border-radius: 50%;
+  cursor: pointer;
+  transition: border-color 160ms ease, background-color 160ms ease;
+}
+
+.task-check:hover,
+.task-check.active {
+  border-color: var(--gold);
+  background: var(--gold-soft);
+}
+
+.task-check.checked {
+  display: grid;
+  place-items: center;
+  color: var(--green);
+  font-size: 12px;
+  background: var(--green-soft);
+  border-color: var(--green);
+  cursor: default;
+}
+
+.task-card-done {
+  opacity: 0.72;
+}
+
+.task-quick-complete {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 10px 0 2px;
+}
+
+.task-quick-complete input {
+  flex: 1;
+  min-width: 0;
+  height: 36px;
+  padding: 0 12px;
+  color: var(--text);
+  font-size: 12.5px;
+  background: var(--surface-inset);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.task-quick-complete .button {
+  flex: 0 0 auto;
+}
+
+/* 移动端底部导航（参考图移动端适配） */
+.mobile-tabbar {
+  display: none;
+}
+
 .activity-list {
   display: grid;
   gap: 4px;
@@ -2293,34 +2703,50 @@ select:focus {
     display: block;
   }
 
+  /* 移动端隐藏桌面侧栏，改用底部标签栏（参考图移动端适配） */
   .app-sidebar {
-    position: static;
-    display: block;
-    width: 100%;
-    min-height: auto;
-    height: auto;
-    padding: 16px;
-  }
-
-  .sidebar-brand {
-    margin-bottom: 14px;
-  }
-
-  .sidebar-section-label,
-  .sidebar-status {
     display: none;
   }
 
-  .sidebar-nav {
+  .mobile-tabbar {
+    position: fixed;
+    z-index: 60;
+    right: 0;
+    bottom: 0;
+    left: 0;
     display: flex;
-    gap: 6px;
-    overflow-x: auto;
+    padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
+    background: rgba(13, 13, 15, 0.96);
+    border-top: 1px solid var(--border);
+    box-shadow: 0 -10px 28px rgba(0, 0, 0, 0.4);
   }
 
-  .sidebar-link {
-    flex: 0 0 auto;
-    min-height: 38px;
-    padding: 7px 12px;
+  .mobile-tab {
+    display: grid;
+    flex: 1 1 0;
+    gap: 3px;
+    justify-items: center;
+    padding: 6px 0;
+    color: var(--sidebar-muted);
+    font-size: 10.5px;
+    text-decoration: none;
+    border-radius: 10px;
+  }
+
+  .mobile-tab.active {
+    color: var(--gold);
+  }
+
+  .mobile-tab-icon {
+    display: grid;
+    place-items: center;
+    width: 38px;
+    height: 26px;
+    border-radius: 8px;
+  }
+
+  .mobile-tab.active .mobile-tab-icon {
+    background: var(--gold-soft);
   }
 
   .topbar {
@@ -2343,7 +2769,7 @@ select:focus {
   }
 
   .workspace-content {
-    padding: 20px 16px 30px;
+    padding: 20px 16px 96px;
   }
 
   .page-lead,
@@ -2492,5 +2918,13 @@ select:focus {
 
   .page-lead h2 {
     font-size: 23px;
+  }
+
+  .ring-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .segmented-legend {
+    grid-template-columns: 1fr;
   }
 }

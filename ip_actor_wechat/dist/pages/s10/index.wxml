@@ -5,6 +5,21 @@
     <view class="subtitle">{{screen.subtitle}}</view>
     <view class="highlight">{{screen.highlight}}</view>
   </view>
+
+  <view wx:if="{{options.metrics.length}}" class="metric-grid">
+    <view
+      wx:for="{{options.metrics}}"
+      wx:key="label"
+      class="metric-card {{item.url ? 'metric-card-tap' : ''}}"
+      data-url="{{item.url}}"
+      data-tab="{{item.tab}}"
+      bindtap="onMetricTap"
+    >
+      <view class="metric-value metric-value-{{item.tone}}">{{item.value}}</view>
+      <view class="metric-label">{{item.label}}</view>
+      <view wx:if="{{item.hint}}" class="metric-hint">{{item.hint}}</view>
+    </view>
+  </view>
   <view wx:if="{{isForm}}" class="panel">
     <view class="panel-title">输入与联调</view>
     <input wx:if="{{screen.id !== 'S25'}}" class="input" value="{{keyword}}" bindinput="onInput" placeholder="{{placeholder}}" />

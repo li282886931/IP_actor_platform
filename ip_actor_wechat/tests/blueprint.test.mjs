@@ -1024,6 +1024,266 @@ test('generated runtime keeps an empty list and retry state after request failur
   }
 })
 
+test('generates metric, ring and scenario chart fragments only on chart screens', async () => {
+  const templates = await import(resolve(root, 'tools/wechat-screen-templates.mjs'))
+
+  for (const screenId of ['S04', 'S10', 'S52']) {
+    assert.match(templates.buildScreenWxml(screenId), /class="metric-grid"/)
+  }
+  assert.match(templates.buildScreenWxml('S11'), /options\.breakevenRing/)
+  const s25 = templates.buildScreenWxml('S25')
+  assert.match(s25, /options\.breakevenRing/)
+  assert.match(s25, /options\.scenarioBars/)
+  assert.match(s25, /三情景利润对比/)
+  assert.match(templates.buildScreenWxml('S64'), /options\.ticketingRing/)
+
+  for (const screenId of ['S13', 'S56', 'S66']) {
+    const wxml = templates.buildScreenWxml(screenId)
+    assert.doesNotMatch(wxml, /metric-grid/)
+    assert.doesNotMatch(wxml, /ring-panel/)
+  }
+  const s25Wxss = readFileSync(resolve(root, 'dist/pages/s25/index.wxss'), 'utf8')
+  assert.match(s25Wxss, /\.ring-panel/)
+  assert.match(s25Wxss, /conic-gradient/)
+})
+
+test('generated runtime derives metric cards, progress rings and scenario bars from real payloads', async () => {
+  const runtimePath = resolve(root, 'dist/common/runtime.js')
+  const payloads = {
+    S25: {
+      screen_id: 'S25',
+      summary: { title: '三种情况，分别怎么算' },
+      items: [],
+      options: {
+        project: { venue_capacity: 12000 },
+        finance_cockpit: {
+          status: 'calculated',
+          breakeven_attendance: 7581,
+          scenarios: {
+            conservative: { profit: 128600, attendance: 6500 },
+            neutral: { profit: 1181900, attendance: 9600 },
+            optimistic: { profit: 2235300, attendance: 11400 },
+          },
+        },
+      },
+      context: {},
+      empty_state: null,
+    },
+    S04: {
+      screen_id: 'S04',
+      summary: { title: '发现演出' },
+      items: [
+        { id: 'show-1', title: '售票演出', status: 'on_sale', context: {} },
+        { id: 'show-2', title: '完成案例', status: 'completed', context: {} },
+      ],
+      options: {},
+      context: {},
+      empty_state: null,
+    },
+    S64: {
+      screen_id: 'S64',
+      summary: { title: '售票进度' },
+      items: [],
+      options: {
+        ticketing_loop: {
+          forecast_attendance: 8000,
+          current_sold_count: 7619,
+          attendance_variance: -381,
+        },
+      },
+      context: {},
+      empty_state: null,
+    },
+  }
+  let page
+  globalThis.wx = {
+    getStorageSync: () => undefined,
+    request: (options) => {
+      const screenId = options.url.match(/screens\/(S\d{2})/)[1]
+      options.success({
+        statusCode: 200,
+        data: { code: 0, data: payloads[screenId], message: 'ok' },
+      })
+    },
+    stopPullDownRefresh: () => {},
+  }
+  globalThis.Page = (definition) => {
+    page = {
+      ...definition,
+      data: { ...definition.data },
+      setData(next, callback) {
+        this.data = { ...this.data, ...next }
+        callback?.()
+      },
+    }
+  }
+
+  const require = createRequire(import.meta.url)
+  delete require.cache[runtimePath]
+  try {
+    const runtime = require(runtimePath)
+
+    runtime.createScreenPage('S25')
+    await page.fetchRemote()
+    assert.equal(page.data.options.breakevenRing.percent, 63)
+    assert.match(page.data.options.breakevenRing.caption, /保本 7,581/)
+    assert.match(page.data.options.breakevenRing.style, /conic-gradient/)
+    assert.deepEqual(page.data.options.scenarioBars.map((item) => item.valueText), ['12.9万', '118.2万', '223.5万'])
+    assert.equal(page.data.options.scenarioBars[0].negative, false)
+    assert.match(page.data.options.scenarioBars[1].fillStyle, /left:50%/)
+
+    runtime.createScreenPage('S04')
+    await page.fetchRemote()
+    assert.deepEqual(page.data.options.metrics.map((item) => item.value), ['2', '1', '1', '0'])
+
+    runtime.createScreenPage('S64')
+    await page.fetchRemote()
+    assert.equal(page.data.options.ticketingRing.percent, 95)
+    assert.match(page.data.options.ticketingRing.caption, /偏差 -381/)
+  } finally {
+    delete globalThis.wx
+    delete globalThis.Page
+    delete require.cache[runtimePath]
+  }
+})
+
+test('generated runtime omits the breakeven ring when venue capacity is missing', async () => {
+  const runtimePath = resolve(root, 'dist/common/runtime.js')
+  let page
+  globalThis.wx = {
+    getStorageSync: () => undefined,
+    request: (options) => options.success({
+      statusCode: 200,
+      data: {
+        code: 0,
+        data: {
+          screen_id: 'S25',
+          summary: { title: '财务测算' },
+          items: [],
+          options: {
+            finance_cockpit: {
+              status: 'pending_input',
+              breakeven_attendance: null,
+              scenarios: {},
+            },
+          },
+          context: {},
+          empty_state: null,
+        },
+        message: 'ok',
+      },
+    }),
+    stopPullDownRefresh: () => {},
+  }
+  globalThis.Page = (definition) => {
+    page = {
+      ...definition,
+      data: { ...definition.data },
+      setData(next, callback) {
+        this.data = { ...this.data, ...next }
+        callback?.()
+      },
+    }
+  }
+
+  const require = createRequire(import.meta.url)
+  delete require.cache[runtimePath]
+  try {
+    require(runtimePath).createScreenPage('S25')
+    await page.fetchRemote()
+    assert.equal(page.data.options.breakevenRing, null)
+    assert.deepEqual(page.data.options.scenarioBars, [])
+  } finally {
+    delete globalThis.wx
+    delete globalThis.Page
+    delete require.cache[runtimePath]
+  }
+})
+
+test('metric cards on S52 carry quick-entry targets while S04/S10 cards stay display-only', () => {
+  const s52Wxml = readFileSync(resolve(root, 'dist/pages/s52/index.wxml'), 'utf8')
+  assert.match(s52Wxml, /bindtap="onMetricTap"/)
+  assert.match(s52Wxml, /data-url="\{\{item\.url\}\}"/)
+
+  for (const screenId of ['s04', 's10']) {
+    const wxml = readFileSync(resolve(root, `dist/pages/${screenId}/index.wxml`), 'utf8')
+    assert.match(wxml, /class="metric-grid"/)
+    assert.match(wxml, /\{\{item\.url \? 'metric-card-tap' : ''\}\}/)
+  }
+
+  const s52Wxss = readFileSync(resolve(root, 'dist/pages/s52/index.wxss'), 'utf8')
+  assert.match(s52Wxss, /\.metric-card-tap:active/)
+})
+
+test('generated runtime routes metric card taps with navigateTo or switchTab', async () => {
+  const runtimePath = resolve(root, 'dist/common/runtime.js')
+  const navigations = []
+  let page
+  globalThis.wx = {
+    getStorageSync: () => undefined,
+    request: (options) => options.success({
+      statusCode: 200,
+      data: {
+        code: 0,
+        data: {
+          screen_id: 'S52',
+          summary: { title: '今日工作' },
+          items: [],
+          options: {
+            default_project_id: 42,
+            available_projects: [{ id: 42, name: '南京站', status: 'active' }],
+            work_briefing: {
+              today_change_count: 0,
+              active_project_count: 1,
+              top_task: null,
+            },
+          },
+          context: {},
+          empty_state: null,
+        },
+        message: 'ok',
+      },
+    }),
+    navigateTo: ({ url }) => navigations.push(['navigateTo', url]),
+    switchTab: ({ url }) => navigations.push(['switchTab', url]),
+    setStorageSync: () => {},
+    stopPullDownRefresh: () => {},
+  }
+  globalThis.Page = (definition) => {
+    page = {
+      ...definition,
+      data: { ...definition.data },
+      setData(next, callback) {
+        this.data = { ...this.data, ...next }
+        callback?.()
+      },
+    }
+  }
+
+  const require = createRequire(import.meta.url)
+  delete require.cache[runtimePath]
+  try {
+    require(runtimePath).createScreenPage('S52')
+    await page.fetchRemote()
+
+    assert.deepEqual(page.data.options.metrics[0].url, '/pages/s55/index')
+    assert.equal(page.data.options.metrics[1].tab, true)
+
+    page.onMetricTap({ currentTarget: { dataset: { url: '/pages/s55/index' } } })
+    page.onMetricTap({ currentTarget: { dataset: { url: '/pages/s10/index', tab: true } } })
+    page.onMetricTap({ currentTarget: { dataset: { url: '' } } })
+
+    assert.deepEqual(navigations, [
+      ['navigateTo', '/pages/s55/index'],
+      ['switchTab', '/pages/s10/index'],
+    ])
+  } finally {
+    delete globalThis.wx
+    delete globalThis.Page
+    delete require.cache[runtimePath]
+  }
+})
+
 test('keeps generated page templates and runtime state helpers in dedicated modules', async () => {
   const templatePath = resolve(root, 'tools/wechat-screen-templates.mjs')
   const helperPath = resolve(root, 'tools/wechat-runtime-helpers.mjs')

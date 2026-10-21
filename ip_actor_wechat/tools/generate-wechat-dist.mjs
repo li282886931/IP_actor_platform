@@ -403,6 +403,7 @@ const createScreenPage = (screenId) => {
           }
         }
         const emptyState = data && data.empty_state
+        const chartData = buildCharts(screenId, data)
         this.setData({
           screen: Object.assign({}, screen, data.summary || {}),
           items,
@@ -412,12 +413,20 @@ const createScreenPage = (screenId) => {
             work_briefing: null,
             project_work: null,
             calibration_loop: null,
+            metrics: [],
+            breakevenRing: null,
+            scenarioBars: [],
+            ticketingRing: null,
           }, {
             value_evidence: data.options.value_evidence || [],
             cockpit: data.options.decision_cockpit || data.options.finance_cockpit || null,
             work_briefing: data.options.work_briefing || null,
             project_work: data.options.project_work || null,
             calibration_loop: data.options.calibration_loop || null,
+            metrics: chartData.metrics,
+            breakevenRing: chartData.breakevenRing,
+            scenarioBars: chartData.scenarioBars,
+            ticketingRing: chartData.ticketingRing,
           }) : {},
           candidateGroups: data && data.options && Array.isArray(data.options.candidate_groups)
             ? data.options.candidate_groups
@@ -603,6 +612,12 @@ const createScreenPage = (screenId) => {
       if (!entityType || !entityId) return
       if (entityType === 'task') wx.setStorageSync(STORAGE_KEYS.taskId, entityId)
       wx.navigateTo({ url: detailUrl(entityType, entityId) })
+    },
+    onMetricTap(event) {
+      const url = String(event.currentTarget.dataset.url || '')
+      if (!url) return
+      if (event.currentTarget.dataset.tab) wx.switchTab({ url })
+      else wx.navigateTo({ url })
     },
     onBackTap() {
       wx.navigateBack({ delta: 1 })
@@ -978,6 +993,153 @@ const wxss = `.page {
   color: #a3a3ab;
   font-size: 22rpx;
   font-weight: 600;
+}
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16rpx;
+  margin-top: 24rpx;
+}
+.metric-card {
+  min-width: 0;
+  padding: 24rpx 28rpx;
+  background: linear-gradient(180deg, rgba(255,255,255,.025), #1b1b1e 200rpx);
+  border: 1rpx solid rgba(255,255,255,.08);
+  border-radius: 20rpx;
+  box-shadow: 0 12rpx 32rpx rgba(0,0,0,.35);
+}
+.metric-value {
+  font-size: 44rpx;
+  font-weight: 700;
+  line-height: 1.2;
+  color: #d4af37;
+  font-variant-numeric: tabular-nums;
+}
+.metric-value-success { color: #5cc793; }
+.metric-value-warning { color: #e2ab57; }
+.metric-value-danger { color: #f0837f; }
+.metric-label {
+  margin-top: 8rpx;
+  color: #a3a3ab;
+  font-size: 24rpx;
+}
+.metric-hint {
+  margin-top: 6rpx;
+  color: #8b8b93;
+  font-size: 22rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.metric-card-tap:active {
+  border-color: rgba(212, 175, 55, .3);
+  transform: scale(.97);
+}
+.ring-panel {
+  display: flex;
+  gap: 28rpx;
+  align-items: center;
+  margin-top: 24rpx;
+  padding: 28rpx 32rpx;
+  background: linear-gradient(180deg, rgba(255,255,255,.025), #1b1b1e 200rpx);
+  border: 1rpx solid rgba(255,255,255,.08);
+  border-radius: 20rpx;
+  box-shadow: 0 12rpx 32rpx rgba(0,0,0,.35);
+}
+.ring-chart {
+  position: relative;
+  flex: 0 0 168rpx;
+  width: 168rpx;
+  height: 168rpx;
+  border-radius: 50%;
+  background-image: conic-gradient(#d4af37 0deg, rgba(255,255,255,.08) 0deg);
+}
+.ring-inner {
+  position: absolute;
+  top: 16rpx;
+  right: 16rpx;
+  bottom: 16rpx;
+  left: 16rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #1b1b1e;
+  border-radius: 50%;
+}
+.ring-value {
+  font-size: 40rpx;
+  font-weight: 700;
+  color: #f5f5f5;
+  font-variant-numeric: tabular-nums;
+}
+.ring-meta {
+  flex: 1;
+  min-width: 0;
+}
+.ring-label {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #f5f5f5;
+}
+.ring-caption {
+  margin-top: 10rpx;
+  color: #8b8b93;
+  font-size: 22rpx;
+  line-height: 1.6;
+}
+.bar-row {
+  display: flex;
+  gap: 16rpx;
+  align-items: center;
+  padding: 14rpx 0;
+}
+.bar-label {
+  flex: 0 0 80rpx;
+  color: #a3a3ab;
+  font-size: 22rpx;
+}
+.bar-track {
+  position: relative;
+  flex: 1;
+  height: 24rpx;
+  background: #202024;
+  border-radius: 999rpx;
+}
+.bar-zero {
+  position: absolute;
+  top: -6rpx;
+  bottom: -6rpx;
+  left: 50%;
+  width: 2rpx;
+  background: rgba(255,255,255,.22);
+}
+.bar-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 999rpx;
+}
+.bar-fill.positive {
+  background: linear-gradient(90deg, #b8932a, #e7c65c);
+}
+.bar-fill.negative {
+  background: linear-gradient(90deg, #c66865, #f0837f);
+}
+.bar-value {
+  flex: 0 0 132rpx;
+  color: #d4af37;
+  font-size: 22rpx;
+  font-weight: 600;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.bar-value.negative {
+  color: #f0837f;
+}
+.bar-note {
+  margin-top: 12rpx;
+  color: #6f6f78;
+  font-size: 20rpx;
 }
 `
 

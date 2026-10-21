@@ -534,6 +534,175 @@ describe('BlueprintScreen aggregated loading', () => {
     expect(taroMocks.storage.get('starhub-project-id')).toBe(99)
   })
 
+  it('renders KPI metric cards on the discovery homepage from real show statuses', async () => {
+    taroMocks.getMiniappScreen.mockResolvedValue(response({
+      screen_id: 'S04',
+      summary: { title: '发现演出' },
+      items: [
+        { id: 'show-1', entity_type: 'show', title: '售票演出', description: '', status: 'on_sale', context: {} },
+        { id: 'show-2', entity_type: 'show', title: '完成案例', description: '', status: 'completed', context: {} },
+      ],
+    }))
+
+    render(<BlueprintScreen screenId='S04' />)
+    await screen.findByText('发现演出')
+
+    expect(screen.getByText('全部演出')).toBeInTheDocument()
+    expect(screen.getAllByText('售票中').length).toBe(2)
+    expect(screen.getByText('已完成案例')).toBeInTheDocument()
+    expect(screen.getByText('待评估机会')).toBeInTheDocument()
+  })
+
+  it('renders project portfolio KPI cards on the project tab', async () => {
+    taroMocks.getMiniappScreen.mockResolvedValue(response({
+      screen_id: 'S10',
+      summary: { title: '我的项目' },
+      items: [
+        { id: 'project-1', entity_type: 'project', title: '已测算项目', description: '', status: 'calculated', context: {} },
+        { id: 'project-2', entity_type: 'project', title: '待确认项目', description: '', status: 'pending_confirmation', context: {} },
+        { id: 'project-3', entity_type: 'project', title: '归档项目', description: '', status: 'archived', context: {} },
+      ],
+    }))
+
+    render(<BlueprintScreen screenId='S10' />)
+    await screen.findByText('我的项目')
+
+    expect(screen.getByText('全部项目')).toBeInTheDocument()
+    expect(screen.getByText('进行中')).toBeInTheDocument()
+    expect(screen.getAllByText('已测算').length).toBe(2)
+    expect(screen.getAllByText('待确认').length).toBe(2)
+  })
+
+  it('renders the S52 work KPI cards from the briefing payload', async () => {
+    taroMocks.getMiniappScreen.mockResolvedValue(response({
+      screen_id: 'S52',
+      summary: { title: '今日工作' },
+      items: [],
+      options: {
+        default_project_id: 42,
+        available_projects: [{ id: 42, name: '南京站', status: 'active' }],
+        work_briefing: {
+          today_change_count: 2,
+          active_project_count: 1,
+          top_task: { title: '确认场馆报价', status: 'pending', project_name: '南京站' },
+        },
+      },
+    }))
+
+    render(<BlueprintScreen screenId='S52' />)
+    await screen.findByText('今日工作')
+
+    expect(screen.getByText('待办任务')).toBeInTheDocument()
+    expect(screen.getByText('进行中项目')).toBeInTheDocument()
+    expect(screen.getByText('今日首要')).toBeInTheDocument()
+    expect(screen.getAllByText('确认场馆报价').length).toBeGreaterThan(0)
+  })
+
+  it('uses S52 metric cards as quick entries to the task list and project tab', async () => {
+    taroMocks.getMiniappScreen.mockResolvedValue(response({
+      screen_id: 'S52',
+      summary: { title: '今日工作' },
+      items: [],
+      options: {
+        default_project_id: 42,
+        available_projects: [{ id: 42, name: '南京站', status: 'active' }],
+        work_briefing: {
+          today_change_count: 2,
+          active_project_count: 1,
+          top_task: { title: '确认场馆报价', status: 'pending', project_name: '南京站' },
+        },
+      },
+    }))
+
+    render(<BlueprintScreen screenId='S52' />)
+    await screen.findByText('今日工作')
+
+    fireEvent.click(screen.getByText('待办任务'))
+    expect(taroMocks.navigateTo).toHaveBeenCalledWith({ url: '/pages/s55/index' })
+
+    fireEvent.click(screen.getByText('进行中项目'))
+    expect(taroMocks.switchTab).toHaveBeenCalledWith({ url: '/pages/s10/index' })
+
+    fireEvent.click(screen.getByText('今日首要'))
+    expect(taroMocks.navigateTo).toHaveBeenLastCalledWith({ url: '/pages/s55/index' })
+  })
+
+  it('renders the breakeven progress ring and scenario bars on the finance screen', async () => {
+    taroMocks.getMiniappScreen.mockResolvedValue(response({
+      screen_id: 'S25',
+      summary: { title: '三种情况，分别怎么算' },
+      items: [],
+      options: {
+        project: { venue_capacity: 12000 },
+        finance_cockpit: {
+          status: 'calculated',
+          breakeven_attendance: 7581,
+          neutral_profit: 1181900,
+          missing_fields: [],
+          scenarios: {
+            conservative: { profit: 128600, attendance: 6500 },
+            neutral: { profit: 1181900, attendance: 9600 },
+            optimistic: { profit: 2235300, attendance: 11400 },
+          },
+        },
+      },
+    }))
+
+    render(<BlueprintScreen screenId='S25' />)
+    await screen.findByText('三种情况，分别怎么算')
+
+    expect(screen.getByRole('img', { name: '保本上座率 63%' })).toBeInTheDocument()
+    expect(screen.getByText('保本上座率')).toBeInTheDocument()
+    expect(screen.getByText('三情景利润对比')).toBeInTheDocument()
+    expect(screen.getByText('12.9万')).toBeInTheDocument()
+    expect(screen.getByText('118.2万')).toBeInTheDocument()
+    expect(screen.getByText('223.5万')).toBeInTheDocument()
+  })
+
+  it('does not fabricate a breakeven ring when venue capacity is missing', async () => {
+    taroMocks.getMiniappScreen.mockResolvedValue(response({
+      screen_id: 'S25',
+      summary: { title: '财务测算' },
+      items: [],
+      options: {
+        finance_cockpit: {
+          status: 'pending_input',
+          breakeven_attendance: null,
+          missing_fields: ['expected_attendance'],
+          scenarios: {},
+        },
+      },
+    }))
+
+    render(<BlueprintScreen screenId='S25' />)
+    await screen.findByText('财务测算')
+
+    expect(screen.queryByRole('img')).not.toBeInTheDocument()
+    expect(screen.queryByText('三情景利润对比')).not.toBeInTheDocument()
+  })
+
+  it('renders the S64 ticketing progress ring against the neutral forecast', async () => {
+    taroMocks.getMiniappScreen.mockResolvedValue(response({
+      screen_id: 'S64',
+      summary: { title: '售票进度' },
+      items: [],
+      options: {
+        ticketing_loop: {
+          forecast_attendance: 8000,
+          current_sold_count: 7619,
+          attendance_variance: -381,
+        },
+      },
+    }))
+
+    render(<BlueprintScreen screenId='S64' />)
+    await screen.findByText('售票进度')
+
+    expect(screen.getByRole('img', { name: '售票进度 · 对比中性预计 95%' })).toBeInTheDocument()
+    expect(screen.getByText(/已售 7,619/)).toBeInTheDocument()
+    expect(screen.getByText(/偏差 -381/)).toBeInTheDocument()
+  })
+
   it('returns from S52 to the project list when no project is available', async () => {
     taroMocks.getMiniappScreen.mockResolvedValue(response({
       screen_id: 'S52',

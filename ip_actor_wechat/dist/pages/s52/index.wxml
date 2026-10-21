@@ -6,6 +6,21 @@
     <view class="highlight">{{screen.highlight}}</view>
   </view>
 
+  <view wx:if="{{options.metrics.length}}" class="metric-grid">
+    <view
+      wx:for="{{options.metrics}}"
+      wx:key="label"
+      class="metric-card {{item.url ? 'metric-card-tap' : ''}}"
+      data-url="{{item.url}}"
+      data-tab="{{item.tab}}"
+      bindtap="onMetricTap"
+    >
+      <view class="metric-value metric-value-{{item.tone}}">{{item.value}}</view>
+      <view class="metric-label">{{item.label}}</view>
+      <view wx:if="{{item.hint}}" class="metric-hint">{{item.hint}}</view>
+    </view>
+  </view>
+
   <view wx:if="{{options.work_briefing}}" class="panel">
     <view class="panel-title">今日变化 {{options.work_briefing.today_change_count}} 项</view>
     <view wx:if="{{options.work_briefing.top_task}}" class="item"><view class="item-title">{{options.work_briefing.top_task.title}}</view></view>

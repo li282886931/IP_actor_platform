@@ -209,6 +209,11 @@ describe('ProjectDetail', () => {
 
     expect(await screen.findByRole('heading', { name: '北京大型演唱会测算' })).toBeInTheDocument()
     expect(screen.getByText('中性利润 ¥10,040,000')).toBeInTheDocument()
+    expect(screen.getByText('项目进度')).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: '任务完成率 0%' })).toBeInTheDocument()
+    expect(screen.getByText('已完成 0% · 剩余 100%（0/1 项）')).toBeInTheDocument()
+    expect(screen.getByText('三情景利润对比')).toBeInTheDocument()
+    expect(screen.getByText('1004.0万')).toBeInTheDocument()
     expect(screen.getByText('艺人档期已确认')).toBeInTheDocument()
     expect(screen.getByText('场馆报价单')).toBeInTheDocument()
     expect(screen.getByText('安全审批')).toBeInTheDocument()

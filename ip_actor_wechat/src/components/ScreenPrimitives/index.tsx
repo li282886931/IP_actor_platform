@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react'
 import { Button, Input, Text, View } from '@tarojs/components'
 import classNames from 'classnames'
 
@@ -288,6 +289,141 @@ export function VariancePanel({
         { label: '利润差异', value: loop.profit_variance === null || loop.profit_variance === undefined ? '待补齐' : String(loop.profit_variance) },
       ]} />
       {loop.notes && <Text className={styles.itemDescription}>{loop.notes}</Text>}
+    </View>
+  )
+}
+
+export type MetricTone = 'default' | 'success' | 'warning' | 'danger'
+
+export interface MetricItem {
+  label: string
+  value: string
+  hint?: string
+  tone?: MetricTone
+  onTap?: () => void
+}
+
+const metricToneClass: Record<MetricTone, string> = {
+  default: '',
+  success: styles.metricValueSuccess,
+  warning: styles.metricValueWarning,
+  danger: styles.metricValueDanger,
+}
+
+export function MetricGrid({ items }: { items: MetricItem[] }) {
+  if (!items.length) return null
+  return (
+    <View className={styles.metricGrid}>
+      {items.map((item) => (
+        <View
+          className={classNames(styles.metricCard, item.onTap && styles.metricCardTap)}
+          key={item.label}
+          onClick={item.onTap}
+        >
+          <Text className={classNames(styles.metricValue, metricToneClass[item.tone || 'default'])}>{item.value}</Text>
+          <Text className={styles.metricLabelText}>{item.label}</Text>
+          {item.hint ? <Text className={styles.metricHint}>{item.hint}</Text> : null}
+        </View>
+      ))}
+    </View>
+  )
+}
+
+export type RingTone = 'gold' | 'success' | 'warning' | 'danger'
+
+const ringColor: Record<RingTone, string> = {
+  gold: '#d4af37',
+  success: '#5cc793',
+  warning: '#e2ab57',
+  danger: '#f0837f',
+}
+
+export function ProgressRing({
+  percent,
+  label,
+  caption,
+  tone = 'gold',
+}: {
+  percent: number
+  label: string
+  caption?: string
+  tone?: RingTone
+}) {
+  if (!Number.isFinite(percent)) return null
+  const display = Math.round(percent)
+  const clamped = Math.max(0, Math.min(100, display))
+  return (
+    <View className={styles.ringPanel}>
+      <View
+        className={styles.ringChart}
+        style={{
+          '--ring-progress': `${clamped * 3.6}deg`,
+          backgroundImage: `conic-gradient(${ringColor[tone]} ${clamped * 3.6}deg, rgba(255, 255, 255, 0.08) 0deg)`,
+        } as CSSProperties}
+        role='img'
+        aria-label={`${label} ${display}%`}
+      >
+        <View className={styles.ringInner}>
+          <Text className={styles.ringValue}>{display}%</Text>
+        </View>
+      </View>
+      <View className={styles.ringMeta}>
+        <Text className={styles.ringLabel}>{label}</Text>
+        {caption ? <Text className={styles.ringCaption}>{caption}</Text> : null}
+      </View>
+    </View>
+  )
+}
+
+export function formatWan(value: number): string {
+  const abs = Math.abs(value)
+  if (abs >= 100000000) return `${(value / 100000000).toFixed(1)}亿`
+  if (abs >= 10000) return `${(value / 10000).toFixed(1)}万`
+  return String(Math.round(value))
+}
+
+export interface ScenarioBarItem {
+  label: string
+  value: number | null | undefined
+}
+
+export function ScenarioBars({
+  title,
+  items,
+  note,
+}: {
+  title: string
+  items: ScenarioBarItem[]
+  note?: string
+}) {
+  const validItems = items.filter((item): item is { label: string, value: number } => (
+    typeof item.value === 'number' && Number.isFinite(item.value)
+  ))
+  if (!validItems.length) return null
+  const maxAbs = Math.max(...validItems.map((item) => Math.abs(item.value)), 1)
+  return (
+    <View className={styles.insightPanel}>
+      <Text className={styles.insightTitle}>{title}</Text>
+      {validItems.map((item) => {
+        const negative = item.value < 0
+        const width = Math.max(Math.abs(item.value) / maxAbs, item.value === 0 ? 0 : 0.02) * 50
+        return (
+          <View className={styles.barRow} key={item.label}>
+            <Text className={styles.barLabel}>{item.label}</Text>
+            <View className={styles.barTrack}>
+              <View className={styles.barZero} />
+              <View
+                className={classNames(styles.barFill, negative ? styles.barFillNegative : styles.barFillPositive)}
+                style={negative ? { right: '50%', width: `${width}%` } : { left: '50%', width: `${width}%` }}
+              />
+            </View>
+            <Text className={classNames(styles.barValue, negative && styles.barValueNegative)}>
+              {negative ? '-' : ''}{formatWan(Math.abs(item.value))}
+            </Text>
+          </View>
+        )
+      })}
+      {note ? <Text className={styles.sourceLabel}>{note}</Text> : null}
     </View>
   )
 }

@@ -12,6 +12,16 @@
     <view class="item"><view class="item-main"><view class="item-title">中性利润</view></view><view class="badge">{{options.cockpit.neutral_profit}}</view></view>
     <view class="item"><view class="item-main"><view class="item-title">保本人数</view></view><view class="badge">{{options.cockpit.breakeven_attendance}}</view></view>
   </view>
+
+  <view wx:if="{{options.breakevenRing}}" class="ring-panel">
+    <view class="ring-chart" style="{{options.breakevenRing.style}}">
+      <view class="ring-inner"><view class="ring-value">{{options.breakevenRing.percent}}%</view></view>
+    </view>
+    <view class="ring-meta">
+      <view class="ring-label">{{options.breakevenRing.label}}</view>
+      <view class="ring-caption">{{options.breakevenRing.caption}}</view>
+    </view>
+  </view>
   <view wx:if="{{isForm}}" class="panel">
     <view class="panel-title">输入与联调</view>
     <input wx:if="{{screen.id !== 'S25'}}" class="input" value="{{keyword}}" bindinput="onInput" placeholder="{{placeholder}}" />

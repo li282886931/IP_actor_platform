@@ -6,6 +6,16 @@
     <view class="subtitle">{{screen.subtitle}}</view>
     <view class="highlight">{{screen.highlight}}</view>
   </view>
+
+  <view wx:if="{{options.ticketingRing}}" class="ring-panel">
+    <view class="ring-chart" style="{{options.ticketingRing.style}}">
+      <view class="ring-inner"><view class="ring-value">{{options.ticketingRing.percent}}%</view></view>
+    </view>
+    <view class="ring-meta">
+      <view class="ring-label">{{options.ticketingRing.label}}</view>
+      <view class="ring-caption">{{options.ticketingRing.caption}}</view>
+    </view>
+  </view>
   <view wx:if="{{isForm}}" class="panel">
     <view class="panel-title">输入与联调</view>
     <input wx:if="{{screen.id !== 'S25'}}" class="input" value="{{keyword}}" bindinput="onInput" placeholder="{{placeholder}}" />

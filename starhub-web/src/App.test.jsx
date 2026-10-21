@@ -127,10 +127,15 @@ describe('App workbench shell', () => {
       </BrowserRouter>,
     )
 
-    expect(screen.getByRole('link', { name: /工作台/ })).toHaveAttribute('href', '/')
-    expect(screen.getByRole('link', { name: /艺人智策/ })).toHaveAttribute('href', '/artist')
-    expect(screen.getByRole('link', { name: /AI 宣发/ })).toHaveAttribute('href', '/generate')
-    expect(screen.getByRole('link', { name: /用户管理/ })).toHaveAttribute('href', '/users')
+    const sidebarNav = document.querySelector('.sidebar-nav')
+    expect(sidebarNav.querySelector('a[href="/"]')).toHaveTextContent('工作台')
+    expect(sidebarNav.querySelector('a[href="/artist"]')).toHaveTextContent('艺人智策')
+    expect(sidebarNav.querySelector('a[href="/generate"]')).toHaveTextContent('AI 宣发')
+    expect(sidebarNav.querySelector('a[href="/users"]')).toHaveTextContent('用户管理')
+
+    const mobileTabbar = document.querySelector('.mobile-tabbar')
+    expect(mobileTabbar.querySelector('a[href="/"]')).toHaveTextContent('首页')
+    expect(mobileTabbar.querySelector('a[href="/generate"]')).toHaveTextContent('宣发')
   })
 
   it('uses root permissions instead of stale visitor role cache', async () => {
