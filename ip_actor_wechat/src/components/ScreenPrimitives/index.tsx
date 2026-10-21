@@ -42,7 +42,10 @@ export function ScreenHeader({
         <Text className={styles.headerTitle}>{title}</Text>
       ) : (
         <View className={styles.brand}>
-          <View className={styles.brandMark}>R</View>
+          <View className={styles.brandMark}>
+            <View className={styles.brandBarA} />
+            <View className={styles.brandBarB} />
+          </View>
           <View>
             <Text className={styles.brandName}>锐音场</Text>
             <Text className={styles.brandMeta}>RUIYINCHANG</Text>
@@ -325,6 +328,44 @@ export function MetricGrid({ items }: { items: MetricItem[] }) {
           {item.hint ? <Text className={styles.metricHint}>{item.hint}</Text> : null}
         </View>
       ))}
+    </View>
+  )
+}
+
+// 首字母头像（系统无照片字段）：中文取末字、英文取首字母，按名字哈希稳定配色
+const AVATAR_PALETTE: Array<{ bg: string; fg: string }> = [
+  { bg: '#d4af37', fg: '#1a1405' },
+  { bg: '#5cc793', fg: '#0c1712' },
+  { bg: '#e2ab57', fg: '#1a1206' },
+  { bg: '#58b6c9', fg: '#08151a' },
+  { bg: '#9a86d6', fg: '#140f24' },
+  { bg: '#d9806f', fg: '#241008' },
+]
+
+export function initialsOf(name?: string | null): string {
+  const text = String(name || '').trim()
+  if (!text) return '?'
+  if (/[一-龥]/.test(text.charAt(0))) return text.charAt(text.length - 1)
+  return text.charAt(0).toUpperCase()
+}
+
+export function Avatar({ name, size = 56 }: { name?: string | null; size?: number }) {
+  const text = String(name || '')
+  let hash = 0
+  for (let i = 0; i < text.length; i += 1) hash = (hash * 31 + text.charCodeAt(i)) >>> 0
+  const color = AVATAR_PALETTE[hash % AVATAR_PALETTE.length]
+  return (
+    <View
+      className={styles.avatar}
+      style={{
+        width: size,
+        height: size,
+        backgroundColor: color.bg,
+        color: color.fg,
+        fontSize: Math.round(size * 0.44),
+      }}
+    >
+      <Text>{initialsOf(name)}</Text>
     </View>
   )
 }

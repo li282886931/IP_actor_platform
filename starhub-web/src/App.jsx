@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 
 import Sidebar from './components/Sidebar'
-import { BrandMark } from './components/icons'
+import Avatar from './components/Avatar'
+import { BellIcon, BrandMark, PlusIcon } from './components/icons'
 import { getAuthCaptcha, webLogin } from './api'
 import Artist from './pages/Artist'
 import Generate from './pages/Generate'
@@ -23,6 +24,8 @@ const routeTitles = {
   '/generate': 'AI 宣发',
   '/users': '用户管理',
 }
+
+const FOCUS_PROJECT_CREATE_EVENT = 'starhub:focus-project-create'
 
 const APP_FAVICON_PATH = '/favicon.svg'
 const CAPTCHA_LOAD_ERROR = '验证码加载失败，请点击右侧区域重试。'
@@ -345,8 +348,30 @@ export default function App() {
           </div>
 
           <div className="topbar-actions">
-            <span className="platform-badge">AI 驱动 · 运营平台</span>
-            {currentUser && <span className="platform-badge">{currentUser.name || currentUser.account}</span>}
+            <span
+              className="topbar-icon-button"
+              aria-label="通知（暂无未读）"
+              title="暂无未读通知"
+            >
+              <BellIcon size={18} />
+            </span>
+            {activeRole === 'B' && (
+              <button
+                className="button button-primary topbar-create"
+                type="button"
+                onClick={() => {
+                  if (effectivePath !== '/') navigate('/')
+                  setTimeout(() => window.dispatchEvent(new CustomEvent(FOCUS_PROJECT_CREATE_EVENT)), 0)
+                }}
+              >
+                <PlusIcon size={16} />
+                新建项目
+              </button>
+            )}
+            <span className="user-chip">
+              <Avatar name={currentUser?.name || currentUser?.account || '?'} size={30} className="user-avatar" />
+              <span className="user-chip-name">{currentUser?.name || currentUser?.account}</span>
+            </span>
             <button
               className="button button-secondary"
               type="button"

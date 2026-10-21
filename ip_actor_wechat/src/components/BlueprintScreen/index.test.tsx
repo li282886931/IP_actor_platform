@@ -627,6 +627,56 @@ describe('BlueprintScreen aggregated loading', () => {
     expect(taroMocks.navigateTo).toHaveBeenLastCalledWith({ url: '/pages/s55/index' })
   })
 
+  it('renders the S52 schedule panel grouped from real task due dates', async () => {
+    const iso = (offset) => {
+      const date = new Date()
+      date.setDate(date.getDate() + offset)
+      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+    }
+    taroMocks.getMiniappScreen.mockResolvedValue(response({
+      screen_id: 'S52',
+      summary: { title: '今日工作' },
+      items: [
+        {
+          id: 'task-1',
+          entity_type: 'task',
+          title: '今日现场彩排',
+          status: 'pending',
+          context: { task_id: 1, project_name: '南京站', assignee_name: '张三', due_date: iso(0) },
+        },
+        {
+          id: 'task-2',
+          entity_type: 'task',
+          title: '明日场馆验收',
+          status: 'pending',
+          context: { task_id: 2, project_name: '南京站', assignee_name: '李四', due_date: iso(1) },
+        },
+        {
+          id: 'task-3',
+          entity_type: 'task',
+          title: '已完成任务',
+          status: 'completed',
+          context: { task_id: 3, project_name: '南京站', due_date: iso(0) },
+        },
+      ],
+      options: {
+        work_briefing: { today_change_count: 2, active_project_count: 1 },
+      },
+    }))
+
+    render(<BlueprintScreen screenId='S52' />)
+    await screen.findByText('今日工作')
+
+    expect(screen.getByText('日程与待办')).toBeInTheDocument()
+    // 标题同时出现在业务列表与日程面板
+    expect(screen.getAllByText('今日现场彩排').length).toBe(2)
+    expect(screen.getAllByText('明日场馆验收').length).toBe(2)
+    // 已完成任务只在业务列表出现一次，不进入日程
+    expect(screen.getAllByText('已完成任务').length).toBe(1)
+    expect(screen.getByText('三')).toBeInTheDocument()
+    expect(screen.getByText('四')).toBeInTheDocument()
+  })
+
   it('renders the breakeven progress ring and scenario bars on the finance screen', async () => {
     taroMocks.getMiniappScreen.mockResolvedValue(response({
       screen_id: 'S25',

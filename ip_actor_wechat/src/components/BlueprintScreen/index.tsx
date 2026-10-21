@@ -4,6 +4,7 @@ import Taro, { usePullDownRefresh, useRouter } from '@tarojs/taro'
 import classNames from 'classnames'
 
 import {
+  Avatar,
   BusinessList,
   CandidateField,
   DecisionCockpit,
@@ -705,15 +706,15 @@ export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
       const countByStatus = (status: string) => items.filter((item) => item.status === status).length
       return [
         { label: '全部演出', value: String(items.length), hint: '来自真实演出数据' },
-        { label: '售票中', value: String(countByStatus('on_sale')), tone: 'success' },
-        { label: '已完成案例', value: String(countByStatus('completed')) },
+        { label: '售票中', value: String(countByStatus('售票中')), tone: 'success' },
+        { label: '已完成案例', value: String(countByStatus('已完成')) },
         { label: '待评估机会', value: String(countByStatus('opportunity')) },
       ]
     }
     if (screenId === 'S10') {
-      const active = items.filter((item) => item.status !== 'archived').length
-      const calculated = items.filter((item) => item.status === 'calculated').length
-      const pendingConfirmation = items.filter((item) => item.status === 'pending_confirmation').length
+      const active = items.filter((item) => item.status !== '已归档').length
+      const calculated = items.filter((item) => item.status === '已测算').length
+      const pendingConfirmation = items.filter((item) => item.status === '待确认').length
       return [
         { label: '全部项目', value: String(items.length) },
         { label: '进行中', value: String(active), tone: 'success' },
@@ -746,6 +747,47 @@ export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
     }
     return []
   }, [availableProjects.length, briefing, items, screenId])
+
+  // S52 日程：真实任务 due_date 派生（逾期 / 今日 / 明日 / 本周）
+  const scheduleGroups = useMemo(() => {
+    if (screenId !== 'S52') return []
+    const parseDue = (value) => {
+      const match = String(value || '').trim().match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/)
+      if (!match) return null
+      const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]))
+      return Number.isNaN(date.getTime()) ? null : date
+    }
+    const now = new Date()
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    type ScheduleEntry = { id: string; title: string; projectName: string; day: number; weekday: string; assigneeName: string }
+    type ScheduleBucket = { key: string; label: string; tone: string; dotClass: string; items: ScheduleEntry[] }
+    const buckets: ScheduleBucket[] = [
+      { key: 'overdue', label: '已逾期', tone: 'danger', dotClass: 'dotDanger', items: [] },
+      { key: 'today', label: '今日日程', tone: 'gold', dotClass: 'dotGold', items: [] },
+      { key: 'tomorrow', label: '明日', tone: 'warning', dotClass: 'dotWarning', items: [] },
+      { key: 'week', label: '本周内', tone: 'default', dotClass: 'dotMuted', items: [] },
+    ]
+    items.forEach((item) => {
+      if (item.status === '已完成') return
+      const due = parseDue(item.context?.due_date)
+      if (!due) return
+      const diff = Math.round((due.getTime() - today.getTime()) / 86400000)
+      const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
+      const entry = {
+        id: item.id,
+        title: item.title,
+        projectName: String(item.context?.project_name || ''),
+        day: due.getDate(),
+        weekday: weekdays[due.getDay()],
+        assigneeName: String(item.context?.assignee_name || ''),
+      }
+      if (diff < 0) buckets[0].items.push(entry)
+      else if (diff === 0) buckets[1].items.push(entry)
+      else if (diff === 1) buckets[2].items.push(entry)
+      else if (diff <= 7) buckets[3].items.push(entry)
+    })
+    return buckets.filter((bucket) => bucket.items.length > 0)
+  }, [items, screenId])
 
   const breakevenRing = useMemo(() => {
     if (screenId !== 'S11' && screenId !== 'S25') return null
@@ -799,6 +841,36 @@ export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
 
       {(screenId === 'S04' || screenId === 'S10' || screenId === 'S52') && (
         <MetricGrid items={dashboardMetrics} />
+      )}
+
+      {screenId === 'S52' && scheduleGroups.length > 0 && (
+        <View className={styles.insightPanel}>
+          <Text className={styles.insightTitle}>日程与待办</Text>
+          {scheduleGroups.map((group) => (
+            <View key={group.key} className={styles.scheduleGroup}>
+              <View className={styles.scheduleGroupHead}>
+                <Text>{group.label}</Text>
+                <Text className={styles.scheduleGroupCount}>{group.items.length} 项</Text>
+              </View>
+              {group.items.map((entry) => (
+                <View className={styles.scheduleRow} key={entry.id}>
+                  <View className={styles.scheduleDate}>
+                    <Text className={styles.scheduleDay}>{entry.day}</Text>
+                    <Text className={styles.scheduleWeek}>{entry.weekday}</Text>
+                  </View>
+                  <View className={classNames(styles.scheduleDot, styles[group.dotClass])} />
+                  <View className={styles.scheduleMain}>
+                    <Text className={styles.scheduleTitle}>{entry.title}</Text>
+                    <View className={styles.scheduleSub}>
+                      {entry.assigneeName ? <Avatar name={entry.assigneeName} size={28} /> : null}
+                      <Text>{entry.projectName || '未关联项目'}</Text>
+                    </View>
+                  </View>
+                </View>
+              ))}
+            </View>
+          ))}
+        </View>
       )}
 
       {screenId === 'S04' && <ValueEvidencePanel evidence={valueEvidence} />}

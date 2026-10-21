@@ -1,4 +1,5 @@
 import os
+import re
 import zipfile
 from pathlib import Path
 from xml.sax.saxutils import escape
@@ -104,6 +105,23 @@ def test_database_url_example_lives_in_config_file():
     assert config_module.DATABASE_URL_EXAMPLE.endswith("/ip_actor_platform?charset=utf8mb4")
     with open(db_module.__file__, encoding="utf-8") as database_file:
         assert "mysql+pymysql://root:123456789@127.0.0.1:3306/ip_actor_platform?charset=utf8mb4" not in database_file.read()
+
+
+def test_no_file_based_sqlite_can_create_a_root_level_demo_db():
+    # 业务代码与测试只能使用 MySQL（默认）或内存 sqlite://，禁止 sqlite:/// 文件 DSN，
+    # 避免在仓库根目录生成 demo.db 之类的游离数据库文件。
+    project_root = Path(__file__).resolve().parents[1]
+    file_dsn = re.compile(r"sqlite:(?:\\{1,2}|/){3}[A-Za-z._~-]")
+    for base in ("app", "tests"):
+        for python_file in (project_root / base).rglob("*.py"):
+            source = python_file.read_text(encoding="utf-8")
+            assert not file_dsn.search(source), (
+                f"{python_file} uses a file-based sqlite DSN; use in-memory sqlite:// instead"
+            )
+
+    assert not (project_root / "demo.db").exists(), "demo.db must not be generated in the repository root"
+    gitignore = (project_root / ".gitignore").read_text(encoding="utf-8")
+    assert "demo.db" in gitignore
 
 
 def test_database_engine_options_match_database_driver():

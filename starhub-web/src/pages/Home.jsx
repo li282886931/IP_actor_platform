@@ -16,8 +16,10 @@ import {
   submitTask,
 } from '../api'
 import ShowCard from '../components/ShowCard'
+import Avatar from '../components/Avatar'
 import CardMenu from '../components/CardMenu'
 import { ProgressRing, SegmentedBar } from '../components/Charts'
+import { SchedulePanel, TeamActivityPanel } from '../components/SchedulePanel'
 import { MetricIcon } from '../components/icons'
 
 const dashboardByRole = {
@@ -206,6 +208,15 @@ function BusinessWorkbench() {
     return () => {
       active = false
     }
+  }, [])
+
+  useEffect(() => {
+    const focusCreateForm = () => {
+      createNameInputRef.current?.focus()
+      createNameInputRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'center' })
+    }
+    window.addEventListener('starhub:focus-project-create', focusCreateForm)
+    return () => window.removeEventListener('starhub:focus-project-create', focusCreateForm)
   }, [])
 
   const handleFieldChange = (field, value) => {
@@ -537,6 +548,29 @@ function BusinessWorkbench() {
         <article className="panel">
           <div className="panel-heading">
             <div>
+              <span className="eyebrow">SCHEDULE</span>
+              <h3>日程与待办</h3>
+            </div>
+            <span className="section-count">{pendingTasks} 项待处理</span>
+          </div>
+          <SchedulePanel tasks={tasks} projectsById={projectsById} />
+        </article>
+
+        <article className="panel">
+          <div className="panel-heading">
+            <div>
+              <span className="eyebrow">ACTIVITY</span>
+              <h3>团队动态</h3>
+            </div>
+          </div>
+          <TeamActivityPanel tasks={tasks} projectsById={projectsById} />
+        </article>
+      </section>
+
+      <section className="content-grid content-grid-wide">
+        <article className="panel">
+          <div className="panel-heading">
+            <div>
               <span className="eyebrow">PROJECTS</span>
               <h3>项目列表</h3>
             </div>
@@ -775,7 +809,10 @@ function BusinessWorkbench() {
                             </div>
                           )}
                           <div className="task-card-foot">
-                            <small>{task.assignee_name ? `负责人：${task.assignee_name}` : '负责人待分配'}</small>
+                            <span className="task-assignee">
+                              <Avatar name={task.assignee_name || ''} size={22} />
+                              <small>{task.assignee_name || '待分配'}</small>
+                            </span>
                             <small>{`证据 ${evidenceCount} 份`}</small>
                             <Link className="summary-title-link" to={`/projects/${task.project_id}`}>查看项目</Link>
                           </div>
@@ -808,7 +845,10 @@ function BusinessWorkbench() {
                           <small>{`${projectName} · 截止 ${task.due_date || '待设置'}`}</small>
                           <p>{taskSummary}</p>
                           <div className="task-card-foot">
-                            <small>{task.assignee_name ? `负责人：${task.assignee_name}` : '负责人待分配'}</small>
+                            <span className="task-assignee">
+                              <Avatar name={task.assignee_name || ''} size={22} />
+                              <small>{task.assignee_name || '待分配'}</small>
+                            </span>
                             <small>{`证据 ${evidenceCount} 份`}</small>
                             <Link className="summary-title-link" to={`/projects/${task.project_id}`}>查看项目</Link>
                           </div>

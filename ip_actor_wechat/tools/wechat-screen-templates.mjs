@@ -166,6 +166,31 @@ const scenarioBarsWxml = `
     <view class="bar-note">同一测算公式版本 · 金额单位为元</view>
   </view>`
 
+const scheduleWxml = `
+  <view wx:if="{{options.schedule.length}}" class="panel">
+    <view class="panel-title">日程与待办</view>
+    <block wx:for="{{options.schedule}}" wx:key="key" wx:for-item="group">
+      <view class="schedule-group-head">
+        <view>{{group.label}}</view>
+        <view class="schedule-group-count">{{group.items.length}} 项</view>
+      </view>
+      <view wx:for="{{group.items}}" wx:key="id" wx:for-item="entry" class="schedule-row">
+        <view class="schedule-date">
+          <view class="schedule-day">{{entry.day}}</view>
+          <view class="schedule-week">{{entry.weekday}}</view>
+        </view>
+        <view class="schedule-dot {{entry.dotClass}}"></view>
+        <view class="schedule-main">
+          <view class="schedule-title">{{entry.title}}</view>
+          <view class="schedule-sub">
+            <view wx:if="{{entry.avatar}}" class="avatar" style="width:56rpx;height:56rpx;background:{{entry.avatar.color.bg}};color:{{entry.avatar.color.fg}};font-size:24rpx;">{{entry.avatar.initial}}</view>
+            <view>{{entry.projectName}}</view>
+          </view>
+        </view>
+      </view>
+    </block>
+  </view>`
+
 const ticketingRingWxml = `
   <view wx:if="{{options.ticketingRing}}" class="ring-panel">
     <view class="ring-chart" style="{{options.ticketingRing.style}}">
@@ -190,7 +215,10 @@ export const buildScreenWxml = (screenId, { includeBack = false } = {}) => {
     specialPanels.push(breakevenRingWxml)
   }
   if (screenId === 'S25') specialPanels.push(scenarioBarsWxml)
-  if (screenId === 'S52') specialPanels.push(workBriefingWxml)
+  if (screenId === 'S52') {
+    specialPanels.push(workBriefingWxml)
+    specialPanels.push(scheduleWxml)
+  }
   if (screenId === 'S53') specialPanels.push(projectWorkWxml)
   if (screenId === 'S64') specialPanels.push(ticketingRingWxml)
   if (screenId === 'S66') specialPanels.push(calibrationWxml)

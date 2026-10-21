@@ -53,15 +53,31 @@
 }
 
 .brandMark {
+  position: relative;
   @include flex-center;
   width: 64rpx;
   height: 64rpx;
   color: $color-on-primary;
-  font-size: 30rpx;
-  font-weight: $font-weight-bold;
   background: linear-gradient(145deg, $color-gold-highlight, $color-primary 55%, $color-gold-deep);
-  border-radius: 12rpx;
+  border-radius: 14rpx;
   box-shadow: 0 8rpx 24rpx rgba(212, 175, 55, 0.28);
+}
+
+.brandBarA,
+.brandBarB {
+  position: absolute;
+  width: 30rpx;
+  height: 4rpx;
+  border-radius: 2rpx;
+  background: $color-on-primary;
+}
+
+.brandBarA {
+  transform: rotate(45deg);
+}
+
+.brandBarB {
+  transform: rotate(-45deg);
 }
 
 .brandName,
@@ -315,6 +331,14 @@
   }
 }
 
+.avatar {
+  @include flex-center;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  font-weight: $font-weight-bold;
+  overflow: hidden;
+}
+
 // 环形进度图（参考图 72% 项目进度环）
 .ringPanel {
   display: flex;
@@ -426,6 +450,93 @@
 
 .barValueNegative {
   color: $color-error;
+}
+
+// 日程与待办（参考图「今日日程」）
+.scheduleGroup {
+  margin-top: 20rpx;
+}
+
+.scheduleGroupHead {
+  display: flex;
+  justify-content: space-between;
+  padding: 0 4rpx 12rpx;
+  border-bottom: 2rpx solid $color-divider;
+  color: $color-text-secondary;
+  font-size: 24rpx;
+  font-weight: $font-weight-semibold;
+}
+
+.scheduleGroupCount {
+  color: $color-text-tertiary;
+  font-size: 22rpx;
+  font-weight: 400;
+}
+
+.scheduleRow {
+  display: flex;
+  gap: 20rpx;
+  align-items: center;
+  padding: 18rpx 8rpx;
+}
+
+.scheduleDate {
+  display: flex;
+  flex: 0 0 84rpx;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 84rpx;
+  padding: 10rpx 0;
+  background: $color-bg-input;
+  border: 2rpx solid $color-border;
+  border-radius: 16rpx;
+}
+
+.scheduleDay {
+  color: $color-text-primary;
+  font-size: 32rpx;
+  font-weight: $font-weight-bold;
+  line-height: 1.1;
+}
+
+.scheduleWeek {
+  margin-top: 4rpx;
+  color: $color-text-tertiary;
+  font-size: 20rpx;
+}
+
+.scheduleDot {
+  flex: 0 0 14rpx;
+  width: 14rpx;
+  height: 14rpx;
+  border-radius: 50%;
+}
+
+.dotDanger { background: $color-error; }
+.dotGold { background: $color-primary; }
+.dotWarning { background: $color-warning; }
+.dotMuted { background: #5a5a64; }
+
+.scheduleMain {
+  flex: 1;
+  min-width: 0;
+}
+
+.scheduleTitle {
+  display: block;
+  color: $color-text-primary;
+  font-size: 27rpx;
+  font-weight: $font-weight-semibold;
+}
+
+.scheduleSub {
+  display: flex;
+  gap: 12rpx;
+  align-items: center;
+  margin-top: 8rpx;
+  color: $color-text-tertiary;
+  font-size: 22rpx;
 }
 
 .keyValueItem {

@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import type { DisplayItem } from '@/types/domain'
 import {
+  Avatar,
   BusinessList,
   CandidateField,
   DecisionCockpit,
@@ -260,6 +261,19 @@ describe('ScreenPrimitives', () => {
     expect(onTap).toHaveBeenCalledOnce()
     fireEvent.click(screen.getByText('全部项目'))
     expect(onTap).toHaveBeenCalledTimes(1)
+  })
+
+  it('renders the avatar with the last Chinese character and a stable hash color', () => {
+    const { getByText, rerender } = render(<Avatar name='张三' size={56} />)
+    expect(getByText('三')).toBeInTheDocument()
+    const avatar = getByText('三').parentElement
+    expect(avatar?.getAttribute('style')).toContain('56px')
+    expect(avatar?.getAttribute('style')).toMatch(/background-color/)
+
+    rerender(<Avatar name='alice' />)
+    expect(screen.getByText('A')).toBeInTheDocument()
+    rerender(<Avatar name='' />)
+    expect(screen.getByText('?')).toBeInTheDocument()
   })
 
   it('renders a progress ring with clamped arc and accessible label', () => {

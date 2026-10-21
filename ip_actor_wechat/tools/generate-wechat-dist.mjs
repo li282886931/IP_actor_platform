@@ -1,4 +1,4 @@
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { copyFileSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { routeFor, screens } from './blueprint-manifest.mjs'
 import { runtimeHelperSource } from './wechat-runtime-helpers.mjs'
@@ -417,6 +417,7 @@ const createScreenPage = (screenId) => {
             breakevenRing: null,
             scenarioBars: [],
             ticketingRing: null,
+            schedule: [],
           }, {
             value_evidence: data.options.value_evidence || [],
             cockpit: data.options.decision_cockpit || data.options.finance_cockpit || null,
@@ -427,6 +428,7 @@ const createScreenPage = (screenId) => {
             breakevenRing: chartData.breakevenRing,
             scenarioBars: chartData.scenarioBars,
             ticketingRing: chartData.ticketingRing,
+            schedule: chartData.schedule,
           }) : {},
           candidateGroups: data && data.options && Array.isArray(data.options.candidate_groups)
             ? data.options.candidate_groups
@@ -1141,6 +1143,86 @@ const wxss = `.page {
   color: #6f6f78;
   font-size: 20rpx;
 }
+.avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  border-radius: 999rpx;
+  font-weight: 700;
+  overflow: hidden;
+}
+.schedule-group-head {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 20rpx;
+  padding: 0 4rpx 12rpx;
+  border-bottom: 1rpx solid rgba(255,255,255,.07);
+  color: #a3a3ab;
+  font-size: 24rpx;
+  font-weight: 600;
+}
+.schedule-group-count {
+  color: #6f6f78;
+  font-size: 22rpx;
+  font-weight: 400;
+}
+.schedule-row {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+  padding: 18rpx 8rpx;
+}
+.schedule-date {
+  display: flex;
+  flex: 0 0 84rpx;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 84rpx;
+  padding: 10rpx 0;
+  background: #202024;
+  border: 1rpx solid rgba(255,255,255,.1);
+  border-radius: 16rpx;
+}
+.schedule-day {
+  color: #f5f5f5;
+  font-size: 32rpx;
+  font-weight: 700;
+  line-height: 1.1;
+}
+.schedule-week {
+  margin-top: 4rpx;
+  color: #6f6f78;
+  font-size: 20rpx;
+}
+.schedule-dot {
+  flex: 0 0 14rpx;
+  width: 14rpx;
+  height: 14rpx;
+  border-radius: 50%;
+}
+.dot-danger { background: #f0837f; }
+.dot-gold { background: #d4af37; }
+.dot-amber { background: #e2ab57; }
+.dot-muted { background: #5a5a64; }
+.schedule-main {
+  flex: 1;
+  min-width: 0;
+}
+.schedule-title {
+  color: #f5f5f5;
+  font-size: 27rpx;
+  font-weight: 600;
+}
+.schedule-sub {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  margin-top: 8rpx;
+  color: #8b8b93;
+  font-size: 22rpx;
+}
 `
 
 const homeWxss = `.home-button {
@@ -1608,13 +1690,11 @@ const entityDetailWxss = `.detail-page {
 }
 `
 
-const transparentPng = Buffer.from(
-  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=',
-  'base64',
-)
+// tabBar 图标来自 tools/assets/tabbar（由 tools/generate-tab-icons.py 按设计板绘制）
+const tabIconDir = resolve(import.meta.dirname, 'assets/tabbar')
 for (const [, , icon] of tabItems) {
-  writeFileSync(resolve(dist, `assets/tabbar/${icon}.png`), transparentPng)
-  writeFileSync(resolve(dist, `assets/tabbar/${icon}-selected.png`), transparentPng)
+  copyFileSync(resolve(tabIconDir, `${icon}.png`), resolve(dist, `assets/tabbar/${icon}.png`))
+  copyFileSync(resolve(tabIconDir, `${icon}-selected.png`), resolve(dist, `assets/tabbar/${icon}-selected.png`))
 }
 
 for (const [id, title] of screens) {

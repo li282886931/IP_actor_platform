@@ -1,4 +1,6 @@
 // Single-weight line icon system (1.7 stroke, round caps).
+// 图标造型对齐参考设计板：首页 / 项目 / 作品库 / 团队 / 消息 / 设置、
+// KPI 场记板与对勾方框、搜索 / 铃铛 / 新建，以及 X 形品牌标。
 // Every icon inherits `currentColor` so the gold/ink themes control it.
 
 function Svg({ children, size = 22, ...props }) {
@@ -18,6 +20,16 @@ function Svg({ children, size = 22, ...props }) {
     >
       {children}
     </svg>
+  )
+}
+
+// 品牌 X 标（参考板左上角方形场记板 X）
+export function XLogoIcon(props) {
+  return (
+    <Svg {...props}>
+      <rect x="3.5" y="3.5" width="17" height="17" rx="4.5" />
+      <path d="m8.8 8.8 6.4 6.4M15.2 8.8l-6.4 6.4" />
+    </Svg>
   )
 }
 
@@ -64,6 +76,126 @@ export function FolderIcon(props) {
   return (
     <Svg {...props}>
       <path d="M3.5 6.8A1.8 1.8 0 0 1 5.3 5h4.1l2 2.2h7.3a1.8 1.8 0 0 1 1.8 1.8v8.2a1.8 1.8 0 0 1-1.8 1.8H5.3a1.8 1.8 0 0 1-1.8-1.8V6.8Z" />
+    </Svg>
+  )
+}
+
+// 作品库：2×2 九宫格
+export function GridIcon(props) {
+  return (
+    <Svg {...props}>
+      <rect x="3.8" y="3.8" width="6.8" height="6.8" rx="1.8" />
+      <rect x="13.4" y="3.8" width="6.8" height="6.8" rx="1.8" />
+      <rect x="3.8" y="13.4" width="6.8" height="6.8" rx="1.8" />
+      <rect x="13.4" y="13.4" width="6.8" height="6.8" rx="1.8" />
+    </Svg>
+  )
+}
+
+// 消息气泡
+export function ChatIcon(props) {
+  return (
+    <Svg {...props}>
+      <path d="M4.5 5.3A1.8 1.8 0 0 1 6.3 3.5h11.4a1.8 1.8 0 0 1 1.8 1.8v8.4a1.8 1.8 0 0 1-1.8 1.8H9.4l-4.2 3.3v-3.3H6.3a1.8 1.8 0 0 1-1.8-1.8V5.3Z" />
+      <path d="M8.2 9.4h.01M12 9.4h.01M15.8 9.4h.01" />
+    </Svg>
+  )
+}
+
+// 设置齿轮
+export function GearIcon(props) {
+  return (
+    <Svg {...props}>
+      <circle cx="12" cy="12" r="3.1" />
+      <path d="M12 2.8v2.4M12 18.8v2.4M21.2 12h-2.4M5.2 12H2.8M18.5 5.5l-1.7 1.7M7.2 16.8l-1.7 1.7M18.5 18.5l-1.7-1.7M7.2 7.2 5.5 5.5" />
+    </Svg>
+  )
+}
+
+export function SearchIcon(props) {
+  return (
+    <Svg {...props}>
+      <circle cx="10.8" cy="10.8" r="6.3" />
+      <path d="m15.6 15.6 4.1 4.1" />
+    </Svg>
+  )
+}
+
+export function BellIcon(props) {
+  return (
+    <Svg {...props}>
+      <path d="M6.2 9.6a5.8 5.8 0 0 1 11.6 0c0 4.1 1.4 5.2 1.9 5.8H4.3c.5-.6 1.9-1.7 1.9-5.8Z" />
+      <path d="M9.8 18.6a2.4 2.4 0 0 0 4.4 0" />
+    </Svg>
+  )
+}
+
+export function PlusIcon(props) {
+  return (
+    <Svg {...props}>
+      <path d="M12 5.5v13M5.5 12h13" />
+    </Svg>
+  )
+}
+
+// 场记板（项目总数 KPI）
+export function ClapperIcon(props) {
+  return (
+    <Svg {...props}>
+      <path d="M4.2 8.2h16.3l-2.4-3.4a1.2 1.2 0 0 0-1.6-.4L4.6 9.6" />
+      <path d="M4 9.2h16a.5.5 0 0 1 .5.5v8.3a1.5 1.5 0 0 1-1.5 1.5H5a1.5 1.5 0 0 1-1.5-1.5V9.7a.5.5 0 0 1 .5-.5Z" />
+      <path d="m7.2 6.2 3.1 1.8M12.6 4.9l3.1 1.8" />
+    </Svg>
+  )
+}
+
+// 对勾方框（待办事项 KPI）
+export function CheckSquareIcon(props) {
+  return (
+    <Svg {...props}>
+      <rect x="4" y="4" width="16" height="16" rx="2.6" />
+      <path d="m8.2 12.2 2.6 2.6 5-5.4" />
+    </Svg>
+  )
+}
+
+// 剪贴板对勾（小程序「工作」tab）
+export function ClipboardCheckIcon(props) {
+  return (
+    <Svg {...props}>
+      <rect x="5.2" y="4.8" width="13.6" height="16" rx="2.2" />
+      <path d="M9.2 4.8h5.6v2.1a1 1 0 0 1-1 1h-3.6a1 1 0 0 1-1-1V4.8Z" />
+      <path d="m8.6 13.4 2.3 2.3 4.3-4.6" />
+    </Svg>
+  )
+}
+
+export function InfoIcon(props) {
+  return (
+    <Svg {...props}>
+      <circle cx="12" cy="12" r="8.6" />
+      <path d="M12 11v5" />
+      <path d="M12 7.6h.01" />
+    </Svg>
+  )
+}
+
+export function FileIcon(props) {
+  return (
+    <Svg {...props}>
+      <path d="M6 3.8h7.6L19 9.2v9.6a1.4 1.4 0 0 1-1.4 1.4H6a1.4 1.4 0 0 1-1.4-1.4V5.2A1.4 1.4 0 0 1 6 3.8Z" />
+      <path d="M13.2 3.8v5.6H19" />
+      <path d="M8.6 13.4h6.8M8.6 16.8h6.8" />
+    </Svg>
+  )
+}
+
+export function UserCircleIcon(props) {
+  return (
+    <Svg {...props}>
+      <circle cx="12" cy="12" r="8.6" />
+      <circle cx="12" cy="9.8" r="2.7" />
+      <path d="M7.4 18.2c.9-2 2.6-3 4.6-3s3.7 1 4.6 3" />
     </Svg>
   )
 }
@@ -147,31 +279,23 @@ export function NavIcon({ to, ...props }) {
 
 export function MetricIcon({ label = '', ...props }) {
   const text = String(label)
-  let Icon = TrendIcon
-  if (/风险|告警|待办|任务/.test(text)) Icon = AlertIcon
-  else if (/售票|人数|观演|预约|覆盖|成员/.test(text)) Icon = UsersIcon
+  let Icon = ClapperIcon
+  if (/风险|告警|待办|任务/.test(text)) Icon = CheckSquareIcon
+  else if (/作品|演出|售票|场次|热度|排名|观演|预约/.test(text)) Icon = GridIcon
+  else if (/人数|覆盖|成员|团队/.test(text)) Icon = UsersIcon
   else if (/票房|收入|利润|ROI|消耗|预算|资金|消费/.test(text)) Icon = WalletIcon
-  else if (/项目|合作|热度|排名/.test(text)) Icon = FolderIcon
+  else if (/项目|合作/.test(text)) Icon = ClapperIcon
   else if (/票/.test(text)) Icon = TicketIcon
   return <Icon {...props} />
 }
 
 export function BrandGlyph({ size = 20 }) {
   return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      aria-hidden="true"
-      focusable="false"
-    >
-      <path
-        d="M8 6.4v11.2c0 1.1 1.2 1.8 2.2 1.2l8.8-5.3c.9-.5.9-1.9 0-2.4l-8.8-5.3C9.2 5.2 8 5.9 8 7v-.6Z"
-        fill="#1a1405"
-      />
-      <path d="M5 8.4v7.2" stroke="#1a1405" strokeWidth="1.6" strokeLinecap="round" />
-    </svg>
+    <XLogoIcon
+      size={size}
+      stroke="#1a1405"
+      style={{ display: 'block' }}
+    />
   )
 }
 

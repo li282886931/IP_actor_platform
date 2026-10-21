@@ -178,6 +178,36 @@ test('disables request domain checking for local FastAPI integration', () => {
   assert.equal(privateConfig.setting.urlCheck, false)
 })
 
+test('ships real drawn tabBar icons matching the reference icon set', () => {
+  const pngHeader = Buffer.from([0x89, 0x50, 0x4e, 0x47])
+  const icons = ['discover', 'project', 'agent', 'profile']
+  for (const icon of icons) {
+    for (const suffix of ['', '-selected']) {
+      const name = `${icon}${suffix}`
+      const source = readFileSync(resolve(root, `tools/assets/tabbar/${name}.png`))
+      const generated = readFileSync(resolve(root, `dist/assets/tabbar/${name}.png`))
+      assert.equal(source.subarray(0, 4).equals(pngHeader), true, `${name} must be a PNG`)
+      assert.ok(source.length > 1500, `${name} must be a real drawn icon, got ${source.length} bytes`)
+      assert.deepEqual(generated, source, `dist ${name} must be copied from tools/assets`)
+    }
+  }
+
+  const generator = readFileSync(resolve(root, 'tools/generate-wechat-dist.mjs'), 'utf8')
+  assert.match(generator, /copyFileSync/)
+  assert.doesNotMatch(generator, /iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/)
+})
+
+test('uses the X brand mark and reference-style tab icons in Taro sources', () => {
+  const brandComponent = readFileSync(resolve(root, 'src/components/ScreenPrimitives/index.tsx'), 'utf8')
+  assert.match(brandComponent, /brandBarA/)
+  assert.doesNotMatch(brandComponent, /brandMark[^>]*>R</)
+
+  const compass = readFileSync(resolve(root, 'src/assets/tabbar/discover-selected.svg'), 'utf8')
+  assert.match(compass, /#d4af37/)
+  const clipboard = readFileSync(resolve(root, 'src/assets/tabbar/agent-selected.svg'), 'utf8')
+  assert.match(clipboard, /[Mm]8\.6 13\.4/)
+})
+
 test('provides a WeChat devtools dist app and all declared page entries', () => {
   const appJsonPath = resolve(root, 'dist/app.json')
   assert.equal(existsSync(appJsonPath), true, 'dist/app.json is missing')
@@ -1144,6 +1174,80 @@ test('generated runtime derives metric cards, progress rings and scenario bars f
     delete globalThis.wx
     delete globalThis.Page
     delete require.cache[runtimePath]
+  }
+})
+
+test('generated S52 runtime builds schedule groups and avatar metadata from real tasks', async () => {
+  const runtimePath = resolve(root, 'dist/common/runtime.js')
+  const today = new Date()
+  const iso = (offset) => {
+    const date = new Date(today.getFullYear(), today.getMonth(), today.getDate() + offset)
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+  }
+  let page
+  globalThis.wx = {
+    getStorageSync: () => undefined,
+    request: (options) => options.success({
+      statusCode: 200,
+      data: {
+        code: 0,
+        data: {
+          screen_id: 'S52',
+          summary: { title: '今日工作' },
+          items: [
+            { id: 'task-1', title: '今日彩排', status: 'pending', context: { task_id: 1, project_name: '南京站', assignee_name: '张三', due_date: iso(0) } },
+            { id: 'task-2', title: '明日验收', status: 'pending', context: { task_id: 2, project_name: '南京站', assignee_name: '李四', due_date: iso(1) } },
+            { id: 'task-3', title: '已完成', status: 'completed', context: { task_id: 3, due_date: iso(0) } },
+          ],
+          options: { default_project_id: null, available_projects: [] },
+          context: {},
+          empty_state: null,
+        },
+        message: 'ok',
+      },
+    }),
+    setStorageSync: () => {},
+    stopPullDownRefresh: () => {},
+  }
+  globalThis.Page = (definition) => {
+    page = {
+      ...definition,
+      data: { ...definition.data },
+      setData(next, callback) {
+        this.data = { ...this.data, ...next }
+        callback?.()
+      },
+    }
+  }
+
+  const require = createRequire(import.meta.url)
+  delete require.cache[runtimePath]
+  try {
+    require(runtimePath).createScreenPage('S52')
+    await page.fetchRemote()
+
+    const schedule = page.data.options.schedule
+    assert.equal(schedule.length, 2)
+    assert.equal(schedule[0].key, 'today')
+    assert.equal(schedule[0].items[0].title, '今日彩排')
+    assert.equal(schedule[0].items[0].avatar.initial, '三')
+    assert.equal(schedule[1].key, 'tomorrow')
+    assert.equal(schedule[1].items[0].avatar.initial, '四')
+    assert.match(schedule[0].items[0].avatar.color.bg, /^#/)
+    assert.ok(!schedule.some((group) => group.items.some((item) => item.title === '已完成')))
+  } finally {
+    delete globalThis.wx
+    delete globalThis.Page
+    delete require.cache[runtimePath]
+  }
+})
+
+test('S52 template ships the schedule fragment while other screens do not', () => {
+  const s52 = readFileSync(resolve(root, 'dist/pages/s52/index.wxml'), 'utf8')
+  assert.match(s52, /日程与待办/)
+  assert.match(s52, /entry\.avatar\.color\.bg/)
+  for (const screenId of ['s04', 's10', 's55']) {
+    assert.doesNotMatch(readFileSync(resolve(root, `dist/pages/${screenId}/index.wxml`), 'utf8'), /日程与待办/)
   }
 })
 

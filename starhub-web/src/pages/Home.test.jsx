@@ -164,8 +164,10 @@ describe('Home', () => {
     )
 
     expect(await screen.findByText('北京大型演唱会测算')).toBeInTheDocument()
-    expect(screen.getByText('确认场地安全资料')).toBeInTheDocument()
+    expect(screen.getAllByText('确认场地安全资料').length).toBeGreaterThanOrEqual(2)
     expect(document.querySelector('.task-panel-icon')).not.toBeInTheDocument()
+    expect(screen.getByText('日程与待办')).toBeInTheDocument()
+    expect(screen.getByText('团队动态')).toBeInTheDocument()
     expect(screen.getByText('北京大型演唱会测算 · 截止 2026-08-01')).toBeInTheDocument()
     expect(screen.getByText('补齐场地方安全承诺与消防批复')).toBeInTheDocument()
     expect(screen.getAllByText('待处理').length).toBe(2)
@@ -315,7 +317,7 @@ describe('Home', () => {
       </MemoryRouter>,
     )
 
-    await screen.findByText('确认场地安全资料')
+    await screen.findByText('日程与待办')
     expect(screen.getByText('已完成 0 / 共 1 项任务')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: '标记「确认场地安全资料」完成' }))
 
@@ -389,11 +391,12 @@ describe('Home', () => {
       </MemoryRouter>,
     )
 
-    expect(await screen.findByText('确认艺人授权')).toBeInTheDocument()
+    await screen.findByText('日程与待办')
+    expect(screen.getAllByText('确认艺人授权').length).toBeGreaterThanOrEqual(2)
     expect(screen.getByText('数据库真实项目 · 截止 2026-09-30')).toBeInTheDocument()
     expect(screen.getByText('补齐授权书与宣发素材许可范围')).toBeInTheDocument()
     expect(screen.getByText('证据 3 份')).toBeInTheDocument()
-    expect(screen.getByText('负责人：超级管理员')).toBeInTheDocument()
+    expect(screen.getAllByTitle('超级管理员').length).toBeGreaterThanOrEqual(2)
   })
 
   it('creates a Phase 1 project from the business workbench', async () => {

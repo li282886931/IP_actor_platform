@@ -138,6 +138,27 @@ describe('App workbench shell', () => {
     expect(mobileTabbar.querySelector('a[href="/generate"]')).toHaveTextContent('宣发')
   })
 
+  it('renders notification, new-project and user avatar controls from the reference design', async () => {
+    const user = userEvent.setup()
+    render(
+      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <App />
+      </BrowserRouter>,
+    )
+
+    expect(screen.getByLabelText('通知（暂无未读）')).toBeInTheDocument()
+    const createButton = screen.getByRole('button', { name: /新建项目/ })
+    expect(createButton).toBeInTheDocument()
+    expect(document.querySelector('.user-avatar')).toHaveTextContent('R')
+
+    let focused = false
+    const onFocus = () => { focused = true }
+    window.addEventListener('starhub:focus-project-create', onFocus)
+    await user.click(createButton)
+    expect(focused).toBe(true)
+    window.removeEventListener('starhub:focus-project-create', onFocus)
+  })
+
   it('uses root permissions instead of stale visitor role cache', async () => {
     localStorage.setItem('starhub-role', 'C')
     localStorage.setItem('starhub-user', JSON.stringify({ account: 'root', group_code: 'root' }))

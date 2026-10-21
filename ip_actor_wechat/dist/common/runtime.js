@@ -61,8 +61,68 @@ const ringData = (percent, label, caption, tone) => {
   }
 }
 
+const avatarPalette = [
+  { bg: '#d4af37', fg: '#1a1405' },
+  { bg: '#5cc793', fg: '#0c1712' },
+  { bg: '#e2ab57', fg: '#1a1206' },
+  { bg: '#58b6c9', fg: '#08151a' },
+  { bg: '#9a86d6', fg: '#140f24' },
+  { bg: '#d9806f', fg: '#241008' }
+]
+
+const avatarMeta = (name) => {
+  const text = String(name || '').trim()
+  const initial = !text
+    ? '?'
+    : (/[\u4e00-\u9fa5]/.test(text.charAt(0)) ? text.charAt(text.length - 1) : text.charAt(0).toUpperCase())
+  let hash = 0
+  for (let i = 0; i < text.length; i += 1) hash = (hash * 31 + text.charCodeAt(i)) >>> 0
+  return { initial: initial, color: avatarPalette[hash % avatarPalette.length] }
+}
+
+const parseDueDate = (value) => {
+  const match = String(value || '').trim().match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/)
+  if (!match) return null
+  const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]))
+  return isNaN(date.getTime()) ? null : date
+}
+
+const buildSchedule = (rawItems) => {
+  const now = new Date()
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
+  const buckets = [
+    { key: 'overdue', label: '已逾期', dotClass: 'dot-danger', items: [] },
+    { key: 'today', label: '今日日程', dotClass: 'dot-gold', items: [] },
+    { key: 'tomorrow', label: '明日', dotClass: 'dot-amber', items: [] },
+    { key: 'week', label: '本周内', dotClass: 'dot-muted', items: [] }
+  ]
+  rawItems.forEach((item) => {
+    if (item.status === 'completed') return
+    const context = item.context || {}
+    const due = parseDueDate(context.due_date)
+    if (!due) return
+    const diff = Math.round((due.getTime() - today.getTime()) / 86400000)
+    const assigneeName = String(context.assignee_name || '')
+    const entry = {
+      id: String(item.id),
+      title: String(item.title || ''),
+      projectName: String(context.project_name || '未关联项目'),
+      day: due.getDate(),
+      weekday: weekdays[due.getDay()],
+      dotClass: diff < 0 ? 'dot-danger' : diff === 0 ? 'dot-gold' : diff === 1 ? 'dot-amber' : 'dot-muted',
+      avatar: assigneeName ? avatarMeta(assigneeName) : null
+    }
+    if (diff < 0) buckets[0].items.push(entry)
+    else if (diff === 0) buckets[1].items.push(entry)
+    else if (diff === 1) buckets[2].items.push(entry)
+    else if (diff <= 7) buckets[3].items.push(entry)
+  })
+  return buckets.filter((bucket) => bucket.items.length > 0)
+}
+
 const buildCharts = (screenId, data) => {
-  const charts = { metrics: [], breakevenRing: null, scenarioBars: [], ticketingRing: null }
+  const charts = { metrics: [], breakevenRing: null, scenarioBars: [], ticketingRing: null, schedule: [] }
   const rawItems = (data && Array.isArray(data.items)) ? data.items : []
   const countBy = (status) => rawItems.filter((item) => item.status === status).length
   const options = (data && data.options) || {}
@@ -109,6 +169,7 @@ const buildCharts = (screenId, data) => {
         url: briefing.top_task ? '/pages/s55/index' : ''
       }
     ]
+    charts.schedule = buildSchedule(rawItems)
   }
 
   if (screenId === 'S11' || screenId === 'S25') {
@@ -429,6 +490,7 @@ const createScreenPage = (screenId) => {
             breakevenRing: null,
             scenarioBars: [],
             ticketingRing: null,
+            schedule: [],
           }, {
             value_evidence: data.options.value_evidence || [],
             cockpit: data.options.decision_cockpit || data.options.finance_cockpit || null,
@@ -439,6 +501,7 @@ const createScreenPage = (screenId) => {
             breakevenRing: chartData.breakevenRing,
             scenarioBars: chartData.scenarioBars,
             ticketingRing: chartData.ticketingRing,
+            schedule: chartData.schedule,
           }) : {},
           candidateGroups: data && data.options && Array.isArray(data.options.candidate_groups)
             ? data.options.candidate_groups
