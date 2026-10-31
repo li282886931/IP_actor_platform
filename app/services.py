@@ -1,14 +1,20 @@
+import base64
+import binascii
 import hashlib
+import hmac
+import json
 import math
+import secrets
+import time
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Tuple
 from urllib.parse import quote
 
 from fastapi import HTTPException
 from sqlalchemy import func, inspect, text
 from sqlalchemy.orm import Session
 
-from . import database
+from . import config, database
 from .models import (
     Assumption,
     Artist,
@@ -67,13 +73,11 @@ def resolve_request_context(
     tenant_header: Optional[str] = None,
 ) -> RequestContext:
     scheme, _, token = (authorization or '').partition(' ')
-    parts = token.split('-')
-    if scheme.lower() != 'bearer' or len(parts) != 4 or parts[:2] != ['dev', 'token']:
+    if scheme.lower() != 'bearer' or not token:
         raise HTTPException(status_code=401, detail='Invalid or missing session token')
 
     try:
-        user_id = int(parts[2])
-        token_tenant_id = int(parts[3])
+        user_id, token_tenant_id = parse_session_token(token)
         tenant_id = int(tenant_header) if tenant_header else token_tenant_id
     except (TypeError, ValueError):
         raise HTTPException(status_code=401, detail='Invalid session token')
@@ -235,12 +239,92 @@ def build_show_poster_url(title: str, artist_name: str = '', city: str = '', ven
     return f"https://copilot-cn.bytedance.net/api/ide/v1/text_to_image?prompt={prompt}&image_size=landscape_4_3"
 
 
+PASSWORD_HASH_ALGORITHM = 'pbkdf2_sha256'
+PASSWORD_HASH_ITERATIONS = 120_000
+
+SESSION_TOKEN_VERSION = 'v1'
+
+
 def hash_password(password: str):
+    salt = secrets.token_hex(16)
+    digest = hashlib.pbkdf2_hmac(
+        'sha256', password.encode('utf-8'), bytes.fromhex(salt), PASSWORD_HASH_ITERATIONS
+    )
+    return f"{PASSWORD_HASH_ALGORITHM}${PASSWORD_HASH_ITERATIONS}${salt}${digest.hex()}"
+
+
+def _legacy_hash_password(password: str):
     return hashlib.sha256(f"ruiyinchang:{password}".encode("utf-8")).hexdigest()
 
 
 def verify_password(password: str, password_hash: str):
-    return bool(password_hash) and hash_password(password) == password_hash
+    if not password_hash:
+        return False
+    if password_hash.startswith(f"{PASSWORD_HASH_ALGORITHM}$"):
+        try:
+            _, iterations, salt, expected = password_hash.split('$')
+            digest = hashlib.pbkdf2_hmac(
+                'sha256', password.encode('utf-8'), bytes.fromhex(salt), int(iterations)
+            )
+        except (TypeError, ValueError):
+            return False
+        return hmac.compare_digest(digest.hex(), expected)
+    return hmac.compare_digest(_legacy_hash_password(password), password_hash)
+
+
+def password_needs_rehash(password_hash: str):
+    return not (password_hash or '').startswith(
+        f"{PASSWORD_HASH_ALGORITHM}${PASSWORD_HASH_ITERATIONS}$"
+    )
+
+
+def _b64url_encode(data: bytes):
+    return base64.urlsafe_b64encode(data).rstrip(b'=').decode('ascii')
+
+
+def _b64url_decode(data: str):
+    return base64.urlsafe_b64decode(data + '=' * (-len(data) % 4))
+
+
+def create_session_token(user_id: int, tenant_id: int):
+    payload = {
+        "uid": int(user_id),
+        "tid": int(tenant_id),
+        "exp": int(time.time()) + config.TOKEN_TTL_SECONDS,
+    }
+    payload_b64 = _b64url_encode(json.dumps(payload, separators=(',', ':')).encode('utf-8'))
+    signing_input = f"{SESSION_TOKEN_VERSION}.{payload_b64}".encode('ascii')
+    signature = hmac.new(config.SECRET_KEY.encode('utf-8'), signing_input, hashlib.sha256)
+    return f"{SESSION_TOKEN_VERSION}.{payload_b64}.{_b64url_encode(signature.digest())}"
+
+
+def parse_session_token(token: str) -> Tuple[int, int]:
+    try:
+        version, payload_b64, signature_b64 = token.split('.')
+    except ValueError:
+        raise ValueError('malformed token')
+    if version != SESSION_TOKEN_VERSION:
+        raise ValueError('unsupported token version')
+
+    signing_input = f"{version}.{payload_b64}".encode('ascii')
+    expected = hmac.new(config.SECRET_KEY.encode('utf-8'), signing_input, hashlib.sha256)
+    try:
+        provided = _b64url_decode(signature_b64)
+    except (binascii.Error, ValueError):
+        raise ValueError('invalid signature')
+    if not hmac.compare_digest(expected.digest(), provided):
+        raise ValueError('invalid signature')
+
+    try:
+        payload = json.loads(_b64url_decode(payload_b64))
+        user_id = int(payload['uid'])
+        tenant_id = int(payload['tid'])
+        expires_at = int(payload['exp'])
+    except (binascii.Error, KeyError, TypeError, ValueError):
+        raise ValueError('invalid payload')
+    if expires_at < int(time.time()):
+        raise ValueError('token expired')
+    return user_id, tenant_id
 
 
 def group_role(group_code: str):

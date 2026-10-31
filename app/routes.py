@@ -124,10 +124,12 @@ from .services import (
     calculate_finance_result,
     calculate_show_result,
     connector_health,
+    create_session_token,
     get_default_tenant_id,
     get_or_create_default_context,
     hash_password,
     next_project_version_no,
+    password_needs_rehash,
     project_input_snapshot,
     serialize_assumption,
     serialize_data_asset,
@@ -1064,7 +1066,10 @@ def web_login(payload: WebLoginIn, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.account == payload.account, User.status == 'active').first()
     if not user or not verify_password(payload.password, user.password_hash):
         raise HTTPException(status_code=401, detail='Invalid account or password')
-    token = f"dev-token-{user.id}-{tenant.id}"
+    if password_needs_rehash(user.password_hash):
+        user.password_hash = hash_password(payload.password)
+        db.commit()
+    token = create_session_token(user.id, tenant.id)
     return json_ok({
         "token": token,
         "user": serialize_user(user),
@@ -1113,7 +1118,7 @@ def wechat_login(payload: WechatLoginIn, request: Request, db: Session = Depends
     db.commit()
     db.refresh(user)
     return json_ok({
-        "token": f"dev-token-{user.id}-{tenant.id}",
+        "token": create_session_token(user.id, tenant.id),
         "user": serialize_user(user),
         "current_tenant": {"id": tenant.id, "name": tenant.name, "status": tenant.status},
         "source": "wechat",
@@ -1220,7 +1225,7 @@ def switch_tenant(
     )
     tenant = request_context.tenant
     return json_ok({
-        "token": f"dev-token-{request_context.user.id}-{tenant.id}",
+        "token": create_session_token(request_context.user.id, tenant.id),
         "current_tenant": {"id": tenant.id, "name": tenant.name, "status": tenant.status},
     })
 

@@ -257,7 +257,7 @@ def test_request_context_resolves_user_and_tenant_from_login_token(monkeypatch):
     db = session_factory()
     try:
         tenant, user = services.get_or_create_default_context(db)
-        token = f"dev-token-{user.id}-{tenant.id}"
+        token = services.create_session_token(user.id, tenant.id)
 
         context = services.resolve_request_context(
             db,
@@ -289,7 +289,7 @@ def test_miniapp_screen_route_returns_wrapped_authenticated_context(monkeypatch)
     db = session_factory()
     try:
         tenant, user = services.get_or_create_default_context(db)
-        token = f"dev-token-{user.id}-{tenant.id}"
+        token = services.create_session_token(user.id, tenant.id)
     finally:
         db.close()
 
@@ -337,7 +337,7 @@ def test_tenant_switch_preserves_current_user_in_returned_token(monkeypatch):
         ))
         db.commit()
         second_tenant_id = second_tenant.id
-        token = f"dev-token-{user.id}-{current_tenant.id}"
+        token = services.create_session_token(user.id, current_tenant.id)
     finally:
         db.close()
 
@@ -350,7 +350,7 @@ def test_tenant_switch_preserves_current_user_in_returned_token(monkeypatch):
         app_module.app.dependency_overrides.clear()
 
     assert response.status_code == 200
-    assert response.json()["data"]["token"] == f"dev-token-{user.id}-{second_tenant_id}"
+    assert services.parse_session_token(response.json()["data"]["token"]) == (user.id, second_tenant_id)
 
 
 def test_project_screen_requires_project_context(monkeypatch):
@@ -358,7 +358,7 @@ def test_project_screen_requires_project_context(monkeypatch):
     db = session_factory()
     try:
         tenant, user = services.get_or_create_default_context(db)
-        token = f"dev-token-{user.id}-{tenant.id}"
+        token = services.create_session_token(user.id, tenant.id)
     finally:
         db.close()
 
@@ -541,7 +541,7 @@ def test_project_entity_details_are_tenant_scoped_and_hide_share_tokens(monkeypa
             "project_analysis_job": analysis_job.id,
             "report_share": share.id,
         }
-        token = f"dev-token-{user.id}-{tenant.id}"
+        token = services.create_session_token(user.id, tenant.id)
     finally:
         db.close()
 
@@ -664,7 +664,7 @@ def test_tenant_and_user_entity_details_enforce_scope(monkeypatch):
             "privacy_consent": consent.id,
         }
         artist_id = db.query(models.Artist.id).first()[0]
-        token = f"dev-token-{user.id}-{tenant.id}"
+        token = services.create_session_token(user.id, tenant.id)
     finally:
         db.close()
 
@@ -705,7 +705,7 @@ def test_entity_detail_hides_other_tenant_and_other_user_records(monkeypatch):
             "venue": hidden_venue.id,
             "notification": hidden_notification.id,
         }
-        token = f"dev-token-{user.id}-{tenant.id}"
+        token = services.create_session_token(user.id, tenant.id)
     finally:
         db.close()
 
@@ -732,7 +732,7 @@ def test_request_context_rejects_tenant_without_membership(monkeypatch):
         with pytest.raises(HTTPException) as error:
             services.resolve_request_context(
                 db,
-                authorization=f"Bearer dev-token-{user.id}-{current_tenant.id}",
+                authorization=f"Bearer {services.create_session_token(user.id, current_tenant.id)}",
                 tenant_header=str(other_tenant.id),
             )
 
@@ -775,7 +775,7 @@ def test_project_list_screen_returns_only_current_tenant_projects_and_active_cou
         ])
         db.commit()
         expected_project_ids = [project.id for project in reversed(current_projects)]
-        token = f"dev-token-{user.id}-{tenant.id}"
+        token = services.create_session_token(user.id, tenant.id)
     finally:
         db.close()
 
@@ -825,7 +825,7 @@ def test_project_detail_screen_returns_real_project_and_current_version(monkeypa
         db.commit()
         project_id = project.id
         version_id = version.id
-        token = f"dev-token-{user.id}-{tenant.id}"
+        token = services.create_session_token(user.id, tenant.id)
     finally:
         db.close()
 
@@ -876,7 +876,7 @@ def test_project_versions_screen_orders_versions_and_marks_current(monkeypatch):
         db.commit()
         project_id = project.id
         current_version_id = current_version.id
-        token = f"dev-token-{user.id}-{tenant.id}"
+        token = services.create_session_token(user.id, tenant.id)
     finally:
         db.close()
 
@@ -932,7 +932,7 @@ def test_project_create_screens_restore_current_user_draft_and_real_artist_optio
         db.commit()
         draft_id = own_draft.id
         artist_id = artist.id
-        token = f"dev-token-{user.id}-{tenant.id}"
+        token = services.create_session_token(user.id, tenant.id)
     finally:
         db.close()
 
@@ -1005,7 +1005,7 @@ def test_project_create_screens_offer_scoped_database_candidates(monkeypatch, sc
         artist_id = artist.id
         venue_id = venue.id
         project_id = project.id
-        token = f"dev-token-{user.id}-{tenant.id}"
+        token = services.create_session_token(user.id, tenant.id)
     finally:
         db.close()
 
@@ -1098,7 +1098,7 @@ def test_project_draft_screen_returns_only_current_users_tenant_drafts(monkeypat
         ])
         db.commit()
         expected_ids = [project.id for project in reversed(own_drafts)]
-        token = f"dev-token-{user.id}-{tenant.id}"
+        token = services.create_session_token(user.id, tenant.id)
     finally:
         db.close()
 
@@ -1122,7 +1122,7 @@ def test_project_list_screen_returns_create_action_when_tenant_has_no_projects(m
         tenant, user = services.get_or_create_default_context(db)
         db.query(models.Project).filter(models.Project.tenant_id == tenant.id).delete()
         db.commit()
-        token = f"dev-token-{user.id}-{tenant.id}"
+        token = services.create_session_token(user.id, tenant.id)
     finally:
         db.close()
 
@@ -1160,7 +1160,7 @@ def test_project_detail_screen_hides_cross_tenant_project(monkeypatch):
         db.add(project)
         db.commit()
         project_id = project.id
-        token = f"dev-token-{user.id}-{tenant.id}"
+        token = services.create_session_token(user.id, tenant.id)
     finally:
         db.close()
 
@@ -1252,7 +1252,7 @@ def test_finance_input_screen_reads_saved_current_version_result(monkeypatch):
         db.commit()
         project_id = project.id
         version_id = version.id
-        token = f"dev-token-{user.id}-{tenant.id}"
+        token = services.create_session_token(user.id, tenant.id)
     finally:
         db.close()
 
@@ -1307,7 +1307,7 @@ def test_finance_scenario_screens_select_saved_scenario_without_recalculation(mo
         project.current_version_id = version.id
         db.commit()
         project_id = project.id
-        token = f"dev-token-{user.id}-{tenant.id}"
+        token = services.create_session_token(user.id, tenant.id)
     finally:
         db.close()
 
@@ -1366,7 +1366,7 @@ def test_ticket_tier_screen_uses_saved_tiers_or_reports_missing(
         db.add(project)
         db.commit()
         project_id = project.id
-        token = f"dev-token-{user.id}-{tenant.id}"
+        token = services.create_session_token(user.id, tenant.id)
     finally:
         db.close()
 
@@ -1402,7 +1402,7 @@ def test_cost_breakdown_screen_lists_real_costs_and_missing_fields(monkeypatch):
         db.add(project)
         db.commit()
         project_id = project.id
-        token = f"dev-token-{user.id}-{tenant.id}"
+        token = services.create_session_token(user.id, tenant.id)
     finally:
         db.close()
 
@@ -1457,7 +1457,7 @@ def test_breakeven_screen_calculates_only_with_complete_real_inputs(
         db.add(project)
         db.commit()
         project_id = project.id
-        token = f"dev-token-{user.id}-{tenant.id}"
+        token = services.create_session_token(user.id, tenant.id)
     finally:
         db.close()
 
@@ -1507,7 +1507,7 @@ def test_funding_gap_screen_uses_real_costs_and_available_funds(
         db.add(project)
         db.commit()
         project_id = project.id
-        token = f"dev-token-{user.id}-{tenant.id}"
+        token = services.create_session_token(user.id, tenant.id)
     finally:
         db.close()
 
@@ -1551,7 +1551,7 @@ def test_finance_sensitivity_changes_only_saved_occupancy_rates(monkeypatch):
         db.add(project)
         db.commit()
         project_id = project.id
-        token = f"dev-token-{user.id}-{tenant.id}"
+        token = services.create_session_token(user.id, tenant.id)
     finally:
         db.close()
 
@@ -1639,7 +1639,7 @@ def test_judgement_screens_aggregate_current_version_risks_gates_and_latest_deci
         db.commit()
         project_id = project.id
         version_id = version.id
-        token = f"dev-token-{user.id}-{tenant.id}"
+        token = services.create_session_token(user.id, tenant.id)
     finally:
         db.close()
 
@@ -1732,7 +1732,7 @@ def test_evidence_screens_return_saved_records_conflicts_gaps_and_parse_results(
         fact_id = fact.id
         evidence_id = evidence.id
         parse_job_id = parse_job.id
-        token = f"dev-token-{user.id}-{tenant.id}"
+        token = services.create_session_token(user.id, tenant.id)
     finally:
         db.close()
 
@@ -1781,7 +1781,7 @@ def test_risk_and_gate_screens_sort_real_records_by_priority(monkeypatch):
         ])
         db.commit()
         project_id = project.id
-        token = f"dev-token-{user.id}-{tenant.id}"
+        token = services.create_session_token(user.id, tenant.id)
     finally:
         db.close()
 
@@ -1872,7 +1872,7 @@ def test_decision_version_and_report_screens_use_real_records_only(monkeypatch):
         decision_id = decision.id
         report_id = report.id
         user_name = user.name
-        token = f"dev-token-{user.id}-{tenant.id}"
+        token = services.create_session_token(user.id, tenant.id)
     finally:
         db.close()
 
@@ -1929,7 +1929,7 @@ def test_version_compare_requires_two_real_versions(monkeypatch):
         project.current_version_id = version.id
         db.commit()
         project_id = project.id
-        token = f"dev-token-{user.id}-{tenant.id}"
+        token = services.create_session_token(user.id, tenant.id)
     finally:
         db.close()
 
@@ -1991,7 +1991,7 @@ def test_task_screens_are_tenant_scoped_and_include_operational_fields(monkeypat
         db.commit()
         project_id = project.id
         task_id = task.id
-        token = f"dev-token-{user.id}-{tenant.id}"
+        token = services.create_session_token(user.id, tenant.id)
         user_name = user.name
     finally:
         db.close()
@@ -2048,7 +2048,7 @@ def test_task_detail_rejects_cross_tenant_task(monkeypatch):
         db.add(task)
         db.commit()
         task_id = task.id
-        token = f"dev-token-{user.id}-{tenant.id}"
+        token = services.create_session_token(user.id, tenant.id)
     finally:
         db.close()
 
@@ -2122,7 +2122,7 @@ def test_agent_screens_aggregate_current_user_tasks_and_analysis_jobs(monkeypatc
         project_id = project.id
         task_id = task.id
         analysis_id = analysis.id
-        token = f"dev-token-{user.id}-{tenant.id}"
+        token = services.create_session_token(user.id, tenant.id)
     finally:
         db.close()
 
@@ -2198,7 +2198,7 @@ def test_agent_dashboard_returns_latest_tenant_project_as_default_context(monkey
         ))
         db.commit()
         expected_project_id = active_projects[-1].id
-        token = f"dev-token-{user.id}-{tenant.id}"
+        token = services.create_session_token(user.id, tenant.id)
     finally:
         db.close()
 
@@ -2226,7 +2226,7 @@ def test_agent_dashboard_has_no_default_project_when_tenant_has_no_projects(monk
         tenant, user = services.get_or_create_default_context(db)
         db.query(models.Project).filter(models.Project.tenant_id == tenant.id).delete()
         db.commit()
-        token = f"dev-token-{user.id}-{tenant.id}"
+        token = services.create_session_token(user.id, tenant.id)
     finally:
         db.close()
 
@@ -2273,7 +2273,7 @@ def test_agent_change_screen_only_reports_real_version_changes(monkeypatch):
         project.current_version_id = versions[1].id
         db.commit()
         project_id = project.id
-        token = f"dev-token-{user.id}-{tenant.id}"
+        token = services.create_session_token(user.id, tenant.id)
     finally:
         db.close()
 
@@ -2328,7 +2328,7 @@ def test_miniapp_entity_search_normalizes_keyword_and_returns_real_ids(monkeypat
             models.Venue(tenant_id=other_tenant.id, name="南京隐藏场馆", city="南京", source="manual"),
         ])
         db.commit()
-        token = f"dev-token-{user.id}-{tenant.id}"
+        token = services.create_session_token(user.id, tenant.id)
         project_id = project.id
         venue_id = venue.id
         member_id = member.id
@@ -2358,7 +2358,7 @@ def test_miniapp_entity_search_rejects_blank_keyword(monkeypatch):
     db = session_factory()
     try:
         tenant, user = services.get_or_create_default_context(db)
-        token = f"dev-token-{user.id}-{tenant.id}"
+        token = services.create_session_token(user.id, tenant.id)
     finally:
         db.close()
 
@@ -2495,7 +2495,7 @@ def test_artist_candidate_and_detail_screens_return_real_artist_fields(monkeypat
         ))
         db.commit()
         artist_id = artist.id
-        token = f"dev-token-{user.id}-{tenant.id}"
+        token = services.create_session_token(user.id, tenant.id)
     finally:
         db.close()
 
@@ -2561,7 +2561,7 @@ def test_city_and_venue_screens_are_tenant_scoped_and_show_verified_fields(monke
         db.commit()
         project_id = project.id
         venue_id = venue.id
-        token = f"dev-token-{user.id}-{tenant.id}"
+        token = services.create_session_token(user.id, tenant.id)
     finally:
         db.close()
 
@@ -2672,7 +2672,7 @@ def test_tour_and_review_screens_use_ordered_stops_latest_snapshot_and_actuals(m
         ])
         db.commit()
         project_id = project.id
-        token = f"dev-token-{user.id}-{tenant.id}"
+        token = services.create_session_token(user.id, tenant.id)
     finally:
         db.close()
 
@@ -2741,7 +2741,7 @@ def test_project_review_does_not_invent_variance_without_actuals(monkeypatch):
         project.current_version_id = version.id
         db.commit()
         project_id = project.id
-        token = f"dev-token-{user.id}-{tenant.id}"
+        token = services.create_session_token(user.id, tenant.id)
     finally:
         db.close()
 
@@ -2830,7 +2830,7 @@ def test_account_collaboration_and_privacy_screens_read_scoped_saved_state(monke
         ])
         db.commit()
         member_id = member.id
-        token = f"dev-token-{user.id}-{tenant.id}"
+        token = services.create_session_token(user.id, tenant.id)
     finally:
         db.close()
 
@@ -2877,7 +2877,7 @@ def test_developer_connection_screen_exposes_status_without_secret_values(monkey
     db = session_factory()
     try:
         tenant, user = services.get_or_create_default_context(db)
-        token = f"dev-token-{user.id}-{tenant.id}"
+        token = services.create_session_token(user.id, tenant.id)
     finally:
         db.close()
 
@@ -2906,7 +2906,7 @@ def test_project_empty_state_only_applies_when_current_tenant_has_no_projects(mo
         tenant, user = services.get_or_create_default_context(db)
         db.query(models.Project).filter(models.Project.tenant_id == tenant.id).delete()
         db.commit()
-        token = f"dev-token-{user.id}-{tenant.id}"
+        token = services.create_session_token(user.id, tenant.id)
     finally:
         db.close()
 
@@ -2977,7 +2977,7 @@ def test_processing_version_and_archive_states_validate_real_project_context(mon
         old_version_id = versions[0].id
         current_version_id = versions[1].id
         job_id = job.id
-        token = f"dev-token-{user.id}-{tenant.id}"
+        token = services.create_session_token(user.id, tenant.id)
     finally:
         db.close()
 
@@ -3014,7 +3014,7 @@ def test_recoverable_state_screens_have_explicit_targets_without_business_items(
     db = session_factory()
     try:
         tenant, user = services.get_or_create_default_context(db)
-        token = f"dev-token-{user.id}-{tenant.id}"
+        token = services.create_session_token(user.id, tenant.id)
     finally:
         db.close()
 
@@ -3095,7 +3095,7 @@ def test_cross_tenant_entities_are_hidden_across_project_task_evidence_version_n
         own_project_id = own_project.id
         other_project_id = other_project.id
         hidden_task_id = hidden_task.id
-        token = f"dev-token-{user.id}-{tenant.id}"
+        token = services.create_session_token(user.id, tenant.id)
     finally:
         db.close()
 
