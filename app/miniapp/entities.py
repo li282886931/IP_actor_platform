@@ -6,7 +6,7 @@ from typing import Optional
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from .models import (
+from app.models import (
     AgentPermission,
     Artist,
     Assumption,
@@ -34,7 +34,7 @@ from .models import (
     User,
     Venue,
 )
-from .schemas import MiniappEntityDetail
+from app.schemas import MiniappEntityDetail
 
 
 @dataclass(frozen=True)

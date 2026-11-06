@@ -13,7 +13,12 @@ os.environ.setdefault("DATABASE_URL", "sqlite://")
 import main as app_module
 import app.config as config_module
 import app.database as db_module
-import app.routes as routes_module
+import app.integrations.connectors as connector_integration
+import app.integrations.llm as llm_integration
+import app.integrations.object_storage as storage_integration
+import app.integrations.wechat as wechat_integration
+import app.routes.ai as ai_routes
+import app.routes.auth as auth_routes
 
 
 def write_minimal_docx(path: Path, paragraphs: list[str]):
@@ -143,7 +148,7 @@ def test_llama_server_timeout_allows_local_generation():
 
 
 def test_backend_schema_sql_contains_all_model_tables():
-    schema_path = Path(app_module.__file__).parent / "app" / "schema.sql"
+    schema_path = Path(app_module.__file__).parent / "app" / "database" / "schema.sql"
     assert schema_path.exists()
     schema_sql = schema_path.read_text(encoding="utf-8")
     table_names = {table.name for table in app_module.Base.metadata.sorted_tables}
@@ -342,7 +347,7 @@ def test_oss_upload_initiate_uses_minio_presigned_url_when_enabled(monkeypatch):
         def stat_object(self, bucket, object_key):
             calls.append(("stat_object", bucket, object_key))
 
-    monkeypatch.setattr(routes_module, "create_minio_client", lambda: FakeMinioClient())
+    monkeypatch.setattr(storage_integration, "create_minio_client", lambda: FakeMinioClient())
 
     try:
         project_response = client.post(
@@ -413,7 +418,7 @@ def test_feasibility_report_uploads_generated_docx_to_minio(monkeypatch):
             content = data.read()
             calls.append(("put_object", bucket, object_key, length, content_type, content[:2]))
 
-    monkeypatch.setattr(routes_module, "create_minio_client", lambda: FakeMinioClient())
+    monkeypatch.setattr(storage_integration, "create_minio_client", lambda: FakeMinioClient())
 
     try:
         project_response = client.post(
@@ -614,7 +619,7 @@ def test_active_amap_and_qweather_connectors_block_without_resolvable_credential
         network_calls.append((args, kwargs))
         raise AssertionError("Connector must not call the network without a resolved credential")
 
-    monkeypatch.setattr(routes_module.requests, "get", fail_get)
+    monkeypatch.setattr(connector_integration.requests, "get", fail_get)
     monkeypatch.delenv("DATA_CONNECTOR_SECRET_AMAP_PROD", raising=False)
     monkeypatch.delenv("DATA_CONNECTOR_SECRET_QWEATHER_PROD", raising=False)
 
@@ -693,7 +698,7 @@ def test_amap_connector_normalizes_venue_poi_response_without_exposing_credentia
         calls.append({"url": url, **kwargs})
         return FakeResponse()
 
-    monkeypatch.setattr(routes_module.requests, "get", fake_get)
+    monkeypatch.setattr(connector_integration.requests, "get", fake_get)
     monkeypatch.setenv("DATA_CONNECTOR_SECRET_AMAP_PROD", "amap-secret")
 
     try:
@@ -794,7 +799,7 @@ def test_qweather_connector_normalizes_daily_forecast_response_without_exposing_
         calls.append({"url": url, **kwargs})
         return FakeResponse()
 
-    monkeypatch.setattr(routes_module.requests, "get", fake_get)
+    monkeypatch.setattr(connector_integration.requests, "get", fake_get)
     monkeypatch.setenv("DATA_CONNECTOR_SECRET_QWEATHER_PROD", "qweather-secret")
 
     try:
@@ -1503,7 +1508,7 @@ def test_ai_generate_prefers_local_llama_server(monkeypatch):
         calls.append({"url": url, **kwargs})
         return FakeResponse()
 
-    monkeypatch.setattr(routes_module.requests, "post", fake_post)
+    monkeypatch.setattr(llm_integration.requests, "post", fake_post)
 
     def override_db():
         db = session_factory()
@@ -1554,7 +1559,7 @@ def test_ai_generate_prefers_local_llama_server(monkeypatch):
 
 
 def test_extract_llama_server_text_does_not_expose_reasoning_content():
-    assert routes_module.extract_llama_server_text({
+    assert llm_integration.extract_llama_server_text({
         "choices": [
             {"message": {"content": "", "reasoning_content": "Reasoning model output"}}
         ]
@@ -1579,7 +1584,7 @@ def test_ai_generate_strips_think_blocks_from_final_result(monkeypatch):
                 ]
             }
 
-    monkeypatch.setattr(routes_module.requests, "post", lambda *args, **kwargs: FakeResponse())
+    monkeypatch.setattr(llm_integration.requests, "post", lambda *args, **kwargs: FakeResponse())
 
     def override_db():
         db = session_factory()
@@ -1636,7 +1641,7 @@ def test_ai_generate_stream_returns_sse_progress_and_clean_final(monkeypatch):
         calls.append(kwargs)
         return FakeStreamResponse()
 
-    monkeypatch.setattr(routes_module.requests, "post", fake_post)
+    monkeypatch.setattr(llm_integration.requests, "post", fake_post)
 
     def override_db():
         db = session_factory()
@@ -1693,7 +1698,7 @@ def test_ai_generate_stream_moves_plain_analysis_preamble_to_thought(monkeypatch
             ]
             yield from lines
 
-    monkeypatch.setattr(routes_module.requests, "post", lambda *args, **kwargs: FakeStreamResponse())
+    monkeypatch.setattr(llm_integration.requests, "post", lambda *args, **kwargs: FakeStreamResponse())
 
     def override_db():
         db = session_factory()
@@ -1724,16 +1729,16 @@ def test_ai_generate_returns_cached_result_from_redis(monkeypatch):
     app_module.init_db()
     monkeypatch.setenv("LLAMA_SERVER_URL", "http://127.0.0.1:18080/v1/chat/completions")
     monkeypatch.setattr(
-        routes_module,
+        ai_routes,
         "redis_get_json",
         lambda key: {"status": "completed", "result": "Redis cached copy"},
     )
-    monkeypatch.setattr(routes_module, "redis_set_json", lambda *args, **kwargs: None)
+    monkeypatch.setattr(ai_routes, "redis_set_json", lambda *args, **kwargs: None)
 
     def fail_post(*args, **kwargs):
         raise AssertionError("llama server should not be called on cache hit")
 
-    monkeypatch.setattr(routes_module.requests, "post", fail_post)
+    monkeypatch.setattr(llm_integration.requests, "post", fail_post)
 
     def override_db():
         db = session_factory()
@@ -1766,7 +1771,7 @@ def test_ai_generate_stream_returns_cached_thought_and_result_from_redis(monkeyp
     app_module.init_db()
     monkeypatch.setenv("LLAMA_SERVER_URL", "http://127.0.0.1:18080/v1/chat/completions")
     monkeypatch.setattr(
-        routes_module,
+        ai_routes,
         "redis_get_json",
         lambda key: {
             "status": "completed",
@@ -1774,12 +1779,12 @@ def test_ai_generate_stream_returns_cached_thought_and_result_from_redis(monkeyp
             "result": "缓存中的最终文案",
         },
     )
-    monkeypatch.setattr(routes_module, "redis_set_json", lambda *args, **kwargs: None)
+    monkeypatch.setattr(ai_routes, "redis_set_json", lambda *args, **kwargs: None)
 
     def fail_post(*args, **kwargs):
         raise AssertionError("llama server should not be called on cache hit")
 
-    monkeypatch.setattr(routes_module.requests, "post", fail_post)
+    monkeypatch.setattr(llm_integration.requests, "post", fail_post)
 
     def override_db():
         db = session_factory()
@@ -2152,7 +2157,7 @@ def test_batch_reject_returns_tasks_to_pending_and_records_reason(monkeypatch):
 
 
 def fetch_login_captcha(client, monkeypatch, code="AB12"):
-    monkeypatch.setattr(routes_module, "generate_captcha_code", lambda length=4: code)
+    monkeypatch.setattr(auth_routes, "generate_captcha_code", lambda length=4: code)
     response = client.get("/auth/captcha")
     assert response.status_code == 200
     payload = response.json()["data"]
@@ -2435,12 +2440,12 @@ def test_project_feasibility_report_requires_complete_finance_inputs(monkeypatch
 def test_full_backend_plan_api_flow(monkeypatch):
     client, session_factory = make_test_client(monkeypatch)
     monkeypatch.setattr(
-        routes_module,
+        wechat_integration,
         "exchange_wechat_login_code",
         lambda login_code, _request=None: {"openid": "wx-openid-001", "unionid": "wx-union-001", "session_key": "session-key"},
     )
     monkeypatch.setattr(
-        routes_module,
+        wechat_integration,
         "fetch_wechat_phone_number",
         lambda phone_code, _request=None: "13800000000",
     )
@@ -2831,12 +2836,12 @@ def test_show_poster_prefers_uploaded_image_evidence_and_falls_back_to_ai(monkey
 def test_wechat_login_rejects_unbound_phone_number(monkeypatch):
     client, _ = make_test_client(monkeypatch)
     monkeypatch.setattr(
-        routes_module,
+        wechat_integration,
         "exchange_wechat_login_code",
         lambda login_code, _request=None: {"openid": "wx-openid-unbound", "unionid": "wx-union-unbound", "session_key": "session-key"},
     )
     monkeypatch.setattr(
-        routes_module,
+        wechat_integration,
         "fetch_wechat_phone_number",
         lambda phone_code, _request=None: "13911112222",
     )

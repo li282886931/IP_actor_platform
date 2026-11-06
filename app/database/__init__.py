@@ -3,7 +3,7 @@ import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
-from .config import DATABASE_URL, DATABASE_URL_ENV
+from app.config import DATABASE_URL, DATABASE_URL_ENV
 
 
 def resolve_database_url(environ=None):

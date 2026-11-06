@@ -2,7 +2,7 @@ import json
 import os
 from typing import Optional
 
-from .config import REDIS_CACHE_TTL_SECONDS, REDIS_URL
+from app.config import REDIS_CACHE_TTL_SECONDS, REDIS_URL
 
 
 _redis_client = None

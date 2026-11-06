@@ -1,6 +1,8 @@
 import os
 import re
 
+import requests
+
 
 MANAGED_CONNECTOR_KEYS = frozenset({"amap", "qweather"})
 

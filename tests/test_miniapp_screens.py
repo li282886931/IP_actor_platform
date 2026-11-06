@@ -169,7 +169,7 @@ def test_miniapp_entity_detail_contract_preserves_structured_sections():
 
 
 def test_entity_detail_registry_covers_all_persisted_list_entity_types():
-    module = importlib.import_module("app.miniapp_entity_details")
+    module = importlib.import_module("app.miniapp.entities")
 
     assert set(module.ENTITY_DETAIL_CONFIGS) == {
         "show",
@@ -209,8 +209,8 @@ def test_miniapp_screen_data_rejects_unknown_screen_id():
 
 
 def test_screen_provider_registry_explicitly_covers_all_84_screens():
-    assert importlib.util.find_spec("app.miniapp_screens") is not None
-    module = importlib.import_module("app.miniapp_screens")
+    assert importlib.util.find_spec("app.miniapp.screens") is not None
+    module = importlib.import_module("app.miniapp.screens")
 
     expected_ids = {f"S{index:02d}" for index in range(1, 85)}
     assert set(module.SCREEN_PROVIDERS) == expected_ids
@@ -222,7 +222,7 @@ def test_screen_provider_registry_explicitly_covers_all_84_screens():
 
 
 def test_registered_screen_providers_cannot_fall_back_to_generic_empty_data():
-    module = importlib.import_module("app.miniapp_screens")
+    module = importlib.import_module("app.miniapp.screens")
     source = inspect.getsource(module.build_miniapp_screen)
 
     assert "暂无可用数据" not in source
@@ -230,7 +230,7 @@ def test_registered_screen_providers_cannot_fall_back_to_generic_empty_data():
 
 
 def test_screen_api_matrix_covers_registry_with_required_columns():
-    module = importlib.import_module("app.miniapp_screens")
+    module = importlib.import_module("app.miniapp.screens")
     matrix_path = Path(__file__).parents[1] / "docs" / "miniapp-screen-api-matrix.md"
     content = matrix_path.read_text(encoding="utf-8")
     rows = {
@@ -3159,7 +3159,7 @@ def test_core_screen_providers_stay_within_query_budgets(monkeypatch):
         project.current_version_id = version.id
         db.commit()
 
-        from app.miniapp_screens import ScreenRequestContext, build_miniapp_screen
+        from app.miniapp.screens import ScreenRequestContext, build_miniapp_screen
 
         context = ScreenRequestContext(
             tenant_id=tenant.id,
