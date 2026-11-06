@@ -8,6 +8,7 @@ from app.models import Show
 from app.schemas import ArtistOut
 from app.schemas import OrderIn
 from app.schemas import ShowOut
+from app.services import serialize_order
 from fastapi import APIRouter
 from fastapi import Depends
 from fastapi import HTTPException
@@ -19,15 +20,6 @@ from urllib.parse import quote
 
 router = APIRouter()
 
-
-def serialize_order(order: Order, show_title: str = ''):
-    return {
-        "id": order.id,
-        "show_id": order.show_id,
-        "show_title": show_title,
-        "name": order.name,
-        "phone": order.phone,
-    }
 
 def is_image_file_url(file_url: str):
     normalized = (file_url or '').split('?', 1)[0].lower()

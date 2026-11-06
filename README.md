@@ -34,7 +34,7 @@
 
 ### 6. 数据库
 - 主库使用 MySQL 8.0，默认库名为 `ip_actor_platform`
-- 默认连接配置写在 `app/config.py`，也可以通过 `DATABASE_URL` 环境变量覆盖
+- 默认连接配置写在 `app/config/`，也可以通过 `DATABASE_URL` 环境变量覆盖
 - 核心表包含 `tenants`、`users`、`projects`、`project_versions`、`facts`、`evidences`、`assumptions`、`gates`、`risks`、`decisions`、`tasks`、`report_shares` 等
 
 默认账号：
@@ -84,7 +84,7 @@ $env:DATABASE_URL="mysql+pymysql://root:123456789@127.0.0.1:3306/ip_actor_platfo
 python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-如果使用 `app/config.py` 中的默认连接配置，可以省略 `$env:DATABASE_URL=...`。
+如果使用 `app/config/` 中的默认连接配置，可以省略 `$env:DATABASE_URL=...`。
 
 后端地址：
 
@@ -117,12 +117,18 @@ IP_platform/
 ├─ main.py                 # 兼容入口，保留 uvicorn main:app 启动方式
 ├─ app/                    # FastAPI 后端应用包
 │  ├─ main.py              # 应用工厂与路由注册
-│  ├─ database.py          # 数据库连接与会话依赖
-│  ├─ models.py            # SQLAlchemy ORM 模型
-│  ├─ schemas.py           # Pydantic 入参与出参模型
-│  ├─ routes.py            # API 路由层
-│  ├─ services.py          # 业务逻辑、种子数据与财务计算
-│  └─ responses.py         # 统一响应结构
+│  ├─ config/              # 运行配置
+│  ├─ database/            # 数据库连接、会话依赖与建表脚本
+│  ├─ core/                # 统一响应等核心能力
+│  ├─ models/              # 按业务域拆分的 SQLAlchemy ORM 模型
+│  ├─ schemas/             # 按接口域拆分的 Pydantic 入参与出参模型
+│  ├─ routes/              # 按业务域拆分的 FastAPI 路由
+│  ├─ services/            # 认证、财务、序列化、初始化与智能服务
+│  ├─ integrations/        # 微信、LLM、对象存储和数据连接器
+│  ├─ miniapp/screens/     # 小程序页面数据提供器
+│  ├─ documents/           # 文档解析与可行性报告
+│  ├─ datasets/            # 内置业务数据集
+│  └─ infrastructure/      # 缓存等基础设施适配
 ├─ requirements.txt        # Python 依赖
 ├─ starhub-web/           # React 前端工程
 │  ├─ src/
@@ -266,7 +272,7 @@ export DATABASE_URL='mysql+pymysql://root:123456789@127.0.0.1:3306/ip_actor_plat
 uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-如果使用 `app/config.py` 中的默认连接配置，可以省略 `export DATABASE_URL=...`。
+如果使用 `app/config/` 中的默认连接配置，可以省略 `export DATABASE_URL=...`。
 
 后端默认地址：
 
@@ -313,7 +319,7 @@ AI 文案生成优先调用本地 `llama_server`，然后再尝试 DashScope，�
 
 ### 1）本地 llama_server
 
-默认配置写在 `app/config.py`：
+默认配置写在 `app/config/`：
 
 ```python
 LLAMA_SERVER_URL = 'http://127.0.0.1:8080/v1/chat/completions'

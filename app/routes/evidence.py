@@ -300,7 +300,7 @@ def complete_oss_upload(upload_id: int, payload: OSSUploadCompleteIn, db: Sessio
 
     if upload.provider == 'minio':
         try:
-            create_minio_client().stat_object(upload.bucket, upload.object_key)
+            storage_integration.create_minio_client().stat_object(upload.bucket, upload.object_key)
         except Exception as exc:
             raise HTTPException(status_code=502, detail=f'MinIO object verification failed: {exc}') from exc
 

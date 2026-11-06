@@ -1,6 +1,6 @@
 from typing import Optional
 
-from app.models import Assumption, DataAsset, DataRecord, DataSource, DocumentParseJob, Evidence, ExternalDataJob, Fact, Gate, OSSUpload, ProjectAnalysisJob, ReportShare, Risk, Task, User
+from app.models import Assumption, DataAsset, DataRecord, DataSource, DocumentParseJob, Evidence, ExternalDataJob, Fact, Gate, Order, OSSUpload, ProjectAnalysisJob, ReportShare, Risk, Task, User
 from app.services.auth import can_manage_users, group_role
 
 
@@ -14,6 +14,16 @@ def serialize_user(user: User):
         "role": group_role(user.group_code),
         "status": user.status,
         "can_manage_users": can_manage_users(user.group_code),
+    }
+
+
+def serialize_order(order: Order, show_title: str = ''):
+    return {
+        "id": order.id,
+        "show_id": order.show_id,
+        "show_title": show_title,
+        "name": order.name,
+        "phone": order.phone,
     }
 
 

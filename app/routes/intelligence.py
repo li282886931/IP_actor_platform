@@ -37,7 +37,6 @@ from sqlalchemy.orm import Session
 from typing import Optional
 import hashlib
 import json
-import requests
 
 
 router = APIRouter()
@@ -390,10 +389,18 @@ def run_external_data_job(job_id: int, db: Session = Depends(get_db)):
         try:
             credential = connector_integration.resolve_connector_credential(source.connector_key, source.credential_ref)
             if source.connector_key == 'amap':
-                connector_payload = connector_integration.fetch_amap_venue_search(credential, job.parameters or {}, requests.get)
+                connector_payload = connector_integration.fetch_amap_venue_search(
+                    credential,
+                    job.parameters or {},
+                    connector_integration.requests.get,
+                )
             else:
-                connector_payload = connector_integration.fetch_qweather_daily_forecast(credential, job.parameters or {}, requests.get)
-        except (requests.RequestException, ValueError):
+                connector_payload = connector_integration.fetch_qweather_daily_forecast(
+                    credential,
+                    job.parameters or {},
+                    connector_integration.requests.get,
+                )
+        except (connector_integration.requests.RequestException, ValueError):
             job.status = 'failed'
             job.error_message = 'Connector request failed'
             job.result = {
