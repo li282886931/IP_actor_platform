@@ -18,6 +18,7 @@ const numericKeys = new Set<keyof ProjectDraft>([
   'avg_ticket_price', 'artist_fee', 'venue_cost', 'marketing_cost', 'production_cost', 'venue_capacity',
   'security_cost', 'travel_cost', 'accommodation_cost', 'insurance_cost', 'approval_cost',
   'contingency_cost', 'sponsorship_income', 'merchandise_income', 'target_profit',
+  'tax_fee_percent', 'ticketing_fee_percent',
 ])
 
 const candidatePatchKeys = new Set<keyof ProjectDraft>([

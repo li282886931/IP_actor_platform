@@ -36,6 +36,8 @@ export interface ProjectDraft {
   sponsorship_income?: number
   merchandise_income?: number
   target_profit?: number
+  tax_fee_percent?: number
+  ticketing_fee_percent?: number
 }
 
 export interface SessionData {

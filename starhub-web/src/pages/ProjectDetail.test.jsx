@@ -12,6 +12,7 @@ import {
   createFact,
   createGate,
   createRisk,
+  calculateShow,
   generateFeasibilityReport,
   createProject,
   createUser,
@@ -49,6 +50,7 @@ vi.mock('../api', () => ({
   createGate: vi.fn(),
   createProject: vi.fn(),
   createRisk: vi.fn(),
+  calculateShow: vi.fn(),
   generateFeasibilityReport: vi.fn(),
   createUser: vi.fn(),
   deleteUser: vi.fn(),
@@ -294,10 +296,9 @@ describe('ProjectDetail', () => {
     await user.click(screen.getByRole('button', { name: '生成可行性报告' }))
     await waitFor(() => expect(generateFeasibilityReport).toHaveBeenCalledWith(1, {
       version_id: 2,
-      tax_fee_rate: 0.15,
-      use_ai_copy: true,
+      use_ai_copy: false,
     }))
-    expect(await screen.findByRole('link', { name: '北京大型演唱会测算-可行性研究报告.docx' })).toHaveAttribute('href', 'http://localhost:8000/reports/files/20')
+    expect(await screen.findByRole('link', { name: '北京大型演唱会测算-可行性研究报告.docx' })).toHaveAttribute('href', 'http://127.0.0.1:8000/reports/files/20')
     expect(await screen.findByText('报告已生成，可下载核验')).toBeInTheDocument()
   })
 })

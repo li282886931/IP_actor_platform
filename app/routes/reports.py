@@ -31,6 +31,7 @@ from sqlalchemy.orm import Session
 from typing import Optional
 import os
 import uuid
+from types import SimpleNamespace
 
 
 router = APIRouter()
@@ -93,7 +94,13 @@ def generate_feasibility_report(project_id: int, payload: FeasibilityReportIn, d
         if not version:
             raise HTTPException(status_code=404, detail='Project version not found')
 
-    calculation = build_feasibility_calculation(project, payload)
+    report_project = project
+    if version:
+        report_project = SimpleNamespace(**{
+            **{column.name: getattr(project, column.name) for column in Project.__table__.columns},
+            **(version.input_snapshot or {}),
+        })
+    calculation = build_feasibility_calculation(report_project, payload, version)
     if calculation["status"] != "calculated":
         raise HTTPException(status_code=400, detail=calculation)
 
@@ -102,7 +109,7 @@ def generate_feasibility_report(project_id: int, payload: FeasibilityReportIn, d
     assumptions = db.query(Assumption).filter(Assumption.project_id == project.id).order_by(Assumption.id.desc()).all()
     copy_mode = 'ai_assisted_template' if payload.use_ai_copy else 'deterministic_template'
     report_bytes = build_feasibility_report_docx(
-        project,
+        report_project,
         calculation,
         facts,
         risks,

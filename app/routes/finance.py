@@ -16,6 +16,7 @@ from fastapi import APIRouter
 from fastapi import Depends
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
+from pydantic import ValidationError
 
 
 router = APIRouter()
@@ -75,15 +76,43 @@ def finance_show_calculation(payload: ShowCalculationIn, db: Session = Depends(g
     if not project:
         raise HTTPException(status_code=404, detail='Project not found')
 
+    resolved = payload.model_dump()
+    for field, value in resolved.items():
+        if value is None and hasattr(project, field):
+            resolved[field] = getattr(project, field)
+    try:
+        payload = ShowCalculationIn.model_validate(resolved)
+    except ValidationError as error:
+        raise HTTPException(status_code=422, detail=[
+            {"loc": item["loc"], "msg": item["msg"], "type": item["type"]}
+            for item in error.errors()
+        ]) from error
+
     for field, value in payload.model_dump(exclude={'project_id'}).items():
         if hasattr(project, field) and value is not None:
             setattr(project, field, value)
 
     result = calculate_show_result(project, payload)
+    snapshot = {
+        **project_input_snapshot(project),
+        "show_calculation": payload.model_dump(exclude={"project_id"}),
+    }
+    current_version = db.query(ProjectVersion).filter(
+        ProjectVersion.id == project.current_version_id,
+        ProjectVersion.project_id == project.id,
+    ).first()
+    if current_version and current_version.input_snapshot == snapshot and current_version.finance_result == result:
+        return json_ok({
+            **result,
+            "version_id": current_version.id,
+            "project_id": project.id,
+            "project_status": project.status,
+        })
+
     version = ProjectVersion(
         project_id=project.id,
         version_no=next_project_version_no(db, project.id),
-        input_snapshot=project_input_snapshot(project),
+        input_snapshot=snapshot,
         finance_result=result,
         status=result["status"],
         created_by=user.id,
@@ -93,6 +122,8 @@ def finance_show_calculation(payload: ShowCalculationIn, db: Session = Depends(g
     project.current_version_id = version.id
     if result["status"] == "calculated":
         project.status = "calculated"
+    elif project.status in {"draft", "calculated", "pending_input"}:
+        project.status = "pending_input"
     db.commit()
     result["version_id"] = version.id
     result["project_id"] = project.id

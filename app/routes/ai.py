@@ -1,4 +1,5 @@
 from app.config import LLAMA_SERVER_MODEL
+from app.config import LLAMA_SERVER_MAX_TOKENS
 from app.config import LLAMA_SERVER_TIMEOUT_SECONDS
 from app.config import LLAMA_SERVER_URL
 from app.core.responses import json_ok
@@ -57,7 +58,7 @@ def ai_generate(payload: AIGenerateIn, db: Session = Depends(get_db)):
                     "frequency_penalty": 0.35,
                     "seed": generation_seed,
                     "chat_template_kwargs": {"enable_thinking": False},
-                    "max_tokens": 1200,
+                    "max_tokens": LLAMA_SERVER_MAX_TOKENS,
                 },
                 timeout=LLAMA_SERVER_TIMEOUT_SECONDS,
             )
@@ -173,22 +174,19 @@ def ai_generate(payload: AIGenerateIn, db: Session = Depends(get_db)):
 def ai_generate_stream(payload: AIGenerateIn, db: Session = Depends(get_db)):
     generation_nonce = payload.generation_nonce or uuid.uuid4().hex
     generation_seed = random.randint(1, 2_147_483_647)
-    prompt = llm_integration.build_ai_generation_prompt(payload, generation_nonce, allow_thinking=True)
+    prompt = llm_integration.build_ai_generation_prompt(payload, generation_nonce)
     cache_key = llm_integration.ai_generation_cache_key(payload, generation_nonce)
     llama_server_url = os.environ.get('LLAMA_SERVER_URL', LLAMA_SERVER_URL)
     llama_server_model = os.environ.get('LLAMA_SERVER_MODEL', LLAMA_SERVER_MODEL)
 
     def event_stream():
         chunks = []
-        thought_chunks = []
         preamble_buffer = ''
         final_started = False
         saved_by_fallback = False
         cached_generation = redis_get_json(cache_key)
         if cached_generation and cached_generation.get('status') == 'completed' and cached_generation.get('result'):
             yield llm_integration.sse_event('progress', {"message": "命中 Redis 生成缓存"})
-            if cached_generation.get('thought'):
-                yield llm_integration.sse_event('thought', {"content": cached_generation.get('thought')})
             yield llm_integration.sse_event('final', {"result": cached_generation.get('result'), "cache_hit": True})
             return
 
@@ -210,8 +208,8 @@ def ai_generate_stream(payload: AIGenerateIn, db: Session = Depends(get_db)):
                     "presence_penalty": 0.6,
                     "frequency_penalty": 0.35,
                     "seed": generation_seed,
-                    "chat_template_kwargs": {"enable_thinking": True},
-                    "max_tokens": 1200,
+                    "chat_template_kwargs": {"enable_thinking": False},
+                    "max_tokens": LLAMA_SERVER_MAX_TOKENS,
                     "stream": True,
                 },
                 timeout=LLAMA_SERVER_TIMEOUT_SECONDS,
@@ -232,15 +230,9 @@ def ai_generate_stream(payload: AIGenerateIn, db: Session = Depends(get_db)):
                         data = json.loads(payload_text)
                     except json.JSONDecodeError:
                         continue
-                    content, reasoning = llm_integration.extract_stream_delta(data)
-                    if reasoning:
-                        thought_chunks.append(reasoning)
-                        yield llm_integration.sse_event('thought', {"content": reasoning})
+                    content, _ = llm_integration.extract_stream_delta(data)
                     if content:
-                        visible_content, tagged_thought = llm_integration.split_think_content(content)
-                        if tagged_thought:
-                            thought_chunks.append(tagged_thought)
-                            yield llm_integration.sse_event('thought', {"content": tagged_thought})
+                        visible_content, _ = llm_integration.split_think_content(content)
                         if visible_content:
                             if final_started:
                                 chunks.append(visible_content)
@@ -249,21 +241,13 @@ def ai_generate_stream(payload: AIGenerateIn, db: Session = Depends(get_db)):
                                 preamble_buffer += visible_content
                                 start_index = llm_integration.find_final_output_start(preamble_buffer)
                                 if start_index >= 0:
-                                    thought_text = preamble_buffer[:start_index].strip()
                                     final_content = preamble_buffer[start_index:]
-                                    if thought_text:
-                                        thought_chunks.append(thought_text)
-                                        yield llm_integration.sse_event('thought', {"content": thought_text})
                                     if final_content:
                                         chunks.append(final_content)
                                         yield llm_integration.sse_event('delta', {"content": final_content})
                                     preamble_buffer = ''
                                     final_started = True
                                 elif len(preamble_buffer) > 24:
-                                    thought_text = preamble_buffer[:-16]
-                                    if thought_text.strip():
-                                        thought_chunks.append(thought_text)
-                                        yield llm_integration.sse_event('thought', {"content": thought_text})
                                     preamble_buffer = preamble_buffer[-16:]
                 result_text = llm_integration.sanitize_ai_output(''.join(chunks) or preamble_buffer)
         except Exception as exc:
@@ -278,7 +262,7 @@ def ai_generate_stream(payload: AIGenerateIn, db: Session = Depends(get_db)):
                 generation = AIGeneration(type=payload.type, prompt=prompt, result=result_text)
                 db.add(generation)
                 db.commit()
-                redis_set_json(cache_key, llm_integration.completed_generation_cache_payload(result_text, ''.join(thought_chunks)))
+                redis_set_json(cache_key, llm_integration.completed_generation_cache_payload(result_text))
             except Exception as exc:
                 print('Failed to save AI generation stream:', exc)
         yield llm_integration.sse_event('progress', {"message": "内容已整理完成"})

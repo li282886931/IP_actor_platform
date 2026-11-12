@@ -147,6 +147,9 @@ def calculate_show_result(project, payload):
         "approval_cost",
         "contingency_cost",
     ]
+    field_values["tax_fee_rate"] = payload.tax_fee_rate
+    field_values["ticketing_fee_rate"] = payload.ticketing_fee_rate
+    required_fields += ["tax_fee_rate", "ticketing_fee_rate"]
     missing = [field for field in required_fields if field_values.get(field) is None]
     if missing:
         return {
@@ -156,6 +159,12 @@ def calculate_show_result(project, payload):
             "total_cost": None,
             "non_ticket_income": None,
             "net_ticket_revenue": None,
+            "gross_ticket_revenue": None,
+            "tax_amount": None,
+            "ticketing_fee_amount": None,
+            "roi": None,
+            "expected_occupancy_rate": None,
+            "breakeven_capacity_feasible": None,
             "total_revenue": None,
             "net_profit": None,
             "profit_margin": None,
@@ -185,45 +194,66 @@ def calculate_show_result(project, payload):
     attendance = field_values["expected_attendance"]
     ticket_price = field_values["avg_ticket_price"]
     venue_capacity = field_values["venue_capacity"]
-    net_ticket_revenue = round(attendance * ticket_price * net_rate)
+    gross_ticket_revenue = attendance * ticket_price
+    tax_amount = round(gross_ticket_revenue * payload.tax_fee_rate)
+    ticketing_fee_amount = round(gross_ticket_revenue * payload.ticketing_fee_rate)
+    net_ticket_revenue = gross_ticket_revenue - tax_amount - ticketing_fee_amount
     total_revenue = net_ticket_revenue + non_ticket_income
     net_profit = total_revenue - total_cost
-    breakeven_attendance = math.ceil((total_cost - non_ticket_income) / (ticket_price * net_rate)) if ticket_price and net_rate else None
+    uncovered_cost = max(total_cost - non_ticket_income, 0)
+    breakeven_attendance = math.ceil(uncovered_cost / (ticket_price * net_rate)) if ticket_price and net_rate else None
     target_profit = payload.target_profit or 0
-    recommended_min_ticket_price = math.ceil((total_cost - non_ticket_income) / (attendance * net_rate)) if attendance and net_rate else None
-    recommended_target_ticket_price = math.ceil((total_cost + target_profit - non_ticket_income) / (attendance * net_rate)) if attendance and net_rate else None
+    recommended_min_ticket_price = math.ceil(uncovered_cost / (attendance * net_rate)) if attendance and net_rate else None
+    recommended_target_ticket_price = math.ceil(max(total_cost + target_profit - non_ticket_income, 0) / (attendance * net_rate)) if attendance and net_rate else None
 
     scenarios = {}
     for key, rate in [
-        ("conservative", payload.conservative_occupancy_rate or 60),
-        ("neutral", payload.neutral_occupancy_rate or 80),
-        ("optimistic", payload.optimistic_occupancy_rate or 95),
+        ("conservative", payload.conservative_occupancy_rate if payload.conservative_occupancy_rate is not None else 60),
+        ("neutral", payload.neutral_occupancy_rate if payload.neutral_occupancy_rate is not None else 80),
+        ("optimistic", payload.optimistic_occupancy_rate if payload.optimistic_occupancy_rate is not None else 95),
     ]:
         scenario_attendance = round(venue_capacity * rate / 100)
-        scenario_net_ticket_revenue = round(scenario_attendance * ticket_price * net_rate)
+        scenario_gross_ticket_revenue = scenario_attendance * ticket_price
+        scenario_tax_amount = round(scenario_gross_ticket_revenue * payload.tax_fee_rate)
+        scenario_ticketing_fee_amount = round(scenario_gross_ticket_revenue * payload.ticketing_fee_rate)
+        scenario_net_ticket_revenue = scenario_gross_ticket_revenue - scenario_tax_amount - scenario_ticketing_fee_amount
         scenario_total_revenue = scenario_net_ticket_revenue + non_ticket_income
         scenarios[key] = {
             "occupancy_rate": rate,
             "attendance": scenario_attendance,
+            "gross_ticket_revenue": scenario_gross_ticket_revenue,
+            "tax_amount": scenario_tax_amount,
+            "ticketing_fee_amount": scenario_ticketing_fee_amount,
             "net_ticket_revenue": scenario_net_ticket_revenue,
             "total_revenue": scenario_total_revenue,
             "cost": total_cost,
             "profit": scenario_total_revenue - total_cost,
+            "roi": round((scenario_total_revenue - total_cost) / total_cost, 4) if total_cost else None,
         }
 
+    available_funds = payload.available_funds if payload.available_funds is not None else project.available_funds
     return {
         "formula_version": "show-calculation-v1",
         "status": "calculated",
         "missing_fields": [],
         "total_cost": total_cost,
         "non_ticket_income": non_ticket_income,
+        "gross_ticket_revenue": gross_ticket_revenue,
+        "tax_fee_rate": payload.tax_fee_rate,
+        "ticketing_fee_rate": payload.ticketing_fee_rate,
+        "tax_amount": tax_amount,
+        "ticketing_fee_amount": ticketing_fee_amount,
         "net_ticket_revenue": net_ticket_revenue,
         "total_revenue": total_revenue,
         "net_profit": net_profit,
+        "roi": round(net_profit / total_cost, 4) if total_cost else None,
+        "expected_occupancy_rate": round(attendance / venue_capacity, 4),
         "profit_margin": round(net_profit / total_revenue, 4) if total_revenue else None,
         "breakeven_attendance": breakeven_attendance,
-        "breakeven_occupancy_rate": round(breakeven_attendance / venue_capacity, 4) if breakeven_attendance and venue_capacity else None,
-        "funding_gap": max(total_cost - (project.available_funds or 0), 0),
+        "breakeven_occupancy_rate": round(breakeven_attendance / venue_capacity, 4) if breakeven_attendance is not None else None,
+        "breakeven_capacity_feasible": breakeven_attendance <= venue_capacity if breakeven_attendance is not None else None,
+        "available_funds": available_funds,
+        "funding_gap": max(total_cost - available_funds, 0) if available_funds is not None else None,
         "recommended_min_ticket_price": recommended_min_ticket_price,
         "recommended_target_ticket_price": recommended_target_ticket_price,
         "scenarios": scenarios,

@@ -26,6 +26,8 @@ import {
 } from '../api'
 import { zhaoYazhiMarketDossier } from '../data/marketDossier'
 import { ProgressRing, ScenarioBarChart } from '../components/Charts'
+import ProjectFinance from '../components/ProjectFinance'
+import DecisionReview from '../components/DecisionReview'
 
 const emptyFactForm = { title: '', content: '', source: '' }
 const emptyEvidenceForm = { name: '', file_url: '', source: '', evidence_type: 'document' }
@@ -48,6 +50,7 @@ function statusLabel(value) {
     medium: '中',
     open: '开放',
     pending: '待处理',
+    pending_input: '待补齐参数',
     rejected: '已驳回',
     submitted: '已提交',
     verified: '已核验',
@@ -89,6 +92,7 @@ export default function ProjectDetail() {
   const [gateForm, setGateForm] = useState(emptyGateForm)
   const [riskForm, setRiskForm] = useState(emptyRiskForm)
   const [marketFactForm, setMarketFactForm] = useState(emptyMarketFactForm)
+  const [reportBusy, setReportBusy] = useState(false)
 
   useEffect(() => {
     let active = true
@@ -132,8 +136,8 @@ export default function ProjectDetail() {
   const neutral = finance?.scenarios?.neutral
   const metrics = useMemo(() => [
     { label: '当前版本', value: project?.current_version?.version_no ? `V${project.current_version.version_no}` : '-', delta: statusLabel(project?.current_version?.status) },
-    { label: '中性利润', value: neutral ? `¥${formatNumber(neutral.profit)}` : '-', delta: neutral ? `收入 ¥${formatNumber(neutral.revenue)}` : '等待测算' },
-    { label: '保本人数', value: finance?.breakeven_attendance ? formatNumber(finance.breakeven_attendance) : '-', delta: finance?.total_cost ? `总成本 ¥${formatNumber(finance.total_cost)}` : '成本待补齐' },
+    { label: '中性利润', value: neutral ? `¥${formatNumber(neutral.profit)}` : '-', delta: neutral ? `收入 ¥${formatNumber(neutral.total_revenue ?? neutral.revenue)}` : '等待测算' },
+    { label: '保本人数', value: finance?.breakeven_attendance != null ? formatNumber(finance.breakeven_attendance) : '-', delta: finance?.total_cost != null ? `总成本 ¥${formatNumber(finance.total_cost)}` : '成本待补齐' },
     { label: '开放风险', value: String(risks.filter((risk) => risk.status === 'open').length), delta: `${gates.length} 个关卡待跟进`, tone: risks.some((risk) => risk.level === 'high') ? 'danger' : undefined },
   ], [finance, gates.length, neutral, project, risks])
 
@@ -279,23 +283,40 @@ export default function ProjectDetail() {
   }
 
   const handleGenerateFeasibilityReport = async () => {
-    const response = await generateFeasibilityReport(projectId, {
-      version_id: project?.current_version_id,
-      tax_fee_rate: 0.15,
-      use_ai_copy: true,
-    })
-    const report = response.data.data
-    const downloadUrl = report.download_url?.startsWith('/')
-      ? `http://localhost:8000${report.download_url}`
-      : report.download_url
-    const normalized = { ...report, download_url: downloadUrl }
-    setFeasibilityReport(normalized)
-    if (report.evidence) {
-      setEvidences((current) => [report.evidence, ...current])
+    if (reportBusy) return
+    setReportBusy(true)
+    setMessage('')
+    try {
+      const response = await generateFeasibilityReport(projectId, {
+        version_id: project?.current_version_id,
+        use_ai_copy: false,
+      })
+      const report = response.data.data
+      const downloadUrl = report.download_url?.startsWith('/')
+        ? `${(import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000').replace(/\/$/, '')}${report.download_url}`
+        : report.download_url
+      const normalized = { ...report, download_url: downloadUrl }
+      setFeasibilityReport(normalized)
+      if (report.evidence) {
+        setEvidences((current) => [report.evidence, ...current])
+      }
+      setMessage('报告已生成，可下载核验')
+    } catch {
+      setMessage('报告生成失败，请先保存完整测算参数（含税费与服务费），再重试。')
+    } finally {
+      setReportBusy(false)
     }
-    setMessage('报告已生成，可下载核验')
   }
 
+  const handleFinanceSaved = async () => {
+    const [projectResponse, versionsResponse] = await Promise.all([
+      getProject(projectId), listProjectVersions(projectId),
+    ])
+    setProject(projectResponse.data.data)
+    setVersions(versionsResponse.data.data || [])
+    setFeasibilityReport(null)
+    setShareUrl('')
+  }
   if (status === 'loading') {
     return <div className="state-panel">正在加载项目详情...</div>
   }
@@ -321,10 +342,13 @@ export default function ProjectDetail() {
           <p>集中管理项目版本、事实证据、假设、关卡、风险、任务与报告分享。</p>
         </div>
         <div className="button-row">
-          <button className="button button-secondary" type="button" onClick={handleGenerateFeasibilityReport}>生成可行性报告</button>
+          <button className="button button-secondary" type="button" disabled={reportBusy} onClick={handleGenerateFeasibilityReport}>{reportBusy ? '报告生成中…' : '生成可行性报告'}</button>
           <button className="button button-primary" type="button" onClick={handleShareReport}>生成分享链接</button>
         </div>
       </section>
+
+      <DecisionReview facts={facts} evidences={evidences} risks={risks} gates={gates} />
+      <ProjectFinance key={projectId} project={project} onSaved={handleFinanceSaved} />
 
       <section className="metric-grid" aria-label="项目关键指标">
         {metrics.map((metric) => (
@@ -423,7 +447,7 @@ export default function ProjectDetail() {
       </section>
 
       <section className="project-detail-grid">
-        <article className="panel">
+        <article className="panel" id="project-facts">
           <div className="panel-heading">
             <div>
               <span className="eyebrow">FACTS</span>
@@ -461,7 +485,7 @@ export default function ProjectDetail() {
           </form>
         </article>
 
-        <article className="panel">
+        <article className="panel" id="project-evidences">
           <div className="panel-heading">
             <div>
               <span className="eyebrow">EVIDENCES</span>
@@ -496,7 +520,7 @@ export default function ProjectDetail() {
           </form>
         </article>
 
-        <article className="panel">
+        <article className="panel" id="project-assumptions">
           <div className="panel-heading">
             <div>
               <span className="eyebrow">ASSUMPTIONS</span>
@@ -527,7 +551,7 @@ export default function ProjectDetail() {
           </form>
         </article>
 
-        <article className="panel">
+        <article className="panel" id="project-gates">
           <div className="panel-heading">
             <div>
               <span className="eyebrow">GATES</span>
@@ -558,7 +582,7 @@ export default function ProjectDetail() {
           </form>
         </article>
 
-        <article className="panel">
+        <article className="panel" id="project-risks">
           <div className="panel-heading">
             <div>
               <span className="eyebrow">RISKS</span>

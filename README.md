@@ -212,6 +212,13 @@ IP_platform/
   - 获取项目版本列表
 - `POST /finance/calculate`
   - 执行三情景财务测算，并生成新的版本快照
+- `POST /finance/show-calculation`
+  - 完整演出测算：分别传入 `tax_fee_rate` 和 `ticketing_fee_rate`（0–1，合计小于 1），未填扣率返回 `pending_input`
+  - 场馆容量、人数、票价与全部成本项需补齐；零费用须显式填 0。`available_funds` 未知时 `funding_gap` 返回 `null`
+  - 返回毛票房、税费、服务费、净票房、净利润、项目成本回报率、三情景与保本容量判断；完整输入保存于版本快照，连续重复提交相同参数复用当前版本
+- `POST /projects/{project_id}/feasibility-report`
+  - 传入 `version_id` 可生成指定版本报告；完整演出版本沿用其测算数据与快照，不套用默认扣率
+  - 历史简版报告须显式传入扣率；Web 项目详情建议先保存完整演出测算，再生成报告
 - `POST /finance/breakeven`
   - 基于项目成本与票价计算盈亏平衡人数和目标利润人数
 - `GET /facts`
@@ -371,7 +378,7 @@ export DASHSCOPE_API_TOKEN=your_token
 
 ## 注意事项
 
-1. 前端默认请求地址为 `http://localhost:8000`，如果后端运行在其他机器或端口，请修改 `starhub-web/src/api.js` 中的 `baseURL`。
+1. 前端默认请求地址为 `http://127.0.0.1:8000`，通过 `VITE_API_BASE_URL` 配置部署地址；报告下载同样沿用此配置。
 2. MySQL 首次启动时会自动创建业务表和默认客户空间；后端不再创建或依赖本地 SQLite 数据库文件。
 3. 生产部署前需补充权限、审计、监控与数据治理能力。
 

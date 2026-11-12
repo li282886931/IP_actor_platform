@@ -156,7 +156,7 @@ describe('Generate', () => {
     expect(screen.getByText('已完成分析')).toBeInTheDocument()
   })
 
-  it('restores in-progress generation state when returning to the page', async () => {
+  it('recovers interrupted generation when returning to the page', async () => {
     let finishStream
     generateAIStream.mockImplementation(async (_payload, handlers) => {
       handlers.onProgress('模型正在生成内容')
@@ -182,10 +182,59 @@ describe('Generate', () => {
     render(<Generate />)
 
     expect(screen.getByDisplayValue('周杰伦·北京演唱会')).toBeInTheDocument()
-    expect(screen.getByText('模型正在生成内容')).toBeInTheDocument()
     expect(screen.getByText('正在分析城市受众')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /AI 生成中/ })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /一键生成/ })).toBeEnabled()
+    expect(screen.getByText('上次生成已中断')).toBeInTheDocument()
 
     finishStream()
+    await waitFor(() => expect(
+      JSON.parse(localStorage.getItem('starhub-ai-generation-state')).status,
+    ).toBe('error'))
+    expect(screen.queryByText('最终生成内容')).not.toBeInTheDocument()
+  })
+
+  it('unlocks generation on the final event before the connection closes', async () => {
+    let handlers
+    let finishStream
+    generateAIStream.mockImplementation((_payload, callbacks) => {
+      handlers = callbacks
+      return new Promise((resolve) => { finishStream = resolve })
+    })
+    render(<Generate />)
+    await userEvent.click(screen.getByRole('button', { name: /一键生成/ }))
+    handlers.onFinal('传播定位\n完成文案')
+    await waitFor(() => expect(screen.getByRole('button', { name: /一键生成/ })).toBeEnabled())
+    expect(screen.getByText(/完成文案/)).toBeInTheDocument()
+    finishStream('传播定位\n完成文案')
+  })
+
+  it('renders streamed copy while the request is still pending', async () => {
+    let handlers
+    let finishStream
+    generateAIStream.mockImplementation((_payload, callbacks) => {
+      handlers = callbacks
+      return new Promise((resolve) => { finishStream = resolve })
+    })
+    render(<Generate />)
+    await userEvent.click(screen.getByRole('button', { name: /一键生成/ }))
+    handlers.onDelta('## 传播定位\n\n')
+    handlers.onDelta('深圳演出内容')
+    expect(await screen.findByText('深圳演出内容')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /AI 生成中/ })).toBeDisabled()
+    expect(screen.queryByText('正在等待模型返回分析过程...')).not.toBeInTheDocument()
+    finishStream('## 传播定位\n\n深圳演出内容')
+  })
+
+  it('preserves inputs and partial copy when recovering saved loading state', () => {
+    localStorage.setItem('starhub-ai-generation-state', JSON.stringify({
+      form: { type: 'poster', show_name: '演唱会', artist: '小张', city: '深圳' },
+      status: 'loading',
+      result: '已返回的部分文案',
+    }))
+    render(<Generate />)
+    expect(screen.getByDisplayValue('小张')).toBeInTheDocument()
+    expect(screen.getByText('已返回的部分文案')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /一键生成/ })).toBeEnabled()
+    expect(screen.getByText('上次生成已中断')).toBeInTheDocument()
   })
 })

@@ -44,4 +44,14 @@ describe('useProjectDraft', () => {
     expect(result.current.draft).not.toHaveProperty('unsupported')
     expect(result.current.draft).not.toHaveProperty('nested')
   })
+
+  it('stores decimal deduction percentages and preserves empty versus explicit zero', () => {
+    const { result } = renderHook(() => useProjectDraft())
+    act(() => result.current.updateDraft('tax_fee_percent', '6.25'))
+    expect(result.current.draft.tax_fee_percent).toBe(6.25)
+    act(() => result.current.updateDraft('ticketing_fee_percent', '0'))
+    expect(result.current.draft.ticketing_fee_percent).toBe(0)
+    act(() => result.current.updateDraft('tax_fee_percent', ''))
+    expect(result.current.draft.tax_fee_percent).toBeUndefined()
+  })
 })

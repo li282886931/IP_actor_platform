@@ -1,5 +1,6 @@
 import io
 import math
+from copy import deepcopy
 
 from docx import Document
 
@@ -14,7 +15,34 @@ REQUIRED_FINANCE_FIELDS = [
 ]
 
 
-def build_feasibility_calculation(project, payload):
+def build_feasibility_calculation(project, payload, version=None):
+    if version and (version.input_snapshot or {}).get("show_calculation"):
+        calculation = deepcopy(version.finance_result or {})
+        if calculation.get("status") != "calculated":
+            return {**calculation, "status": "pending_input"}
+        inputs = version.input_snapshot["show_calculation"]
+        calculation.update({
+            "capacity": inputs["venue_capacity"],
+            "avg_ticket_price": inputs["avg_ticket_price"],
+            "tax_fee_rate": inputs["tax_fee_rate"],
+            "ticketing_fee_rate": inputs["ticketing_fee_rate"],
+            "sponsorship_income": inputs.get("sponsorship_income") or 0,
+            "merchandise_income": inputs.get("merchandise_income") or 0,
+            "source_version_id": version.id,
+            "full_gross_ticket_revenue": inputs["venue_capacity"] * inputs["avg_ticket_price"],
+            "full_net_ticket_revenue": round(inputs["venue_capacity"] * inputs["avg_ticket_price"]
+                                           * (1 - inputs["tax_fee_rate"] - inputs["ticketing_fee_rate"])),
+            "cost_inputs": inputs,
+        })
+        for key, scenario in calculation["scenarios"].items():
+            scenario.update({
+                "label": {"conservative": "保守", "neutral": "中性", "optimistic": "乐观"}[key],
+                "occupancy_rate": scenario["occupancy_rate"] / 100,
+                "total_income": scenario["total_revenue"],
+                "net_profit": scenario["profit"],
+            })
+        return calculation
+
     values = {
         "expected_attendance": project.expected_attendance,
         "avg_ticket_price": project.avg_ticket_price,
@@ -24,6 +52,8 @@ def build_feasibility_calculation(project, payload):
         "production_cost": project.production_cost,
     }
     missing = [field for field, value in values.items() if value is None]
+    if payload.tax_fee_rate is None:
+        missing.append("tax_fee_rate")
     if missing:
         return {
             "formula_version": "feasibility-v1",
@@ -34,9 +64,9 @@ def build_feasibility_calculation(project, payload):
             "breakeven_occupancy_rate": None,
         }
 
-    capacity = values["expected_attendance"]
+    capacity = project.venue_capacity or values["expected_attendance"]
     ticket_price = values["avg_ticket_price"]
-    tax_fee_rate = payload.tax_fee_rate if payload.tax_fee_rate is not None else 0.15
+    tax_fee_rate = payload.tax_fee_rate
     sponsorship_income = payload.sponsorship_income or 0
     merchandise_income = payload.merchandise_income or 0
     total_cost = (
@@ -86,8 +116,8 @@ def build_feasibility_calculation(project, payload):
         "total_cost": total_cost,
         "full_gross_ticket_revenue": capacity * ticket_price,
         "full_net_ticket_revenue": round(full_net_ticket_revenue),
-        "breakeven_attendance": math.ceil(total_cost / (ticket_price * (1 - tax_fee_rate))) if ticket_price else None,
-        "breakeven_occupancy_rate": round(total_cost / full_net_ticket_revenue, 4) if full_net_ticket_revenue else None,
+        "breakeven_attendance": math.ceil(max(total_cost - sponsorship_income - merchandise_income, 0) / (ticket_price * (1 - tax_fee_rate))) if ticket_price else None,
+        "breakeven_occupancy_rate": round(max(total_cost - sponsorship_income - merchandise_income, 0) / full_net_ticket_revenue, 4) if full_net_ticket_revenue else None,
         "scenarios": scenarios,
     }
 
@@ -155,10 +185,20 @@ def build_feasibility_report_docx(project, calculation, facts, risks, assumption
         row = table.add_row().cells
         row[0].text = label
         row[1].text = _money(value)
+    for key, label in [
+        ("security_cost", "安保费用"), ("travel_cost", "交通费用"),
+        ("accommodation_cost", "住宿费用"), ("insurance_cost", "保险费用"),
+        ("approval_cost", "审批费用"), ("contingency_cost", "预备费用"),
+    ]:
+        if key in calculation.get("cost_inputs", {}):
+            row = table.add_row().cells
+            row[0].text = label
+            row[1].text = _money(calculation["cost_inputs"][key])
 
     document.add_heading("第五章 定价策略与产出预估", level=1)
     document.add_paragraph(
-        f"平均票价按 {_money(project.avg_ticket_price).replace(' 元', ' 元/人')} 测算；票务服务及税费率按 {_percent(calculation.get('tax_fee_rate'))} 扣减。"
+        f"平均票价按 {_money(project.avg_ticket_price).replace(' 元', ' 元/人')} 测算；税费率按 {_percent(calculation.get('tax_fee_rate'))} 扣减，"
+        f"票务服务费率为 {_percent(calculation.get('ticketing_fee_rate'))}。"
     )
     scenario_table = document.add_table(rows=1, cols=7)
     headers = ["情景", "上座率", "人数", "毛票房", "净票房", "总收入", "净利润"]
@@ -176,13 +216,14 @@ def build_feasibility_report_docx(project, calculation, facts, risks, assumption
 
     document.add_heading("第六章 盈亏平衡与投资回报", level=1)
     document.add_paragraph(
-        f"盈亏平衡人数为 {calculation.get('breakeven_attendance'):,} 人，"
+        f"盈亏平衡人数为 {calculation.get('breakeven_attendance') if calculation.get('breakeven_attendance') is not None else '待补齐'} 人，"
         f"盈亏平衡上座率为 {_percent(calculation.get('breakeven_occupancy_rate'))}。"
     )
     neutral = calculation.get("scenarios", {}).get("neutral") or {}
     document.add_paragraph(
-        f"中性情境净利润为 {_money(neutral.get('net_profit'))}，ROI 为 {_percent(neutral.get('roi'))}。"
+        f"中性情境净利润为 {_money(neutral.get('net_profit'))}，项目成本回报率为 {_percent(neutral.get('roi'))}。"
     )
+    document.add_paragraph("项目成本回报率 = 项目净利润 / 项目总成本，不代表出资方合同收益率；资金安全须另行核验合同、资金监管与付款节点。")
 
     document.add_heading("第七章 风险评估与应对", level=1)
     if risks:
@@ -203,7 +244,10 @@ def build_feasibility_report_docx(project, calculation, facts, risks, assumption
 
     document.add_heading("附录 数据来源", level=1)
     document.add_paragraph(f"报告生成模式：{copy_mode}")
-    document.add_paragraph("财务测算口径：满座毛票房、扣除税费后的净票房、70%/80%/90% 三档上座率、总收入、净利润、ROI 与盈亏平衡上座率。")
+    rates = " / ".join(_percent(item["occupancy_rate"]) for item in calculation.get("scenarios", {}).values())
+    document.add_paragraph(f"财务测算口径：满座毛票房、扣费净票房、{rates} 三档上座率、总收入、净利润、项目成本回报率与盈亏平衡上座率。")
+    if calculation.get("source_version_id"):
+        document.add_paragraph(f"财务数据沿用测算版本 ID {calculation['source_version_id']}，不使用后续版本参数。")
     document.add_paragraph("外部采集、文档解析和 AI 生成建议均作为待核验证据，不直接替代人工决策。")
 
     buffer = io.BytesIO()

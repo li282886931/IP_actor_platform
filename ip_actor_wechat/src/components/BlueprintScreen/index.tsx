@@ -477,11 +477,26 @@ export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
           sponsorship_income: draft.sponsorship_income,
           merchandise_income: draft.merchandise_income,
           target_profit: draft.target_profit,
-          tax_fee_rate: 0.06,
-          ticketing_fee_rate: 0.04,
+          available_funds: draft.available_funds,
+          tax_fee_rate: draft.tax_fee_percent == null ? undefined : draft.tax_fee_percent / 100,
+          ticketing_fee_rate: draft.ticketing_fee_percent == null ? undefined : draft.ticketing_fee_percent / 100,
         })
         const record = asRecord(result)
         if (record.version_id) Taro.setStorageSync(STORAGE_KEYS.versionId, Number(record.version_id))
+        if (record.status === 'pending_input') {
+          const missingLabels: Record<string, string> = {
+            tax_fee_rate: '税费率', ticketing_fee_rate: '票务服务费率',
+            venue_capacity: '场馆容量', expected_attendance: '预计到场', avg_ticket_price: '平均票价',
+            artist_fee: '艺人费用', venue_cost: '场馆费用', marketing_cost: '宣发费用',
+            production_cost: '制作费用', security_cost: '安保费用', travel_cost: '差旅费用',
+            accommodation_cost: '住宿费用', insurance_cost: '保险费用', approval_cost: '报批费用',
+            contingency_cost: '不可预见费',
+          }
+          const missing = Array.isArray(record.missing_fields) ? record.missing_fields : []
+          setLoadState('success')
+          setMessage(`测算参数待补齐：${missing.map((key) => missingLabels[String(key)] || String(key)).join('、')}`)
+          return
+        }
       } else if (screenId === 'S31') {
         await api.calculateBreakeven({
           project_id: projectId,
@@ -631,6 +646,8 @@ export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
               <CandidateNumberField label='赞助收入 / 元' field='sponsorship_income' draft={draft} initialSections={initialCandidateSections(['sponsorship_income'])} onInput={updateDraft} onSearch={localCandidateSearch(['sponsorship_income'])} onSelect={applyCandidate} />
               <CandidateNumberField label='周边收入 / 元' field='merchandise_income' draft={draft} initialSections={initialCandidateSections(['merchandise_income'])} onInput={updateDraft} onSearch={localCandidateSearch(['merchandise_income'])} onSelect={applyCandidate} />
               <CandidateNumberField label='目标利润 / 元' field='target_profit' draft={draft} initialSections={initialCandidateSections(['target_profit'])} onInput={updateDraft} onSearch={localCandidateSearch(['target_profit'])} onSelect={applyCandidate} />
+              <FormField label='税费率 / %' value={inputValue(draft.tax_fee_percent)} placeholder='按实际口径填写，无税费填 0' onChange={(value) => updateDraft('tax_fee_percent', value)} />
+              <FormField label='票务服务费率 / %' value={inputValue(draft.ticketing_fee_percent)} placeholder='按实际合同填写，无服务费填 0' onChange={(value) => updateDraft('ticketing_fee_percent', value)} />
             </>
           )}
         </View>

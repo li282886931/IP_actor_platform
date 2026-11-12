@@ -82,7 +82,7 @@ test('maps all 84 screens to explicit context and write actions', () => {
 
 test('keeps frontend and backend screen id registries aligned', () => {
   const frontendSource = readFileSync(resolve(root, 'src/data/screenDataMap.ts'), 'utf8')
-  const backendSource = readFileSync(resolve(root, '../app/miniapp_screens.py'), 'utf8')
+  const backendSource = readFileSync(resolve(root, '../app/miniapp/screens/registry.py'), 'utf8')
   const frontendIds = [...frontendSource.matchAll(/^\s{2}(S\d{2}):\s*\{/gm)].map((match) => match[1]).sort()
   const backendIds = [...backendSource.matchAll(/_registration\('?(S\d{2})'?,/g)].map((match) => match[1]).sort()
 
@@ -91,7 +91,7 @@ test('keeps frontend and backend screen id registries aligned', () => {
 
 test('keeps the documented API matrix aligned with all screen registries', () => {
   const frontendSource = readFileSync(resolve(root, 'src/data/screenDataMap.ts'), 'utf8')
-  const backendSource = readFileSync(resolve(root, '../app/miniapp_screens.py'), 'utf8')
+  const backendSource = readFileSync(resolve(root, '../app/miniapp/screens/registry.py'), 'utf8')
   const matrixSource = readFileSync(resolve(root, '../docs/miniapp-screen-api-matrix.md'), 'utf8')
   const frontendIds = [...frontendSource.matchAll(/^\s{2}(S\d{2}):\s*\{/gm)].map((match) => match[1]).sort()
   const backendIds = [...backendSource.matchAll(/_registration\('?(S\d{2})'?,/g)].map((match) => match[1]).sort()
@@ -791,6 +791,48 @@ test('generated runtime supports complete show calculation on S25', () => {
   assert.match(runtime, /financeDraft/)
   assert.match(runtime, /onFinanceInput/)
   assert.match(runtime, /\/finance\/show-calculation/)
+})
+
+test('S25 generated submission uses entered deductions and stays on missing input', async () => {
+  const runtimePath = resolve(root, 'dist/common/runtime.js')
+  const storage = new Map([
+    ['starhub-project-id', 42],
+    ['starhub-project-draft', { tax_fee_percent: 5.5, ticketing_fee_percent: 0 }],
+  ])
+  const requests = []
+  const navigations = []
+  let page
+  globalThis.wx = {
+    getStorageSync: (key) => storage.get(key),
+    setStorageSync: (key, value) => storage.set(key, value),
+    request: (options) => {
+      requests.push(options)
+      options.success({ statusCode: 200, data: { code: 0, data: {
+        status: 'pending_input', version_id: 2, missing_fields: ['security_cost'],
+      } } })
+    },
+    redirectTo: (options) => navigations.push(options),
+    navigateTo: (options) => navigations.push(options),
+    stopPullDownRefresh: () => {},
+  }
+  globalThis.Page = (definition) => {
+    page = { ...definition, data: { ...definition.data },
+      setData(next) { this.data = { ...this.data, ...next } } }
+  }
+  const require = createRequire(import.meta.url)
+  delete require.cache[runtimePath]
+  try {
+    require(runtimePath).createScreenPage('S25')
+    await page.onPrimaryTap()
+    assert.equal(requests[0].data.tax_fee_rate, 0.055)
+    assert.equal(requests[0].data.ticketing_fee_rate, 0)
+    assert.equal(navigations.length, 0)
+    assert.match(page.data.message, /待补齐/)
+  } finally {
+    delete globalThis.wx
+    delete globalThis.Page
+    delete require.cache[runtimePath]
+  }
 })
 
 test('generated runtime uses local placeholders for login in WeChat devtools', async () => {

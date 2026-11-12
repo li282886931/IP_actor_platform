@@ -472,6 +472,9 @@ describe('BlueprintScreen aggregated loading', () => {
       venue_cost: 700000,
       marketing_cost: 400000,
       production_cost: 900000,
+      tax_fee_percent: 5,
+      ticketing_fee_percent: 3,
+      available_funds: 1000000,
     })
     taroMocks.getMiniappScreen.mockResolvedValue(response({
       screen_id: 'S25',
@@ -490,11 +493,30 @@ describe('BlueprintScreen aggregated loading', () => {
         venue_cost: 700000,
         marketing_cost: 400000,
         production_cost: 900000,
-        tax_fee_rate: 0.06,
-        ticketing_fee_rate: 0.04,
+        tax_fee_rate: 0.05,
+        ticketing_fee_rate: 0.03,
+        available_funds: 1000000,
       }))
     })
     expect(taroMocks.storage.get('starhub-version-id')).toBe(88)
+  })
+
+  it('keeps S25 on the input screen when real deduction rates are missing', async () => {
+    taroMocks.storage.set('starhub-project-id', 42)
+    taroMocks.getMiniappScreen.mockResolvedValue(response({
+      screen_id: 'S25', summary: { title: '完整演出测算' }, items: [],
+    }))
+    taroMocks.calculateShow.mockResolvedValue({
+      version_id: 89, status: 'pending_input', missing_fields: ['tax_fee_rate', 'ticketing_fee_rate'],
+    })
+    render(<BlueprintScreen screenId='S25' />)
+    fireEvent.click(await screen.findByRole('button', { name: '保存并计算三种情景' }))
+    await waitFor(() => expect(taroMocks.calculateShow).toHaveBeenCalledWith(expect.objectContaining({
+      tax_fee_rate: undefined, ticketing_fee_rate: undefined,
+    })))
+    expect(await screen.findByText('测算参数待补齐：税费率、票务服务费率')).toBeInTheDocument()
+    expect(taroMocks.navigateTo).not.toHaveBeenCalled()
+    expect(taroMocks.redirectTo).not.toHaveBeenCalled()
   })
 
   it('stores the S52 default project before opening the agent plan', async () => {

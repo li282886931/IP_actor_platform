@@ -145,6 +145,7 @@ def test_database_url_uses_config_when_env_is_missing(monkeypatch):
 
 def test_llama_server_timeout_allows_local_generation():
     assert config_module.LLAMA_SERVER_TIMEOUT_SECONDS >= 300
+    assert config_module.LLAMA_SERVER_MAX_TOKENS == 800
 
 
 def test_backend_schema_sql_contains_all_model_tables():
@@ -438,7 +439,7 @@ def test_feasibility_report_uploads_generated_docx_to_minio(monkeypatch):
         )
         project = project_response.json()["data"]
 
-        report_response = client.post(f"/projects/{project['id']}/feasibility-report", json={"use_ai_copy": False})
+        report_response = client.post(f"/projects/{project['id']}/feasibility-report", json={"use_ai_copy": False, "tax_fee_rate": 0.15})
         assert report_response.status_code == 200
         report = report_response.json()["data"]
         assert report["file_url"].startswith("minio://ip-actor-test/")
@@ -1609,7 +1610,7 @@ def test_ai_generate_strips_think_blocks_from_final_result(monkeypatch):
     assert result == "传播定位\n最终文案"
 
 
-def test_ai_generate_stream_returns_sse_progress_and_clean_final(monkeypatch):
+def test_ai_generate_stream_disables_thinking_and_returns_clean_final(monkeypatch):
     session_factory = make_temp_session(monkeypatch)
     app_module.init_db()
     monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
@@ -1664,16 +1665,19 @@ def test_ai_generate_stream_returns_sse_progress_and_clean_final(monkeypatch):
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/event-stream")
     assert '"event": "progress"' in body
-    assert '"event": "thought"' in body
+    assert '"event": "thought"' not in body
     assert '"event": "final"' in body
-    assert "先定位目标客群" in body
-    assert "判断传播角度" in body
+    assert "先定位目标客群" not in body
+    assert "判断传播角度" not in body
     assert "<think>" not in body
     assert "传播定位\\n最终文案：村庄见面会" in body
     assert calls[0]["json"]["stream"] is True
+    assert calls[0]["json"]["chat_template_kwargs"] == {"enable_thinking": False}
+    assert calls[0]["json"]["max_tokens"] == config_module.LLAMA_SERVER_MAX_TOKENS
+    assert calls[0]["json"]["messages"][0]["content"].startswith("/no_think")
 
 
-def test_ai_generate_stream_moves_plain_analysis_preamble_to_thought(monkeypatch):
+def test_ai_generate_stream_discards_plain_analysis_preamble(monkeypatch):
     session_factory = make_temp_session(monkeypatch)
     app_module.init_db()
     monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
@@ -1719,8 +1723,8 @@ def test_ai_generate_stream_moves_plain_analysis_preamble_to_thought(monkeypatch
         app_module.app.dependency_overrides.clear()
 
     assert response.status_code == 200
-    assert '"event": "thought"' in body
-    assert "我们需要先判断传播策略" in body
+    assert '"event": "thought"' not in body
+    assert "我们需要先判断传播策略" not in body
     assert '"result": "传播定位\\n最终文案"' in body
 
 
@@ -1766,7 +1770,7 @@ def test_ai_generate_returns_cached_result_from_redis(monkeypatch):
     assert response.json()["data"] == {"result": "Redis cached copy", "cache_hit": True}
 
 
-def test_ai_generate_stream_returns_cached_thought_and_result_from_redis(monkeypatch):
+def test_ai_generate_stream_hides_cached_thought_and_returns_result(monkeypatch):
     session_factory = make_temp_session(monkeypatch)
     app_module.init_db()
     monkeypatch.setenv("LLAMA_SERVER_URL", "http://127.0.0.1:18080/v1/chat/completions")
@@ -1812,8 +1816,8 @@ def test_ai_generate_stream_returns_cached_thought_and_result_from_redis(monkeyp
 
     assert response.status_code == 200
     assert "命中 Redis 生成缓存" in body
-    assert '"event": "thought"' in body
-    assert "缓存中的思考过程" in body
+    assert '"event": "thought"' not in body
+    assert "缓存中的思考过程" not in body
     assert '"result": "缓存中的最终文案"' in body
 
 
@@ -2389,7 +2393,7 @@ def test_project_feasibility_report_generates_docx_and_evidence(monkeypatch):
         assert report["calculation_result"]["scenarios"]["neutral"]["net_ticket_revenue"] == 22195200
         assert report["calculation_result"]["scenarios"]["neutral"]["total_income"] == 23695200
         assert report["calculation_result"]["scenarios"]["neutral"]["net_profit"] == 1095200
-        assert report["calculation_result"]["breakeven_occupancy_rate"] == 0.8146
+        assert report["calculation_result"]["breakeven_occupancy_rate"] == 0.7605
 
         download_response = client.get(report["download_url"])
         assert download_response.status_code == 200
@@ -2471,6 +2475,7 @@ def test_full_backend_plan_api_flow(monkeypatch):
             "/projects",
             json={
                 "name": "杭州音乐节",
+                "available_funds": 0,
                 "artist_name": "测试艺人",
                 "city": "杭州",
                 "venue": "城市公园",

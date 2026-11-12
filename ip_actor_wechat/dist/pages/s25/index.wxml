@@ -43,6 +43,9 @@
       <view class="field-label">场馆容量</view><input class="input" data-field="venue_capacity" value="{{financeDraft.venue_capacity}}" bindinput="onFinanceInput" placeholder="场馆容量 / 人" />
       <view class="field-label">预计到场</view><input class="input" data-field="expected_attendance" value="{{financeDraft.expected_attendance}}" bindinput="onFinanceInput" placeholder="预计到场 / 人" />
       <view class="field-label">平均实收票价</view><input class="input" data-field="avg_ticket_price" value="{{financeDraft.avg_ticket_price}}" bindinput="onFinanceInput" placeholder="平均实收票价 / 元" />
+      <view class="field-label">可用资金</view><input class="input" data-field="available_funds" value="{{financeDraft.available_funds}}" bindinput="onFinanceInput" placeholder="可用资金 / 元，未填不计算缺口" />
+      <view class="field-label">税费率 / %</view><input class="input" data-field="tax_fee_percent" value="{{financeDraft.tax_fee_percent}}" bindinput="onFinanceInput" placeholder="按实际口径填写，无税费填 0" />
+      <view class="field-label">票务服务费率 / %</view><input class="input" data-field="ticketing_fee_percent" value="{{financeDraft.ticketing_fee_percent}}" bindinput="onFinanceInput" placeholder="按实际合同填写，无服务费填 0" />
       <view class="field-label">安保费用</view><input class="input" data-field="security_cost" value="{{financeDraft.security_cost}}" bindinput="onFinanceInput" placeholder="安保费用 / 元" />
       <view class="field-label">差旅费用</view><input class="input" data-field="travel_cost" value="{{financeDraft.travel_cost}}" bindinput="onFinanceInput" placeholder="差旅费用 / 元" />
       <view class="field-label">住宿费用</view><input class="input" data-field="accommodation_cost" value="{{financeDraft.accommodation_cost}}" bindinput="onFinanceInput" placeholder="住宿费用 / 元" />

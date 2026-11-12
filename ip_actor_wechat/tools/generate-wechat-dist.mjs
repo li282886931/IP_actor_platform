@@ -513,12 +513,12 @@ const createScreenPage = (screenId) => {
         this.setData({ loadState: 'loading', message: '' })
         return request('/finance/show-calculation', 'POST', Object.assign({}, draft, {
           project_id: projectId,
-          tax_fee_rate: 0.06,
-          ticketing_fee_rate: 0.04
+          tax_fee_rate: draft.tax_fee_percent == null ? undefined : draft.tax_fee_percent / 100,
+          ticketing_fee_rate: draft.ticketing_fee_percent == null ? undefined : draft.ticketing_fee_percent / 100
         })).then((result) => {
           if (result.version_id) wx.setStorageSync(STORAGE_KEYS.versionId, Number(result.version_id))
           this.setData({ loadState: 'success', message: result.status === 'pending_input' ? '测算输入待补齐。' : '测算完成。' })
-          this.goNext()
+          if (result.status !== 'pending_input') this.goNext()
         }).catch((error) => {
           console.error('[S25] show calculation failed', error)
           this.setData({ loadState: 'error', message: '测算失败，输入已保留，请重试。' })

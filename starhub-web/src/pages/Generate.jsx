@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 
 import { generateAIStream } from '../api'
@@ -46,7 +46,10 @@ const initialGenerationState = () => {
   return {
     form: { ...defaultForm, ...(stored.form || {}) },
     result: cleanFinalResult(stored.result || ''),
-    status: ['idle', 'loading', 'success', 'error'].includes(stored.status) ? stored.status : 'idle',
+    status: stored.status === 'loading'
+      ? 'error'
+      : ['idle', 'success', 'error'].includes(stored.status) ? stored.status : 'idle',
+    errorMessage: stored.status === 'loading' ? '上次生成已中断' : '',
     progressMessages: Array.isArray(stored.progressMessages) ? stored.progressMessages : [],
     thoughts: stored.thoughts || '',
   }
@@ -60,6 +63,10 @@ export default function Generate({ role = 'B' }) {
   const [copyStatus, setCopyStatus] = useState('')
   const [progressMessages, setProgressMessages] = useState(initialState.progressMessages)
   const [thoughts, setThoughts] = useState(initialState.thoughts)
+  const [errorMessage, setErrorMessage] = useState(initialState.errorMessage)
+  const activeRequest = useRef(null)
+
+  useEffect(() => () => { activeRequest.current = null }, [])
 
   useEffect(() => {
     persistGenerationState({ form, result, status, progressMessages, thoughts })
@@ -76,7 +83,12 @@ export default function Generate({ role = 'B' }) {
   const handleGenerate = async (event) => {
     event?.preventDefault()
     const generationNonce = `${Date.now()}-${Math.random().toString(36).slice(2)}`
+    const request = { finished: false }
+    activeRequest.current = request
+    let streamedResult = ''
+    const isCurrent = () => activeRequest.current === request
     setStatus('loading')
+    setErrorMessage('')
     setCopyStatus('')
     setResult('')
     setProgressMessages(['已提交创作需求'])
@@ -97,6 +109,7 @@ export default function Generate({ role = 'B' }) {
         },
         {
           onProgress: (message) => {
+            if (!isCurrent() || request.finished) return
             if (message) setProgressMessages((current) => {
               const next = [...current, message]
               persistGenerationState({ progressMessages: next, status: 'loading' })
@@ -104,27 +117,44 @@ export default function Generate({ role = 'B' }) {
             })
           },
           onThought: (content) => {
+            if (!isCurrent() || request.finished) return
             if (content) setThoughts((current) => {
               const next = `${current}${content}`
               persistGenerationState({ thoughts: next, status: 'loading' })
               return next
             })
           },
-          onFinal: (value) => {
-            const cleaned = cleanFinalResult(value)
+          onDelta: (content) => {
+            if (!isCurrent() || request.finished || !content) return
+            streamedResult += content
+            const cleaned = cleanFinalResult(streamedResult)
             setResult(cleaned)
+            persistGenerationState({ result: cleaned, status: 'loading' })
+          },
+          onFinal: (value) => {
+            if (!isCurrent()) return
+            const cleaned = cleanFinalResult(value)
+            if (!cleaned) return
+            request.finished = true
+            setResult(cleaned)
+            setStatus('success')
             persistGenerationState({ result: cleaned, status: 'success' })
           },
         },
       )
+      if (!isCurrent() || request.finished) return
       const cleanedFinalResult = cleanFinalResult(finalResult)
+      if (!cleanedFinalResult) throw new Error('EMPTY_RESULT')
       setResult(cleanedFinalResult)
       setStatus('success')
       persistGenerationState({ result: cleanedFinalResult, status: 'success' })
     } catch {
-      setResult('')
+      if (!isCurrent() || request.finished) return
+      const partialResult = cleanFinalResult(streamedResult)
+      setResult(partialResult)
+      setErrorMessage('内容生成未完成')
       setStatus('error')
-      persistGenerationState({ result: '', status: 'error' })
+      persistGenerationState({ result: partialResult, status: 'error' })
     }
   }
 
@@ -236,8 +266,8 @@ export default function Generate({ role = 'B' }) {
 
           {status === 'error' && (
             <div className="state-panel error">
-              <strong>内容生成失败</strong>
-              <span>请检查后端服务或稍后重试。</span>
+              <strong>{errorMessage || '内容生成失败'}</strong>
+              <span>已保留创作需求和返回内容，可点击“一键生成”重试。</span>
             </div>
           )}
           {(status === 'loading' || thoughts) && (
@@ -246,7 +276,7 @@ export default function Generate({ role = 'B' }) {
                 <span>生成过程</span>
                 <small>{status === 'loading' ? '流式更新中' : '已完成'}</small>
               </div>
-              <pre>{thoughts || '正在等待模型返回分析过程...'}</pre>
+              <pre>{thoughts || progressMessages.at(-1) || '正在生成文案...'}</pre>
             </div>
           )}
           {result ? (
