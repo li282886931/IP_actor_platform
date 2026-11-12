@@ -23,6 +23,7 @@ def serialize_order(order: Order, show_title: str = ''):
         "id": order.id,
         "show_id": order.show_id,
         "show_title": show_title,
+        "status": order.status,
         "name": order.name,
         "phone": order.phone,
     }

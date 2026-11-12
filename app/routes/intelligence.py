@@ -33,6 +33,8 @@ from datetime import timezone
 from fastapi import APIRouter
 from fastapi import Depends
 from fastapi import HTTPException
+from fastapi import Header
+from app.services import live_analysis
 from sqlalchemy.orm import Session
 from typing import Optional
 import hashlib
@@ -478,8 +480,15 @@ def run_external_data_job(job_id: int, db: Session = Depends(get_db)):
     return json_ok(serialize_external_data_job(job))
 
 @router.post('/projects/{project_id}/analysis-jobs')
-def create_project_analysis_job(project_id: int, payload: ProjectAnalysisJobIn, db: Session = Depends(get_db)):
-    tenant, user = get_or_create_default_context(db)
+def create_project_analysis_job(project_id: int, payload: ProjectAnalysisJobIn, db: Session = Depends(get_db),
+                                authorization: Optional[str] = Header(default=None),
+                                x_tenant_id: Optional[str] = Header(default=None)):
+    readings = []
+    if payload.reads:
+        context, project = live_analysis.context_for_project(db, authorization, x_tenant_id, project_id)
+        tenant, user = context.tenant, context.user
+    else:
+        tenant, user = get_or_create_default_context(db)
     project = db.query(Project).filter(Project.id == project_id, Project.tenant_id == tenant.id).first()
     if not project:
         raise HTTPException(status_code=404, detail='Project not found')
@@ -490,6 +499,8 @@ def create_project_analysis_job(project_id: int, payload: ProjectAnalysisJobIn, 
     ).first()
     if not version:
         raise HTTPException(status_code=404, detail='Project version not found')
+    if payload.reads:
+        readings = live_analysis.collect(db, context, project, payload.reads)
 
     job = ProjectAnalysisJob(
         tenant_id=tenant.id,
@@ -497,7 +508,7 @@ def create_project_analysis_job(project_id: int, payload: ProjectAnalysisJobIn, 
         version_id=version.id,
         purpose=payload.purpose or '',
         status='running',
-        parameters=payload.parameters or {},
+        parameters={**(payload.parameters or {}), "reads": [item.model_dump() for item in payload.reads]},
         result={},
         requested_by=user.id,
         started_at=datetime.now(timezone.utc),
@@ -505,6 +516,10 @@ def create_project_analysis_job(project_id: int, payload: ProjectAnalysisJobIn, 
     db.add(job)
     db.flush()
     job.result = build_project_analysis_result(db, project, version)
+    if payload.reads:
+        job.result = {**job.result, "live_readings": readings,
+                      "human_review_questions": [*job.result["human_review_questions"],
+                          "请核验实时网页／API 来源的适用范围、读取时间与原始内容；失败来源需补充。"]}
     job.status = 'completed'
     job.completed_at = datetime.now(timezone.utc)
     db.commit()
@@ -512,8 +527,14 @@ def create_project_analysis_job(project_id: int, payload: ProjectAnalysisJobIn, 
     return json_ok(serialize_project_analysis_job(job))
 
 @router.get('/projects/{project_id}/analysis-jobs/{job_id}')
-def get_project_analysis_job(project_id: int, job_id: int, db: Session = Depends(get_db)):
-    tenant_id = get_default_tenant_id(db)
+def get_project_analysis_job(project_id: int, job_id: int, db: Session = Depends(get_db),
+                             authorization: Optional[str] = Header(default=None),
+                             x_tenant_id: Optional[str] = Header(default=None)):
+    if authorization:
+        from app.services.auth import resolve_request_context
+        tenant_id = resolve_request_context(db, authorization=authorization, tenant_header=x_tenant_id).tenant.id
+    else:
+        tenant_id = get_default_tenant_id(db)
     job = db.query(ProjectAnalysisJob).filter(
         ProjectAnalysisJob.id == job_id,
         ProjectAnalysisJob.project_id == project_id,
@@ -521,11 +542,20 @@ def get_project_analysis_job(project_id: int, job_id: int, db: Session = Depends
     ).first()
     if not job:
         raise HTTPException(status_code=404, detail='Project analysis job not found')
+    if (job.parameters or {}).get("reads"):
+        live_analysis.context_for_project(db, authorization, x_tenant_id, project_id)
     return json_ok(serialize_project_analysis_job(job))
 
 @router.post('/agent/chat')
-def agent_chat(payload: AgentChatIn, db: Session = Depends(get_db)):
-    tenant_id = get_default_tenant_id(db)
+def agent_chat(payload: AgentChatIn, db: Session = Depends(get_db),
+               authorization: Optional[str] = Header(default=None),
+               x_tenant_id: Optional[str] = Header(default=None)):
+    live_context = None
+    if payload.reads or payload.use_ai:
+        live_context, _ = live_analysis.context_for_project(db, authorization, x_tenant_id, payload.project_id)
+        tenant_id = live_context.tenant.id
+    else:
+        tenant_id = get_default_tenant_id(db)
     project = None
     if payload.project_id:
         project = db.query(Project).filter(Project.id == payload.project_id, Project.tenant_id == tenant_id).first()
@@ -541,7 +571,26 @@ def agent_chat(payload: AgentChatIn, db: Session = Depends(get_db)):
         )
     else:
         answer = "请先选择项目，我可以基于项目版本、财务测算、事实证据和风险给出下一步建议。"
-    return json_ok({"answer": answer, "message": payload.message, "project_id": payload.project_id})
+    readings = live_analysis.collect(db, live_context, project, payload.reads) if payload.reads else []
+    if readings:
+        answer += "\n\n实时读取依据（待人工核验）：\n" + "\n".join(
+            f"[{i + 1}] {item['source_name']}：{item.get('excerpt') if item['status'] == 'completed' else item['error']}"
+            for i, item in enumerate(readings))
+        answer += "\n\n请核验来源、统计口径与适用日期，读取内容不自动更新财务参数或通过审批。"
+    mode, warning = "rules", ""
+    if payload.use_ai:
+        answer, mode, warning = live_analysis.synthesize(project, payload.message, readings, answer)
+    return json_ok({"answer": answer, "message": payload.message, "project_id": payload.project_id,
+                    "readings": readings, "answer_mode": mode, "warning": warning,
+                    "requires_human_verification": True})
+
+
+@router.get('/agent/sources')
+def agent_sources(project_id: int, db: Session = Depends(get_db),
+                  authorization: Optional[str] = Header(default=None),
+                  x_tenant_id: Optional[str] = Header(default=None)):
+    context, project = live_analysis.context_for_project(db, authorization, x_tenant_id, project_id)
+    return json_ok(live_analysis.catalog(db, context, project))
 
 @router.get('/cases/search')
 def search_cases(q: Optional[str] = None, db: Session = Depends(get_db)):

@@ -1,0 +1,111 @@
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { MemoryRouter } from 'react-router-dom'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import CollaborationWorkspace from './CollaborationWorkspace'
+import PersonalPreferences from './PersonalPreferences'
+import * as api from '../collaborationApi'
+
+vi.mock('../collaborationApi', () => ({ getCollaboration: vi.fn(), collaborationMutation: vi.fn(), getCollaborationHistory: vi.fn() }))
+const base = { role: 'B', projects: [{ id: 4, name: '成都演出', city: '成都', current_version_id: 6, versions: [{ id: 6, version_no: 2, financial_result: { profit: 300 } }] }], members: [{ id: 1, name: '主办人', group_code: 'B' }, { id: 2, name: '品牌负责人', group_code: 'Brand' }], items: [], personal: [], focus: {}, notifications: [], reservations: [] }
+const mount = (role = 'B') => render(<MemoryRouter><CollaborationWorkspace role={role} currentUser={{ id: 1 }} /></MemoryRouter>)
+beforeEach(() => { api.getCollaboration.mockResolvedValue({ data: { data: base } }); api.collaborationMutation.mockResolvedValue({}); api.getCollaborationHistory.mockResolvedValue({ data: { data: [] } }) })
+afterEach(() => { cleanup(); vi.clearAllMocks() })
+it('creates a versioned private invitation and selects an actual recipient', async () => {
+  mount()
+  await screen.findByText('发起协作')
+  await userEvent.type(screen.getByLabelText('事项标题'), '合作邀请')
+  await userEvent.selectOptions(screen.getByLabelText('授权项目'), '4')
+  await userEvent.selectOptions(screen.getByLabelText('处理人'), '2')
+  await userEvent.type(screen.getByLabelText('邀请目的'), '确认品牌合作')
+  await userEvent.click(screen.getByRole('button', { name: '保存草稿' }))
+  await waitFor(() => expect(api.collaborationMutation).toHaveBeenCalledWith('items', expect.objectContaining({ kind: 'invitation', project_id: 4, version_id: 6, recipient_id: 2, payload: { purpose: '确认品牌合作' } }), expect.any(String)))
+})
+it('preserves a rejected action note and refreshes on stale revision', async () => {
+  api.getCollaboration.mockResolvedValue({ data: { data: { ...base, items: [{ id: 9, title: '交付验收', kind: 'task', status: 'submitted', revision: 3, owner_name: '主办人', recipient_name: '艺人', next_user_id: 1, actions: ['approve', 'return'], payload: { instructions: '上传材料' } }] } } })
+  api.collaborationMutation.mockRejectedValue({ response: { status: 409, data: { detail: '事项已变化' } } })
+  mount()
+  await screen.findByText('交付验收')
+  await userEvent.type(screen.getByLabelText('处理说明 · 交付验收'), '缺少现场凭证')
+  await userEvent.click(screen.getByRole('button', { name: '退回补充' }))
+  expect(await screen.findByRole('alert')).toHaveTextContent('事项已变化')
+  expect(screen.getByLabelText('处理说明 · 交付验收')).toHaveValue('缺少现场凭证')
+  expect(api.collaborationMutation).toHaveBeenCalledWith('items/9/actions', expect.objectContaining({ action: 'return', revision: 3, note: '缺少现场凭证' }), expect.any(String))
+})
+it('requires a reason for returning and only renders allowed actions', async () => {
+  api.getCollaboration.mockResolvedValue({ data: { data: { ...base, items: [{ id: 9, title: '资料核验', kind: 'profile_change', status: 'shared', revision: 1, actions: ['return'], payload: { changes: { name: '某艺人' } } }] } } })
+  mount('Admin')
+  await userEvent.click(await screen.findByRole('button', { name: '退回补充' }))
+  expect(await screen.findByRole('alert')).toHaveTextContent('请填写处理说明')
+  expect(api.collaborationMutation).not.toHaveBeenCalled()
+  expect(screen.queryByRole('button', { name: '确认验收' })).not.toBeInTheDocument()
+  expect(screen.queryByText('[object Object]')).not.toBeInTheDocument()
+})
+it.each(['Admin', 'B', 'Brand', 'G', 'Investor', 'Artist', 'C'])('provides a dedicated workflow for %s', async role => {
+  mount(role)
+  expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent(role === 'C' ? '收藏与预约' : /协作|授权/)
+})
+it('ranks authorized projects using personal focus', async () => {
+  api.getCollaboration.mockResolvedValue({ data: { data: { ...base, focus: { cities: ['北京'] }, projects: [...base.projects, { id: 5, name: '北京演出', city: '北京' }] } } })
+  mount()
+  await screen.findByText('发起协作')
+  const options = screen.getByLabelText('授权项目').querySelectorAll('option')
+  expect(options[1]).toHaveTextContent('北京演出')
+})
+it('saves personal focus with its existing revision', async () => {
+  api.getCollaboration.mockResolvedValue({ data: { data: { ...base, personal: [{ type: 'focus', record_key: 'default', revision: 2 }], focus: { cities: ['成都'] } } } })
+  render(<MemoryRouter><PersonalPreferences role="Investor" /></MemoryRouter>)
+  const field = await screen.findByLabelText('关注城市')
+  await userEvent.clear(field); await userEvent.type(field, '北京，上海')
+  await userEvent.click(screen.getByRole('button', { name: '保存关注设置' }))
+  await waitFor(() => expect(api.collaborationMutation).toHaveBeenCalledWith('personal', expect.objectContaining({ revision: 2, type: 'focus', payload: expect.objectContaining({ cities: ['北京', '上海'] }) }), expect.any(String)))
+})
+it('cancels a reservation and marks an owned message read', async () => {
+  api.getCollaboration.mockResolvedValue({ data: { data: { ...base, reservations: [{ id: 3, show_id: 7, status: 'registered' }], shows: [{ id: 7, title: '今晚演出' }], notifications: [{ id: 8, title: '演出变更', status: 'unread' }] } } })
+  mount('C')
+  await userEvent.click(await screen.findByRole('button', { name: '取消登记' }))
+  expect(api.collaborationMutation).toHaveBeenCalledWith('reservations', { order_id: 3, action: 'cancel' }, expect.any(String))
+  await userEvent.click(screen.getByRole('button', { name: '标记已读' }))
+  expect(api.collaborationMutation).toHaveBeenCalledWith('notifications/8/read', {}, expect.any(String))
+})
+it('submits real proof identifiers with the execution result', async () => {
+  api.getCollaboration.mockResolvedValue({ data: { data: { ...base, items: [{ id: 9, project_id: 4, title: '现场凭证', kind: 'task', status: 'in_progress', revision: 3, actions: ['submit'], payload: {} }] } } })
+  mount('Artist')
+  await userEvent.type(await screen.findByLabelText('处理说明 · 现场凭证'), '实际现场照片已上传')
+  await userEvent.type(screen.getByLabelText('补交证明材料编号 · 现场凭证'), '12,13')
+  await userEvent.click(screen.getByRole('button', { name: '提交结果' }))
+  expect(api.collaborationMutation).toHaveBeenCalledWith('items/9/actions', expect.objectContaining({ payload: { evidence_ids: [12, 13] }, note: '实际现场照片已上传' }), expect.any(String))
+})
+it('compares saved finance values and displays missing versions without inventing returns', async () => {
+  api.getCollaboration.mockResolvedValue({ data: { data: { ...base, projects: [{ ...base.projects[0], versions: [{ id: 6, version_no: 2, finance_result: { status: 'calculated', total_cost: 0, total_revenue: 1000, net_profit: 1000, funding_gap: 0, roi: 0 } }, { id: 7, version_no: 3, input_snapshot: {} }] }] } } })
+  mount('Investor')
+  await userEvent.selectOptions(await screen.findByLabelText('对照项目'), '4')
+  await userEvent.selectOptions(screen.getByLabelText('版本一'), '6')
+  await userEvent.selectOptions(screen.getByLabelText('版本二'), '7')
+  expect(screen.getAllByText('¥0').length).toBe(2)
+  expect(screen.getByText('0.00%')).toBeInTheDocument()
+  expect(screen.getByText('当前版本未完成测算，无法评估回报。')).toBeInTheDocument()
+})
+it('edits a rights revision without carrying old confirmations into the request', async () => {
+  api.getCollaboration.mockResolvedValue({ data: { data: { ...base, items: [{ id: 9, title: '权益修订', kind: 'rights', status: 'shared', revision: 3, actions: ['edit'], payload: { deliverables: '现场展位', due_date: '2026-12-01', acceptance: '凭证核验', confirmations: [1] } }] } } })
+  mount()
+  await userEvent.click(await screen.findByRole('button', { name: '修改草稿' }))
+  await userEvent.type(screen.getByLabelText('权益修订 · 权益交付清单'), '和视频')
+  await userEvent.click(screen.getByRole('button', { name: '保存修改' }))
+  expect(api.collaborationMutation).toHaveBeenCalledWith('items/9/actions', expect.objectContaining({ revision: 3, action: 'edit', payload: { deliverables: '现场展位和视频', due_date: '2026-12-01', acceptance: '凭证核验' } }), expect.any(String))
+})
+it('uses a selected existing grant revision when updating project duties', async () => {
+  api.getCollaboration.mockResolvedValue({ data: { data: { ...base, grants: [{ id: 10, project_id: 4, user_id: 2, revision: 3, duties: ['collaborate'], status: 'active' }], audit: [], artists: [], shows: [] } } })
+  mount('Admin')
+  await userEvent.selectOptions(await screen.findByLabelText('管理项目'), '4')
+  await userEvent.selectOptions(screen.getByLabelText('授权账号'), '2')
+  await userEvent.click(screen.getByRole('button', { name: '保存项目授权' }))
+  expect(api.collaborationMutation).toHaveBeenCalledWith('grants', { project_id: 4, user_id: 2, revision: 3, duties: ['collaborate'] }, expect.any(String))
+})
+it('restores default focus using the current saved revision', async () => {
+  api.getCollaboration.mockResolvedValue({ data: { data: { ...base, focus: { cities: ['北京'] }, personal: [{ type: 'focus', record_key: 'default', revision: 4 }] } } })
+  render(<MemoryRouter><PersonalPreferences role="B" /></MemoryRouter>)
+  await userEvent.click(await screen.findByRole('button', { name: '恢复默认关注' }))
+  expect(api.collaborationMutation).toHaveBeenCalledWith('personal', { type: 'focus', record_key: 'default', revision: 4, remove: true }, expect.any(String))
+  await waitFor(() => expect(screen.getByLabelText('关注城市')).toHaveValue(''))
+})

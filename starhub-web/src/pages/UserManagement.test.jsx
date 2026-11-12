@@ -14,6 +14,25 @@ vi.mock('../api', () => ({
 }))
 
 describe('UserManagement', () => {
+  it.each(['B', 'Brand', 'G', 'C', 'Investor', 'Artist'])('creates %s accounts without edit or delete controls in root mode', async group => {
+    listUsers.mockResolvedValue({ data: { data: [{ id: 1, account: 'existing', group_code: 'B' }] } })
+    createUser.mockResolvedValue({ data: { data: { id: 2, account: 'new_account', group_code: group } } })
+    const user = userEvent.setup()
+    render(<UserManagement currentUser={{ group_code: 'root' }} creationOnly />)
+    expect(await screen.findByText('existing')).toBeInTheDocument()
+    const cards = screen.getByLabelText('用户组选择')
+    const card = within(cards).getAllByRole('button').find(button => button.querySelector('span')?.textContent === group)
+    await user.click(card)
+    await user.type(screen.getByLabelText('用户账号'), 'new_account')
+    await user.type(screen.getByLabelText('初始密码'), '123456')
+    await user.click(screen.getByRole('button', { name: '添加用户' }))
+    expect(await screen.findByText('new_account')).toBeInTheDocument()
+    expect(createUser).toHaveBeenCalledWith(expect.objectContaining({ group_code: group }))
+    expect(screen.queryByRole('button', { name: '修改' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '删除' })).not.toBeInTheDocument()
+    expect(deleteUser).not.toHaveBeenCalled()
+    expect(updateUser).not.toHaveBeenCalled()
+  })
   it('creates an artist account with an explicit database binding', async () => {
     listUsers.mockResolvedValue({ data: { data: [] } })
     createUser.mockResolvedValue({ data: { data: { id: 20, account: 'performer', group_code: 'Artist', artist_id: 9 } } })

@@ -4,13 +4,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
 
 import Home from './Home'
+import AudienceWorkspace from './AudienceWorkspace'
 import {
   calculateFinance,
   createDecision,
   createProject,
   createTask,
   getDashboardAnalytics,
-  getShowRecommendations,
+  getAudienceWorkspace,
   getTicketingSummary,
   listProjects,
   listShows,
@@ -25,7 +26,7 @@ vi.mock('../api', () => ({
   createProject: vi.fn(),
   createTask: vi.fn(),
   getDashboardAnalytics: vi.fn(),
-  getShowRecommendations: vi.fn(),
+  getAudienceWorkspace: vi.fn(),
   getTicketingSummary: vi.fn(),
   listProjects: vi.fn(),
   listShows: vi.fn(),
@@ -77,22 +78,21 @@ describe('Home', () => {
   })
 
   it('shows a visible error when show data cannot be loaded', async () => {
-    getShowRecommendations.mockRejectedValue(new Error('offline'))
-    listShows.mockRejectedValue(new Error('offline'))
+    getAudienceWorkspace.mockRejectedValue(new Error('offline'))
 
     render(
       <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-        <Home role="C" currentUser={{ phone: '13800000000' }} />
+        <AudienceWorkspace />
       </MemoryRouter>,
     )
 
-    expect(await screen.findByText('演出数据暂时不可用')).toBeInTheDocument()
+    expect(await screen.findByText('工作台数据暂时不可用')).toBeInTheDocument()
   })
 
-  it('shows personalized recommendations for audience users from order history', async () => {
-    getShowRecommendations.mockResolvedValue({
+  it('shows authenticated discovery without sending a phone-based identity query', async () => {
+    getAudienceWorkspace.mockResolvedValue({
       data: {
-        data: [
+        data: { shows: [
           {
             id: 8,
             title: '周杰伦·上海加场',
@@ -105,22 +105,22 @@ describe('Home', () => {
             poster_url: 'https://oss.example.com/posters/jay-shanghai.jpg',
             recommendation_reason: '你预约过周杰伦相关演出',
           },
-        ],
+        ], reservations: [] },
       },
     })
 
     render(
       <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-        <Home role="C" currentUser={{ phone: '13800000000' }} />
+        <AudienceWorkspace />
       </MemoryRouter>,
     )
 
-    expect(await screen.findByText('为你推荐')).toBeInTheDocument()
+    expect(await screen.findByText('公开演出')).toBeInTheDocument()
     expect(screen.getByText('周杰伦·上海加场')).toBeInTheDocument()
     expect(screen.getByAltText('周杰伦·上海加场现场')).toHaveAttribute('src', 'https://oss.example.com/posters/jay-shanghai.jpg')
     expect(screen.getByText('你预约过周杰伦相关演出')).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: '生成专属推荐' })).not.toBeInTheDocument()
-    expect(getShowRecommendations).toHaveBeenCalledWith('13800000000')
+    expect(getAudienceWorkspace).toHaveBeenCalledWith()
     expect(listShows).not.toHaveBeenCalled()
   })
 

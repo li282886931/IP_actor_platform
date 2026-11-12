@@ -17,6 +17,9 @@ node_modules/
 .venv*
 .env
 .env.*
+deployment.env
+deployment.connectors.env
+backups/
 *.log
 storage/
 starhub-web/dist

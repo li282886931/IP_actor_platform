@@ -248,6 +248,17 @@ def ensure_runtime_columns():
             if column_name not in generation_columns:
                 statements.append(f"ALTER TABLE ai_generations ADD COLUMN {column_name} INTEGER")
 
+    if inspector.has_table('orders'):
+        order_columns = {column['name'] for column in inspector.get_columns('orders')}
+        if 'status' not in order_columns:
+            statements.append("ALTER TABLE orders ADD COLUMN status VARCHAR(32) NOT NULL DEFAULT 'registered'")
+        for column_name in ('tenant_id', 'user_id'):
+            if column_name not in order_columns:
+                statements.append(f"ALTER TABLE orders ADD COLUMN {column_name} INTEGER")
+        names = {i['name'] for i in inspector.get_indexes('orders')} | {i['name'] for i in inspector.get_unique_constraints('orders')}
+        if 'uq_orders_owner_show' not in names:
+            statements.append("CREATE UNIQUE INDEX uq_orders_owner_show ON orders (tenant_id, user_id, show_id)")
+
     if inspector.has_table('projects'):
         project_columns = {column['name'] for column in inspector.get_columns('projects')}
         project_column_definitions = {

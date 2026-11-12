@@ -3,6 +3,94 @@
 SET NAMES utf8mb4;
 SET FOREIGN_KEY_CHECKS = 0;
 
+CREATE TABLE project_grants (
+ id INTEGER NOT NULL AUTO_INCREMENT PRIMARY KEY,
+ tenant_id INTEGER NOT NULL,
+ project_id INTEGER NOT NULL,
+ user_id INTEGER NOT NULL,
+ group_code VARCHAR(64) NOT NULL,
+ duties JSON,
+ status VARCHAR(32),
+ revision INTEGER NOT NULL,
+ CONSTRAINT uq_project_grant_user UNIQUE (project_id, user_id),
+ FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+ FOREIGN KEY (project_id) REFERENCES projects(id),
+ FOREIGN KEY (user_id) REFERENCES users(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE collaboration_items (
+ id INTEGER NOT NULL AUTO_INCREMENT PRIMARY KEY,
+ tenant_id INTEGER NOT NULL,
+ project_id INTEGER,
+ version_id INTEGER,
+ task_id INTEGER,
+ owner_id INTEGER NOT NULL,
+ recipient_id INTEGER NOT NULL,
+ kind VARCHAR(64) NOT NULL,
+ title VARCHAR(255) NOT NULL,
+ payload JSON,
+ status VARCHAR(64) NOT NULL,
+ revision INTEGER NOT NULL,
+ created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+ updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+ FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+ FOREIGN KEY (project_id) REFERENCES projects(id),
+ FOREIGN KEY (version_id) REFERENCES project_versions(id),
+ FOREIGN KEY (task_id) REFERENCES tasks(id),
+ FOREIGN KEY (owner_id) REFERENCES users(id),
+ FOREIGN KEY (recipient_id) REFERENCES users(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE collaboration_history (
+ id INTEGER NOT NULL AUTO_INCREMENT PRIMARY KEY,
+ tenant_id INTEGER NOT NULL,
+ actor_id INTEGER NOT NULL,
+ subject_type VARCHAR(64) NOT NULL,
+ subject_id INTEGER NOT NULL,
+ action VARCHAR(64) NOT NULL,
+ `before` JSON,
+ `after` JSON,
+ created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+ FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+ FOREIGN KEY (actor_id) REFERENCES users(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE collaboration_receipts (
+ id INTEGER NOT NULL AUTO_INCREMENT PRIMARY KEY,
+ tenant_id INTEGER NOT NULL,
+ user_id INTEGER NOT NULL,
+ request_key VARCHAR(128) NOT NULL,
+ fingerprint VARCHAR(64) NOT NULL,
+ result JSON NOT NULL,
+ CONSTRAINT uq_collaboration_request UNIQUE (tenant_id, user_id, request_key),
+ FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+ FOREIGN KEY (user_id) REFERENCES users(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE personal_records (
+ id INTEGER NOT NULL AUTO_INCREMENT PRIMARY KEY,
+ tenant_id INTEGER NOT NULL,
+ user_id INTEGER NOT NULL,
+ type VARCHAR(32) NOT NULL,
+ record_key VARCHAR(128) NOT NULL,
+ payload JSON,
+ revision INTEGER NOT NULL,
+ CONSTRAINT uq_personal_record UNIQUE (tenant_id, user_id, type, record_key),
+ FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+ FOREIGN KEY (user_id) REFERENCES users(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE show_project_bindings (
+ id INTEGER NOT NULL AUTO_INCREMENT PRIMARY KEY,
+ tenant_id INTEGER NOT NULL,
+ project_id INTEGER NOT NULL,
+ show_id INTEGER NOT NULL,
+ CONSTRAINT uq_bound_show UNIQUE (show_id),
+ FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+ FOREIGN KEY (project_id) REFERENCES projects(id),
+ FOREIGN KEY (show_id) REFERENCES shows(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE ai_generations (
 	id INTEGER NOT NULL AUTO_INCREMENT,
 	tenant_id INTEGER,
@@ -75,6 +163,10 @@ CREATE TABLE orders (
 	show_id INTEGER,
 	name VARCHAR(255),
 	phone VARCHAR(64),
+	tenant_id INTEGER,
+	user_id INTEGER,
+	status VARCHAR(32) NOT NULL DEFAULT 'registered',
+	CONSTRAINT uq_orders_owner_show UNIQUE (tenant_id, user_id, show_id),
 	PRIMARY KEY (id),
 	FOREIGN KEY(show_id) REFERENCES shows (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

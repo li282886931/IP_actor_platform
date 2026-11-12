@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { getArtistWorkspace } from '../api'
 import Avatar from '../components/Avatar'
+import PersonalInbox from '../components/PersonalInbox'
 import { projectStatus, useWorkspace, WorkspaceState } from './workspaceSupport'
 
 const profileLabels = {
@@ -44,6 +45,7 @@ export default function ArtistWorkspace({ mode = 'overview' }) {
       <p>查看个人资料、关联演出与专属宣发内容。</p></div>
       <Link className="button button-secondary" to="/generate">创建宣发内容</Link>
     </section>
+    {mode === 'overview' && <PersonalInbox personal={workspace.data?.personal} role="Artist" data={workspace.data} />}
     {!artist ? <section className="panel state-panel"><strong>尚未关联艺人资料</strong>
       <span>请联系管理员，在用户管理中为当前账号选择对应艺人。</span></section> : <>
       {mode !== 'opportunities' && <ArtistProfile artist={artist} />}

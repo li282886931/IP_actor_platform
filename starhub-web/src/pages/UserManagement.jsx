@@ -15,7 +15,7 @@ function canManageUsers(user) {
   return user?.can_manage_users || user?.group_code === 'root' || user?.account === 'root'
 }
 
-export default function UserManagement({ currentUser }) {
+export default function UserManagement({ currentUser, creationOnly = false }) {
   const [users, setUsers] = useState([])
   const [artists, setArtists] = useState([])
   const [artistStatus, setArtistStatus] = useState('loading')
@@ -182,8 +182,8 @@ export default function UserManagement({ currentUser }) {
       <section className="page-lead">
         <div>
           <span className="eyebrow">ACCESS CONTROL</span>
-          <h2>用户管理</h2>
-          <p>维护平台账号，并按固定业务用户组管理页面权限。</p>
+          <h2>{creationOnly ? '创建角色账号' : '用户管理'}</h2>
+          <p>{creationOnly ? '选择业务角色并创建对应账号，登录后由该账号进入专属页面。' : '维护平台账号，并按固定业务用户组管理页面权限。'}</p>
         </div>
       </section>
 
@@ -295,14 +295,14 @@ export default function UserManagement({ currentUser }) {
                       {user.group_code === 'Artist' && <small>{user.artist_id ? `关联艺人：${artists.find(a => a.id === user.artist_id)?.name || `ID ${user.artist_id}`}` : '艺人资料未关联'}</small>}
                     </div>
                     <strong className="user-group-code">{user.group_code}</strong>
-                    <div className="inline-actions user-row-actions">
+                    {!creationOnly && <div className="inline-actions user-row-actions">
                       <button className="button button-secondary" type="button" onClick={() => startEditUser(user)}>
                         修改
                       </button>
                       <button className="button button-secondary" type="button" onClick={() => handleDeleteUser(user)}>
                         删除
                       </button>
-                    </div>
+                    </div>}
                   </>
                 )}
               </span>

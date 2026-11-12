@@ -3,7 +3,7 @@ from app.database import get_db
 from app.models import Tenant
 from app.models import User
 from app.models import UserGroup
-from app.models import AIGeneration, TenantMember, Artist
+from app.models import AIGeneration, TenantMember, Artist, Order
 from app.schemas import UserCreateIn
 from app.schemas import UserUpdateIn
 from app.services import GROUPS
@@ -123,6 +123,7 @@ def delete_user(user_id: int, db: Session = Depends(get_db)):
         {AIGeneration.user_id: None}, synchronize_session=False,
     )
     db.query(TenantMember).filter(TenantMember.user_id == user.id).delete(synchronize_session=False)
+    db.query(Order).filter(Order.user_id == user.id).update({Order.user_id: None}, synchronize_session=False)
     db.delete(user)
     db.commit()
     return json_ok({"deleted": True})

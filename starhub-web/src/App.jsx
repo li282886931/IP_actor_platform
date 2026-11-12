@@ -3,7 +3,7 @@ import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-
 
 import Sidebar from './components/Sidebar'
 import Avatar from './components/Avatar'
-import { BellIcon, BrandMark, PlusIcon } from './components/icons'
+import { BrandMark, PlusIcon } from './components/icons'
 import { getAuthCaptcha, webLogin } from './api'
 import Artist from './pages/Artist'
 import Generate from './pages/Generate'
@@ -13,36 +13,21 @@ import ShowDetail from './pages/ShowDetail'
 import UserManagement from './pages/UserManagement'
 import InvestorWorkspace from './pages/InvestorWorkspace'
 import ArtistWorkspace from './pages/ArtistWorkspace'
+import AdminWorkspace from './pages/AdminWorkspace'
+import BusinessWorkspace from './pages/BusinessWorkspace'
+import BrandWorkspace from './pages/BrandWorkspace'
+import GovernmentWorkspace from './pages/GovernmentWorkspace'
+import AudienceWorkspace from './pages/AudienceWorkspace'
+import CollaborationWorkspace from './pages/CollaborationWorkspace'
+import PersonalPreferences from './pages/PersonalPreferences'
+import { roleMeta, routeTitles, roleFromUser, canAccessRoute } from './roleConfig'
 
-const roleMeta = {
-  Investor: { label: '资方', title: '资方工作台', desc: '评估项目价值、资金缺口与投资风险' },
-  Artist: { label: '艺人', title: '艺人工作台', desc: '管理个人资料、关联演出与内容宣发' },
-  C: { label: '观众端', title: '演出发现', desc: '浏览演出、查看推荐并管理预约' },
-  B: { label: '主办方', title: '运营工作台', desc: '掌握项目经营、艺人热度与宣发进展' },
-  Brand: { label: '品牌方', title: '品牌合作', desc: '分析受众价值、合作表现与投放机会' },
-  G: { label: '政府 / 文旅', title: '城市文旅', desc: '洞察演出经济、消费拉动与城市热度' },
-}
-
-const routeTitles = {
-  '/investment/projects': '项目评估',
-  '/investment/safeguards': '资金与风险',
-  '/performer/profile': '我的资料',
-  '/performer/opportunities': '演出机会',
-  '/artist': '艺人洞察',
-  '/generate': 'AI 宣发',
-  '/users': '用户管理',
-}
+const homeByRole = { B: BusinessWorkspace, Brand: BrandWorkspace, G: GovernmentWorkspace, C: AudienceWorkspace, Investor: InvestorWorkspace, Artist: ArtistWorkspace }
 
 const FOCUS_PROJECT_CREATE_EVENT = 'starhub:focus-project-create'
 
 const APP_FAVICON_PATH = '/favicon.svg'
 const CAPTCHA_LOAD_ERROR = '验证码加载失败，请点击右侧区域重试。'
-
-function roleFromUser(user) {
-  if (!user) return null
-  if (user.can_manage_users || user.group_code === 'root' || user.account === 'root') return 'B'
-  return roleMeta[user.role] ? user.role : null
-}
 
 function normalizeRole(value) {
   return roleMeta[value] ? value : 'C'
@@ -174,7 +159,7 @@ export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(() => localStorage.getItem('starhub-login') === 'true')
   const [currentUser, setCurrentUser] = useState(() => {
     const stored = localStorage.getItem('starhub-user')
-    return stored ? JSON.parse(stored) : null
+    try { return stored ? JSON.parse(stored) : null } catch { return null }
   })
   const [currentTenant, setCurrentTenant] = useState(() => {
     try { return JSON.parse(localStorage.getItem('starhub-tenant') || 'null') } catch { return null }
@@ -203,9 +188,13 @@ export default function App() {
   const [captchaFailed, setCaptchaFailed] = useState(false)
   const [loginStatus, setLoginStatus] = useState('idle')
   const [loginError, setLoginError] = useState('')
-  const activeRole = roleFromUser(currentUser) || normalizeRole(role)
+  const activeRole = roleFromUser(currentUser) || 'C'
   const canManageUsers = currentUser?.can_manage_users || currentUser?.group_code === 'root' || currentUser?.account === 'root'
-  const effectivePath = !canManageUsers && location.pathname === '/users' ? '/' : location.pathname
+  const landingPath = activeRole === 'Admin' ? '/users' : '/'
+  const effectivePath = canAccessRoute(activeRole, location.pathname) ? location.pathname : landingPath
+  const HomePage = homeByRole[activeRole]
+  const workspaceKey = `${currentUser?.id}:${currentTenant?.id}:${activeRole}`
+  const guard = element => canAccessRoute(activeRole, location.pathname) ? element : <Navigate replace to={landingPath} />
 
   useEffect(() => {
     if (activeRole !== role) {
@@ -375,19 +364,12 @@ export default function App() {
           </div>
 
           <div className="topbar-actions">
-            <span
-              className="topbar-icon-button"
-              aria-label="通知（暂无未读）"
-              title="暂无未读通知"
-            >
-              <BellIcon size={18} />
-            </span>
             {activeRole === 'B' && (
               <button
                 className="button button-primary topbar-create"
                 type="button"
                 onClick={() => {
-                  if (effectivePath !== '/') navigate('/')
+                  if (effectivePath !== '/operations/projects') navigate('/operations/projects')
                   setTimeout(() => window.dispatchEvent(new CustomEvent(FOCUS_PROJECT_CREATE_EVENT)), 0)
                 }}
               >
@@ -425,18 +407,30 @@ export default function App() {
         </header>
 
         <main className="workspace-content">
-          <Routes>
-            <Route path="/" element={activeRole === 'Investor' ? <InvestorWorkspace key={`${currentUser?.id}:${currentTenant?.id}`} /> : activeRole === 'Artist' ? <ArtistWorkspace key={`${currentUser?.id}:${currentTenant?.id}`} /> : <Home role={activeRole} currentUser={currentUser} />} />
+          <Routes key={workspaceKey}>
+            <Route path="/" element={activeRole === 'Admin' ? <Navigate replace to="/users" /> : <HomePage />} />
+            <Route path="/collaboration" element={guard(<CollaborationWorkspace role={activeRole} currentUser={currentUser} />)} />
+            <Route path="/preferences" element={guard(<PersonalPreferences role={activeRole} />)} />
+            <Route path="/admin/data" element={guard(<AdminWorkspace mode="data" />)} />
+            <Route path="/operations/projects" element={guard(<Home role="B" currentUser={currentUser} />)} />
+            <Route path="/operations/tasks" element={guard(<BusinessWorkspace mode="tasks" />)} />
+            <Route path="/partnership/opportunities" element={guard(<BrandWorkspace mode="opportunities" />)} />
+            <Route path="/partnership/evidence" element={guard(<BrandWorkspace mode="evidence" />)} />
+            <Route path="/city/projects" element={guard(<GovernmentWorkspace mode="projects" />)} />
+            <Route path="/city/review" element={guard(<GovernmentWorkspace mode="review" />)} />
+            <Route path="/city/impact" element={guard(<GovernmentWorkspace mode="impact" />)} />
+            <Route path="/audience/discover" element={guard(<AudienceWorkspace mode="discover" />)} />
+            <Route path="/audience/reservations" element={guard(<AudienceWorkspace mode="reservations" />)} />
             <Route path="/investment/projects" element={activeRole === 'Investor' ? <InvestorWorkspace mode="projects" key={`${currentUser?.id}:${currentTenant?.id}`} /> : <Navigate replace to="/" />} />
             <Route path="/investment/safeguards" element={activeRole === 'Investor' ? <InvestorWorkspace mode="safeguards" key={`${currentUser?.id}:${currentTenant?.id}`} /> : <Navigate replace to="/" />} />
             <Route path="/performer/profile" element={activeRole === 'Artist' ? <ArtistWorkspace mode="profile" key={`${currentUser?.id}:${currentTenant?.id}`} /> : <Navigate replace to="/" />} />
             <Route path="/performer/opportunities" element={activeRole === 'Artist' ? <ArtistWorkspace mode="opportunities" key={`${currentUser?.id}:${currentTenant?.id}`} /> : <Navigate replace to="/" />} />
-            <Route path="/artist" element={<Artist role={activeRole} />} />
-            <Route path="/generate" element={['C', 'Investor'].includes(activeRole) ? <Navigate replace to="/" /> : <Generate role={activeRole} currentUser={currentUser} tenantId={currentTenant?.id} />} />
-            <Route path="/users" element={canManageUsers ? <UserManagement currentUser={currentUser} /> : <Navigate replace to="/" />} />
-            <Route path="/show/:id" element={<ShowDetail role={activeRole} />} />
-            <Route path="/projects/:id" element={['Investor', 'Artist'].includes(activeRole) ? <Navigate replace to="/" /> : <ProjectDetail />} />
-            <Route path="*" element={<Navigate replace to="/" />} />
+            <Route path="/artist" element={guard(<Artist role={activeRole} />)} />
+            <Route path="/generate" element={guard(<Generate role={activeRole} currentUser={currentUser} tenantId={currentTenant?.id} />)} />
+            <Route path="/users" element={canManageUsers ? <UserManagement currentUser={currentUser} creationOnly /> : <Navigate replace to="/" />} />
+            <Route path="/show/:id" element={guard(<ShowDetail role={activeRole} />)} />
+            <Route path="/projects/:id" element={guard(<ProjectDetail />)} />
+            <Route path="*" element={<Navigate replace to={landingPath} />} />
           </Routes>
         </main>
       </div>

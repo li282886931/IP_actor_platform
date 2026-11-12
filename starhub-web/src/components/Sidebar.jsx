@@ -1,57 +1,10 @@
 import { NavLink } from 'react-router-dom'
 
 import { BrandMark, NavIcon } from './icons'
-
-const navigationByRole = {
-  Investor: [
-    { to: '/', label: '资方工作台' },
-    { to: '/investment/projects', label: '项目评估' },
-    { to: '/investment/safeguards', label: '资金与风险' },
-    { to: '/artist', label: '市场与艺人' },
-  ],
-  Artist: [
-    { to: '/', label: '艺人工作台' },
-    { to: '/performer/profile', label: '我的资料' },
-    { to: '/performer/opportunities', label: '演出机会' },
-    { to: '/generate', label: 'AI 宣发' },
-  ],
-  C: [
-    { to: '/', label: '演出发现' },
-    { to: '/artist', label: '艺人查询' },
-  ],
-  B: [
-    { to: '/', label: '工作台' },
-    { to: '/artist', label: '艺人智策' },
-    { to: '/generate', label: 'AI 宣发' },
-  ],
-  Brand: [
-    { to: '/', label: '品牌概览' },
-    { to: '/artist', label: '受众洞察' },
-    { to: '/generate', label: 'AI 品宣' },
-  ],
-  G: [
-    { to: '/', label: '城市概览' },
-    { to: '/artist', label: '艺人洞察' },
-    { to: '/generate', label: 'AI 宣发' },
-  ],
-}
-
-const mobileLabels = {
-  '/investment/projects': '项目',
-  '/investment/safeguards': '资金风险',
-  '/performer/profile': '资料',
-  '/performer/opportunities': '演出机会',
-  '/': '首页',
-  '/artist': '智策',
-  '/generate': '宣发',
-  '/users': '我的',
-}
+import { navigationByRole } from '../roleConfig'
 
 export default function Sidebar({ role, canManageUsers = false }) {
-  const baseItems = navigationByRole[role] || navigationByRole.C
-  const items = canManageUsers
-    ? [...baseItems, { to: '/users', label: '用户管理' }]
-    : baseItems
+  const items = navigationByRole[canManageUsers ? 'Admin' : role] || navigationByRole.C
   const renderLink = (item) => (
     <NavLink
       key={item.to}
@@ -80,13 +33,6 @@ export default function Sidebar({ role, canManageUsers = false }) {
           {items.map(renderLink)}
         </nav>
 
-        <div className="sidebar-status">
-          <span className="status-dot" aria-hidden="true" />
-          <span>
-            <strong>系统运行正常</strong>
-            <small>API 与数据服务在线</small>
-          </span>
-        </div>
       </aside>
 
       <nav className="mobile-tabbar" aria-label="移动端主导航">
@@ -98,7 +44,7 @@ export default function Sidebar({ role, canManageUsers = false }) {
             to={item.to}
           >
             <span className="mobile-tab-icon" aria-hidden="true"><NavIcon to={item.to} size={20} /></span>
-            <span>{mobileLabels[item.to] || item.label}</span>
+            <span>{item.short || item.label}</span>
           </NavLink>
         ))}
       </nav>

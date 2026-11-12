@@ -35,11 +35,15 @@ class Show(Base):
 
 class Order(Base):
     __tablename__ = 'orders'
+    __table_args__ = (UniqueConstraint('tenant_id', 'user_id', 'show_id', name='uq_orders_owner_show'),)
 
     id = Column(Integer, primary_key=True, index=True)
     show_id = Column(Integer, ForeignKey('shows.id'))
     name = Column(String(255))
     phone = Column(String(64))
+    tenant_id = Column(Integer, ForeignKey('tenants.id'), nullable=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=True)
+    status = Column(String(32), nullable=False, default='registered', server_default='registered')
 
 
 class AIGeneration(Base):

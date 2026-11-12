@@ -99,9 +99,16 @@ class RiskIn(BaseModel):
     status: Optional[str] = 'open'
 
 
+class AgentReadIn(BaseModel):
+    source_id: int = Field(gt=0)
+    url: Optional[str] = Field(default=None, max_length=2048)
+
+
 class AgentChatIn(BaseModel):
     project_id: Optional[int] = None
     message: str
+    reads: list[AgentReadIn] = Field(default_factory=list, max_length=4)
+    use_ai: bool = False
 
 
 class ReportShareIn(BaseModel):

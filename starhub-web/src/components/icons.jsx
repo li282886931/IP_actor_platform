@@ -266,6 +266,8 @@ export function FlareIcon(props) {
 }
 
 const navIcons = {
+  '/collaboration': CheckSquareIcon,
+  '/preferences': CompassIcon,
   '/investment/projects': ClapperIcon,
   '/investment/safeguards': WalletIcon,
   '/performer/profile': UsersIcon,
@@ -277,7 +279,12 @@ const navIcons = {
 }
 
 export function NavIcon({ to, ...props }) {
-  const Icon = navIcons[to] || HomeIcon
+  const Icon = navIcons[to] || ({
+    '/admin/data': GridIcon, '/operations/projects': ClapperIcon, '/operations/tasks': CheckSquareIcon,
+    '/partnership/opportunities': CompassIcon, '/partnership/evidence': CheckSquareIcon,
+    '/city/projects': ClapperIcon, '/city/review': CheckSquareIcon, '/city/impact': GridIcon,
+    '/audience/discover': CompassIcon, '/audience/reservations': TicketIcon,
+  })[to] || HomeIcon
   return <Icon {...props} />
 }
 

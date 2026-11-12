@@ -16,6 +16,25 @@ EXCLUDED_FRAMEWORK_PATHS = {
 }
 
 EXPECTED_ROUTE_SIGNATURES = {
+    ("GET", "/agent/sources"),
+    ("GET", "/collaboration"),
+    ("POST", "/collaboration/grants"),
+    ("POST", "/collaboration/grants/{grant_id}/revoke"),
+    ("POST", "/collaboration/items"),
+    ("POST", "/collaboration/items/{item_id}/actions"),
+    ("GET", "/collaboration/items/{item_id}/history"),
+    ("POST", "/collaboration/personal"),
+    ("POST", "/collaboration/reservations"),
+    ("GET", "/collaboration/reservations/{order_id}/history"),
+    ("POST", "/collaboration/notifications/{notification_id}/read"),
+    ("POST", "/collaboration/artist-binding"),
+    ("POST", "/collaboration/show-binding"),
+    ("POST", "/collaboration/shows/update"),
+    ("GET", "/workspaces/admin"),
+    ("GET", "/workspaces/business"),
+    ("GET", "/workspaces/brand"),
+    ("GET", "/workspaces/government"),
+    ("GET", "/workspaces/audience"),
     ("GET", "/workspaces/investor"),
     ("GET", "/workspaces/artist"),
     ("DELETE", "/users/{user_id}"),
@@ -109,6 +128,8 @@ EXPECTED_ROUTE_SIGNATURES = {
 }
 
 EXPECTED_TABLE_NAMES = {
+    "project_grants", "collaboration_items", "collaboration_history",
+    "collaboration_receipts", "personal_records", "show_project_bindings",
     "agent_permissions",
     "ai_generations",
     "alert_events",

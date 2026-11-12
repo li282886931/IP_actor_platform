@@ -43,7 +43,7 @@ export default function ShowDetail({ role = 'C' }) {
     try {
       await mockOrder(id, { name: name.trim(), phone: phone.trim() })
       setOrderStatus('success')
-      setMessage('预约成功，我们将通过手机号同步后续信息。')
+      setMessage('预约登记成功，可在“我的预约”查看。此登记不代表购票或入场凭证。')
     } catch {
       setOrderStatus('error')
       setMessage('预约失败，请稍后重试。')
@@ -105,7 +105,7 @@ export default function ShowDetail({ role = 'C' }) {
                 <h3>预约演出</h3>
               </div>
             </div>
-            <p>提交预约后，我们会通过手机号同步开票与场次信息。</p>
+            <p>登记演出意向并保存到当前账号。此登记不代表购票、付款或入场凭证。</p>
             <form className="booking-form" onSubmit={handleOrder}>
               <label className="field">
                 <span>姓名</span>
@@ -130,11 +130,11 @@ export default function ShowDetail({ role = 'C' }) {
               </div>
             </div>
             <div className="summary-list">
-              <span>售票状态<strong>正常</strong></span>
-              <span>宣发素材<strong>6 项</strong></span>
-              <span>风险等级<strong>低</strong></span>
+              <span>演出城市<strong>{show.city || '待公布'}</strong></span>
+              <span>演出场馆<strong>{show.venue || '待公布'}</strong></span>
+              <span>演出日期<strong>{show.date || '待公布'}</strong></span>
             </div>
-            <Link className="button button-primary button-block" to="/generate">生成宣发内容</Link>
+            {!['C', 'Investor'].includes(role) && <Link className="button button-primary button-block" to="/generate">生成宣发内容</Link>}
           </aside>
         )}
       </section>

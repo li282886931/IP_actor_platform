@@ -2,6 +2,7 @@ from datetime import datetime
 from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from app.schemas.decisions import AgentReadIn
 
 
 class ProjectIn(BaseModel):
@@ -41,3 +42,4 @@ class ProjectAnalysisJobIn(BaseModel):
     version_id: Optional[int] = None
     purpose: Optional[str] = ''
     parameters: Optional[dict] = None
+    reads: list[AgentReadIn] = Field(default_factory=list, max_length=4)

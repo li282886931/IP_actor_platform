@@ -2,6 +2,17 @@
 
 这是一个以“演出/艺人/AI 宣发”为核心的全栈应用，包含 Python FastAPI 后端和 React + Vite 前端。项目支持艺人热度查询、演出列表展示、AI 文案生成以及预约流程。
 
+## Docker Compose 部署
+
+在项目根目录运行：
+
+```bash
+python3 deploy/bootstrap.py --generate-env
+docker compose --env-file deployment.env up -d --build
+```
+
+默认网页端口为 `8080`。容器部署会设置 root 初始密码、停用仍使用默认密码的预置角色账号，后文的本地开发默认账号不适用于容器部署。环境变量、持久卷、AI／MCP、备份恢复和当前功能边界见 [部署说明](deploy/README.md)。
+
 ## 功能概览
 
 ### 1. 艺人查询

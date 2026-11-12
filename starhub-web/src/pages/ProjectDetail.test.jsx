@@ -42,6 +42,7 @@ import {
 } from '../api'
 
 vi.mock('../api', () => ({
+  listAgentSources: vi.fn().mockResolvedValue({ data: { data: [] } }),
   agentChat: vi.fn(),
   createAssumption: vi.fn(),
   createEvidence: vi.fn(),
@@ -91,7 +92,7 @@ describe('ProjectDetail', () => {
   beforeEach(() => {
     localStorage.setItem('starhub-login', 'true')
     localStorage.setItem('starhub-role', 'B')
-    localStorage.setItem('starhub-user', JSON.stringify({ account: 'root', role: 'B', group_code: 'root', can_manage_users: true }))
+    localStorage.setItem('starhub-user', JSON.stringify({ account: 'b_user', role: 'B', group_code: 'B' }))
     createProject.mockResolvedValue({ data: { data: {} } })
     createUser.mockResolvedValue({ data: { data: {} } })
     deleteUser.mockResolvedValue({ data: { data: {} } })

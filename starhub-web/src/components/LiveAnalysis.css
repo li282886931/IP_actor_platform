@@ -1,0 +1,17 @@
+.live-analysis-fields { display: grid; gap: 14px; border: 0; padding: 0; margin: 0; min-width: 0; }
+.live-analysis-fields legend { font-weight: 600; margin-bottom: 12px; }
+.live-source { display: grid; gap: 8px; padding-block: 12px; border-bottom: 1px solid var(--border); }
+.live-source-choice { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.live-analysis .live-source-choice input { width: 15px; height: 15px; accent-color: var(--gold); flex: 0 0 15px; margin: 0; }
+.live-analysis small { color: var(--text-muted); overflow-wrap: anywhere; }
+.live-analysis-result { margin-top: 20px; }
+.live-reading { display: grid; gap: 8px; padding-block: 16px; border-top: 1px solid var(--border); overflow-wrap: anywhere; }
+.live-reading p { margin: 0; }
+.live-reading a { color: var(--gold); text-decoration: underline; text-underline-offset: 3px; }
+.live-reading pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; max-height: 280px; overflow: auto; }
+.live-reading summary { cursor: pointer; font-size: 13px; }
+.live-analysis :focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
+.live-analysis input { caret-color: var(--gold); }
+.live-analysis button:disabled { cursor: not-allowed; opacity: .6; }
+.live-analysis .agent-answer { overflow-wrap: anywhere; }
+.live-analysis .agent-answer p { white-space: pre-wrap; }

@@ -26,6 +26,7 @@ export function WorkspaceState({ status, retry }) {
 export const projectStatus = value => ({
   draft: '草稿', pending: '待评审', approved: '已通过', active: '进行中',
   completed: '已完成', rejected: '未通过', cancelled: '已取消',
+  pending_confirmation: '待确认推进', advance: '推进', hold: '暂缓', abandon: '放弃',
 }[value] || '待确认')
 export const money = value => typeof value === 'number' && Number.isFinite(value)
   ? `¥${value.toLocaleString('zh-CN', { maximumFractionDigits: 2 })}` : '待补齐'

@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 
 import {
-  agentChat,
   createAssumption,
   createEvidence,
   createExternalDataJob,
@@ -28,6 +27,7 @@ import { zhaoYazhiMarketDossier } from '../data/marketDossier'
 import { ProgressRing, ScenarioBarChart } from '../components/Charts'
 import ProjectFinance from '../components/ProjectFinance'
 import DecisionReview from '../components/DecisionReview'
+import LiveAnalysis from '../components/LiveAnalysis'
 
 const emptyFactForm = { title: '', content: '', source: '' }
 const emptyEvidenceForm = { name: '', file_url: '', source: '', evidence_type: 'document' }
@@ -82,9 +82,7 @@ export default function ProjectDetail() {
   const [message, setMessage] = useState('')
   const [shareUrl, setShareUrl] = useState('')
   const [feasibilityReport, setFeasibilityReport] = useState(null)
-  const [agentAnswer, setAgentAnswer] = useState('')
   const [taskResultById, setTaskResultById] = useState({})
-  const [agentQuestion, setAgentQuestion] = useState('')
   const [caseKeyword, setCaseKeyword] = useState('')
   const [factForm, setFactForm] = useState(emptyFactForm)
   const [evidenceForm, setEvidenceForm] = useState(emptyEvidenceForm)
@@ -260,13 +258,6 @@ export default function ProjectDetail() {
     setTaskResultById((current) => ({ ...current, [task.id]: '' }))
   }
 
-  const handleAskAgent = async (event) => {
-    event.preventDefault()
-    if (!agentQuestion.trim()) return
-    const response = await agentChat({ project_id: projectId, message: agentQuestion.trim() })
-    setAgentAnswer(response.data.data.answer)
-  }
-
   const handleSearchCases = async (event) => {
     event.preventDefault()
     const response = await searchCases(caseKeyword.trim())
@@ -428,22 +419,10 @@ export default function ProjectDetail() {
           />
         </article>
 
-        <article className="panel">
-          <div className="panel-heading">
-            <div>
-              <span className="eyebrow">AGENT</span>
-              <h3>智能体建议</h3>
-            </div>
-          </div>
-          <form className="compact-form" onSubmit={handleAskAgent}>
-            <label className="field">
-              <span>向智能体提问</span>
-              <input value={agentQuestion} onChange={(event) => setAgentQuestion(event.target.value)} placeholder="询问下一步处理建议" />
-            </label>
-            <button className="button button-primary" type="submit">询问智能体</button>
-          </form>
-          {agentAnswer && <div className="agent-answer">{agentAnswer}</div>}
-        </article>
+        <LiveAnalysis key={projectId} projectId={projectId} onEvidenceChanged={async () => {
+          const response = await listEvidences(projectId)
+          setEvidences(response.data.data || [])
+        }} />
       </section>
 
       <section className="project-detail-grid">

@@ -7,6 +7,12 @@ import App from './App'
 import { getAuthCaptcha, webLogin } from './api'
 
 vi.mock('./api', () => ({
+  listAgentSources: vi.fn().mockResolvedValue({ data: { data: [] } }),
+  getAdminWorkspace: vi.fn().mockResolvedValue({ data: { data: { summary: {}, sources: [], jobs: [] } } }),
+  getBusinessWorkspace: vi.fn().mockResolvedValue({ data: { data: { projects: [] } } }),
+  getBrandWorkspace: vi.fn().mockResolvedValue({ data: { data: { projects: [] } } }),
+  getGovernmentWorkspace: vi.fn().mockResolvedValue({ data: { data: { projects: [], venues: [] } } }),
+  getAudienceWorkspace: vi.fn().mockResolvedValue({ data: { data: { shows: [], reservations: [] } } }),
   getInvestorWorkspace: vi.fn().mockResolvedValue({ data: { data: { projects: [] } } }),
   getArtistWorkspace: vi.fn().mockResolvedValue({ data: { data: { artist: null, projects: [] } } }),
   agentChat: vi.fn(),
@@ -82,6 +88,36 @@ vi.mock('./api', () => ({
 }))
 
 describe('App workbench shell', () => {
+  it.each([
+    ['B', 'B', '/operations/tasks', '执行待办'],
+    ['Brand', 'Brand', '/partnership/evidence', '效果与证据'],
+    ['G', 'G', '/city/review', '审批与安全'],
+    ['C', 'C', '/audience/reservations', '我的预约'],
+  ])('routes %s to an independent business page', async (role, group, path, heading) => {
+    localStorage.setItem('starhub-user', JSON.stringify({ id: 20, account: `${role}_account`, role, group_code: group }))
+    window.history.replaceState({}, '', path)
+    render(<BrowserRouter><App /></BrowserRouter>)
+    expect(await screen.findByRole('heading', { name: heading, level: 2 })).toBeInTheDocument()
+  })
+  it.each(['/', '/admin/data', '/collaboration', '/preferences', '/artist', '/generate', '/show/1', '/projects/1', '/operations/projects'])('redirects root from %s to account creation without business requests', async path => {
+    window.history.replaceState({}, '', path)
+    render(<BrowserRouter><App /></BrowserRouter>)
+    expect(await screen.findByRole('heading', { name: '创建角色账号', level: 2 })).toBeInTheDocument()
+    expect(window.location.pathname).toBe('/users')
+    expect(screen.queryByRole('button', { name: '新建项目' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '修改' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '删除' })).not.toBeInTheDocument()
+    const api = await import('./api')
+    expect(api.getAdminWorkspace).not.toHaveBeenCalled()
+    expect(api.getProject).not.toHaveBeenCalled()
+    expect(api.getShow).not.toHaveBeenCalled()
+  })
+  it.each([['Brand', '/projects/1'], ['G', '/partnership/evidence'], ['C', '/city/review']])('redirects %s from unauthorized deep links', async (role, path) => {
+    localStorage.setItem('starhub-user', JSON.stringify({ id: 20, account: '用户', group_code: role }))
+    window.history.replaceState({}, '', path)
+    render(<BrowserRouter><App /></BrowserRouter>)
+    await waitFor(() => expect(window.location.pathname).toBe('/'))
+  })
   it.each([['Investor', '/investment/projects', '项目清单'], ['Artist', '/performer/profile', '尚未关联艺人资料']])('routes %s to its own pages', async (role, path, content) => {
     localStorage.setItem('starhub-user', JSON.stringify({ id: 20, account: '专属用户', role, group_code: role }))
     window.history.replaceState({}, '', path)
@@ -89,7 +125,7 @@ describe('App workbench shell', () => {
     expect(await screen.findByText(content)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '新建项目' })).not.toBeInTheDocument()
   })
-  it.each([['Investor', '/performer/profile', '投资评估概览'], ['Artist', '/investment/projects', '我的演出工作台']])('redirects %s from another role route', async (role, path, content) => {
+  it.each([['Investor', '/performer/profile', '投资评估概览'], ['Artist', '/investment/projects', '我的演出工作台'], ['Artist', '/artist', '我的演出工作台']])('redirects %s from another role route', async (role, path, content) => {
     localStorage.setItem('starhub-user', JSON.stringify({ id: 20, account: '专属用户', role, group_code: role }))
     window.history.replaceState({}, '', path)
     render(<BrowserRouter><App /></BrowserRouter>)
@@ -98,6 +134,7 @@ describe('App workbench shell', () => {
   })
   beforeEach(() => {
     vi.clearAllMocks()
+    window.history.replaceState({}, '', '/')
     localStorage.setItem('starhub-login', 'true')
     localStorage.setItem('starhub-role', 'B')
     localStorage.setItem('starhub-user', JSON.stringify({ account: 'root', role: 'B', group_code: 'root', can_manage_users: true }))
@@ -139,7 +176,7 @@ describe('App workbench shell', () => {
     )
 
     expect(screen.getByRole('navigation', { name: '主导航' })).toBeInTheDocument()
-    expect(screen.getByText('工作台')).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: '创建角色账号', level: 2 })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '退出' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '切换账号' })).not.toBeInTheDocument()
     expect(screen.queryByText(/Demo|MVP/i)).not.toBeInTheDocument()
@@ -167,17 +204,16 @@ describe('App workbench shell', () => {
     )
 
     const sidebarNav = document.querySelector('.sidebar-nav')
-    expect(sidebarNav.querySelector('a[href="/"]')).toHaveTextContent('工作台')
-    expect(sidebarNav.querySelector('a[href="/artist"]')).toHaveTextContent('艺人智策')
-    expect(sidebarNav.querySelector('a[href="/generate"]')).toHaveTextContent('AI 宣发')
-    expect(sidebarNav.querySelector('a[href="/users"]')).toHaveTextContent('用户管理')
+    expect(sidebarNav.querySelectorAll('a')).toHaveLength(1)
+    expect(sidebarNav.querySelector('a[href="/users"]')).toHaveTextContent('创建角色账号')
 
     const mobileTabbar = document.querySelector('.mobile-tabbar')
-    expect(mobileTabbar.querySelector('a[href="/"]')).toHaveTextContent('首页')
-    expect(mobileTabbar.querySelector('a[href="/generate"]')).toHaveTextContent('宣发')
+    expect(mobileTabbar.querySelectorAll('a')).toHaveLength(1)
+    expect(mobileTabbar.querySelector('a[href="/users"]')).toHaveTextContent('创建账号')
   })
 
-  it('renders notification, new-project and user avatar controls from the reference design', async () => {
+  it('opens project creation from the host shell and shows the current avatar', async () => {
+    localStorage.setItem('starhub-user', JSON.stringify({ account: 'b_user', group_code: 'B' }))
     const user = userEvent.setup()
     render(
       <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
@@ -185,16 +221,17 @@ describe('App workbench shell', () => {
       </BrowserRouter>,
     )
 
-    expect(screen.getByLabelText('通知（暂无未读）')).toBeInTheDocument()
+    expect(screen.queryByLabelText('通知（暂无未读）')).not.toBeInTheDocument()
     const createButton = screen.getByRole('button', { name: /新建项目/ })
     expect(createButton).toBeInTheDocument()
-    expect(document.querySelector('.user-avatar')).toHaveTextContent('R')
+    expect(document.querySelector('.user-avatar')).toHaveTextContent('B')
 
     let focused = false
     const onFocus = () => { focused = true }
     window.addEventListener('starhub:focus-project-create', onFocus)
     await user.click(createButton)
-    expect(focused).toBe(true)
+    await waitFor(() => expect(focused).toBe(true))
+    expect(window.location.pathname).toBe('/operations/projects')
     window.removeEventListener('starhub:focus-project-create', onFocus)
   })
 
@@ -208,8 +245,8 @@ describe('App workbench shell', () => {
       </BrowserRouter>,
     )
 
-    expect(await screen.findByRole('link', { name: /用户管理/ })).toHaveAttribute('href', '/users')
-    expect(screen.getByRole('link', { name: /工作台/ })).toHaveAttribute('href', '/')
+    expect(await screen.findByRole('link', { name: /创建角色账号/ })).toHaveAttribute('href', '/users')
+    expect(screen.queryByRole('link', { name: /工作台/ })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: /演出发现/ })).not.toBeInTheDocument()
   })
 
@@ -234,9 +271,9 @@ describe('App workbench shell', () => {
       </BrowserRouter>,
     )
 
-    expect(screen.getByRole('link', { name: /演出发现/ })).toHaveAttribute('href', '/')
+    expect(screen.getByRole('link', { name: /演出发现/ })).toHaveAttribute('href', '/audience/discover')
     expect(screen.queryByRole('link', { name: /AI 推荐|AI 宣发/ })).not.toBeInTheDocument()
-    expect(await screen.findByRole('heading', { name: '发现值得到场的演出' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: '我的现场', level: 2 })).toBeInTheDocument()
     expect(screen.queryByText('AI 宣发内容生成')).not.toBeInTheDocument()
   })
 
@@ -259,7 +296,7 @@ describe('App workbench shell', () => {
       </BrowserRouter>,
     )
 
-    expect(await screen.findByText('维护平台账号，并按固定业务用户组管理页面权限。')).toBeInTheDocument()
+    expect(await screen.findByText('选择业务角色并创建对应账号，登录后由该账号进入专属页面。')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: '退出' }))
     expect(screen.getByRole('heading', { name: '登录工作台' })).toBeInTheDocument()
 
@@ -268,7 +305,7 @@ describe('App workbench shell', () => {
     await user.type(screen.getByPlaceholderText('输入图形验证码'), 'AB12')
     await user.click(screen.getByRole('button', { name: /登录/ }))
 
-    expect(await screen.findByRole('heading', { name: '项目决策工作台' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: '主办方经营工作台', level: 2 })).toBeInTheDocument()
     expect(screen.queryByText('无权访问用户管理')).not.toBeInTheDocument()
   })
 

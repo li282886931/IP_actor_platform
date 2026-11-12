@@ -12,6 +12,9 @@ from app.services import serialize_order
 from fastapi import APIRouter
 from fastapi import Depends
 from fastapi import HTTPException
+from fastapi import Header
+from sqlalchemy.exc import IntegrityError
+from app.services.auth import resolve_request_context
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 from typing import Optional
@@ -165,11 +168,31 @@ def get_show(show_id: int, db: Session = Depends(get_db)):
     return json_ok(serialize_show(show, db))
 
 @router.post('/shows/{show_id}/order')
-def order_show(show_id: int, payload: OrderIn, db: Session = Depends(get_db)):
+def order_show(show_id: int, payload: OrderIn, db: Session = Depends(get_db),
+               authorization: Optional[str] = Header(default=None),
+               x_tenant_id: Optional[str] = Header(default=None)):
+    context = None
+    if authorization is not None or x_tenant_id is not None:
+        context = resolve_request_context(db, authorization=authorization or '', tenant_header=x_tenant_id)
+        if context.user.group_code not in ('C', 'root'):
+            raise HTTPException(status_code=403, detail='Audience reservation access denied')
     show = db.query(Show).filter(Show.id == show_id).first()
     if not show:
         raise HTTPException(status_code=404, detail='Show not found')
-    order = Order(show_id=show_id, name=payload.name, phone=payload.phone)
+    owned_query = db.query(Order).filter(Order.show_id == show_id, Order.user_id == context.user.id,
+                                        Order.tenant_id == context.tenant.id) if context else None
+    existing = owned_query.first() if context else None
+    if existing:
+        return json_ok({"order_id": existing.id, "status": "ok"})
+    order = Order(show_id=show_id, name=payload.name, phone=payload.phone,
+                  user_id=context.user.id if context else None, tenant_id=context.tenant.id if context else None)
     db.add(order)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        existing = owned_query.first() if context else None
+        if not existing:
+            raise
+        return json_ok({"order_id": existing.id, "status": "ok"})
     return json_ok({"order_id": order.id, "status": "ok"})

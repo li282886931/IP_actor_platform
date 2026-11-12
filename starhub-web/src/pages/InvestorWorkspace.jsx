@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { getInvestorWorkspace } from '../api'
+import PersonalInbox from '../components/PersonalInbox'
 import { WalletIcon, CheckSquareIcon, ClapperIcon } from '../components/icons'
 import { money, projectStatus, useWorkspace, WorkspaceState } from './workspaceSupport'
 
@@ -58,6 +59,7 @@ export default function InvestorWorkspace({ mode = 'overview' }) {
       <p>围绕项目当前版本核验成本、资金与风险，支持投资前评估。</p></div>
       {mode === 'overview' && <Link className="button button-secondary" to="/investment/projects">查看全部项目</Link>}
     </section>
+    {mode === 'overview' && <PersonalInbox personal={workspace.data?.personal} role="Investor" data={workspace.data} />}
     {mode === 'overview' && <div className="role-stat-strip">
       <div><ClapperIcon /><span>空间项目<strong>{projects.length} 个</strong></span></div>
       <div><WalletIcon /><span>已保存完整测算<strong>{calculated.length} 个</strong></span></div>

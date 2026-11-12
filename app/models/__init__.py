@@ -1,4 +1,8 @@
 from .commerce import AIGeneration, Artist, Order, Show
+from .collaboration import (
+    CollaborationHistory, CollaborationItem, CollaborationReceipt, PersonalRecord,
+    ProjectGrant, ShowProjectBinding,
+)
 from .evidence import (
     Assumption,
     DocumentParseJob,
@@ -52,6 +56,8 @@ from .projects import (
 )
 
 __all__ = [
+    "CollaborationHistory", "CollaborationItem", "CollaborationReceipt", "PersonalRecord",
+    "ProjectGrant", "ShowProjectBinding",
     "AIGeneration",
     "AgentPermission",
     "AlertEvent",
