@@ -20,11 +20,23 @@ const parseSsePayload = (raw) => {
 }
 
 export const searchArtist = (q) => API.get(`/artists?q=${encodeURIComponent(q)}`)
-export const generateAI = (data) => API.post('/ai/generate', data)
+const generationHeaders = () => {
+  const token = localStorage.getItem('starhub-token')
+  let tenant
+  try { tenant = JSON.parse(localStorage.getItem('starhub-tenant') || 'null') } catch { tenant = null }
+  return {
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(tenant?.id ? { 'X-Tenant-Id': String(tenant.id) } : {}),
+  }
+}
+
+export const generateAI = (data) => API.post('/ai/generate', data, { headers: generationHeaders() })
+export const getInvestorWorkspace = () => API.get('/workspaces/investor', { headers: generationHeaders() })
+export const getArtistWorkspace = () => API.get('/workspaces/artist', { headers: generationHeaders() })
 export const generateAIStream = async (data, handlers = {}) => {
   const response = await fetch(`${API.defaults.baseURL}/ai/generate/stream`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...generationHeaders() },
     body: JSON.stringify(data),
   })
   if (!response.ok) throw new Error(`HTTP_${response.status}`)
@@ -67,8 +79,8 @@ export const getTicketingSummary = () => API.get('/ticketing/summary')
 export const getAuthCaptcha = () => API.get('/auth/captcha')
 export const webLogin = (data) => API.post('/auth/web-login', data)
 export const listUsers = () => API.get('/users')
-export const createUser = (data) => API.post('/users', data)
-export const updateUser = (id, data) => API.patch(`/users/${id}`, data)
+export const createUser = (data) => API.post('/users', data, { headers: generationHeaders() })
+export const updateUser = (id, data) => API.patch(`/users/${id}`, data, { headers: generationHeaders() })
 export const deleteUser = (id) => API.delete(`/users/${id}`)
 export const listUserGroups = () => API.get('/user-groups')
 export const listTenants = () => API.get('/tenants')

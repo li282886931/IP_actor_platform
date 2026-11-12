@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { BrowserRouter } from 'react-router-dom'
@@ -7,6 +7,8 @@ import App from './App'
 import { getAuthCaptcha, webLogin } from './api'
 
 vi.mock('./api', () => ({
+  getInvestorWorkspace: vi.fn().mockResolvedValue({ data: { data: { projects: [] } } }),
+  getArtistWorkspace: vi.fn().mockResolvedValue({ data: { data: { artist: null, projects: [] } } }),
   agentChat: vi.fn(),
   createAssumption: vi.fn(),
   createEvidence: vi.fn(),
@@ -58,7 +60,7 @@ vi.mock('./api', () => ({
   listShows: vi.fn().mockResolvedValue({ data: { data: [] } }),
   listTasks: vi.fn().mockResolvedValue({ data: { data: [] } }),
   searchCases: vi.fn(),
-  searchArtist: vi.fn(),
+  searchArtist: vi.fn().mockResolvedValue({ data: { data: [] } }),
   shareReport: vi.fn(),
   runExternalDataJob: vi.fn(),
   submitTask: vi.fn(),
@@ -80,6 +82,20 @@ vi.mock('./api', () => ({
 }))
 
 describe('App workbench shell', () => {
+  it.each([['Investor', '/investment/projects', '项目清单'], ['Artist', '/performer/profile', '尚未关联艺人资料']])('routes %s to its own pages', async (role, path, content) => {
+    localStorage.setItem('starhub-user', JSON.stringify({ id: 20, account: '专属用户', role, group_code: role }))
+    window.history.replaceState({}, '', path)
+    render(<BrowserRouter><App /></BrowserRouter>)
+    expect(await screen.findByText(content)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '新建项目' })).not.toBeInTheDocument()
+  })
+  it.each([['Investor', '/performer/profile', '投资评估概览'], ['Artist', '/investment/projects', '我的演出工作台']])('redirects %s from another role route', async (role, path, content) => {
+    localStorage.setItem('starhub-user', JSON.stringify({ id: 20, account: '专属用户', role, group_code: role }))
+    window.history.replaceState({}, '', path)
+    render(<BrowserRouter><App /></BrowserRouter>)
+    expect(await screen.findByText(content)).toBeInTheDocument()
+    expect(window.location.pathname).toBe('/')
+  })
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.setItem('starhub-login', 'true')
@@ -90,6 +106,29 @@ describe('App workbench shell', () => {
   afterEach(() => {
     cleanup()
     localStorage.clear()
+  })
+
+  it('switches generation state when another tab changes the logged in account', async () => {
+    window.history.replaceState({}, '', '/generate')
+    localStorage.setItem('starhub-user', JSON.stringify({ id: 11, account: '甲', role: 'B' }))
+    localStorage.setItem('starhub-tenant', JSON.stringify({ id: 1 }))
+    localStorage.setItem('starhub-ai-generation-state:1:11', JSON.stringify({
+      status: 'success', result: '甲的文案', form: { artist: '甲的艺人' },
+    }))
+    render(
+      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <App />
+      </BrowserRouter>,
+    )
+    expect(screen.getByText('甲的文案')).toBeInTheDocument()
+    act(() => {
+      localStorage.setItem('starhub-user', JSON.stringify({ id: 12, account: '乙', role: 'B' }))
+      window.dispatchEvent(new StorageEvent('storage', { key: 'starhub-user' }))
+    })
+    expect(screen.queryByText('甲的文案')).not.toBeInTheDocument()
+    expect(screen.getByPlaceholderText('输入艺人名称')).toHaveValue('')
+    await userEvent.click(screen.getByRole('button', { name: '退出' }))
+    expect(screen.queryByText('甲的文案')).not.toBeInTheDocument()
   })
 
   it('renders a desktop workbench without the old preview column', async () => {

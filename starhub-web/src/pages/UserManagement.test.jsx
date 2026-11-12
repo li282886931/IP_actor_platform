@@ -3,9 +3,10 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import UserManagement from './UserManagement'
-import { createUser, deleteUser, listUsers, updateUser } from '../api'
+import { createUser, deleteUser, listUsers, updateUser, searchArtist } from '../api'
 
 vi.mock('../api', () => ({
+  searchArtist: vi.fn().mockResolvedValue({ data: { data: [{ id: 9, name: '艺人甲' }] } }),
   createUser: vi.fn(),
   deleteUser: vi.fn(),
   listUsers: vi.fn(),
@@ -13,6 +14,19 @@ vi.mock('../api', () => ({
 }))
 
 describe('UserManagement', () => {
+  it('creates an artist account with an explicit database binding', async () => {
+    listUsers.mockResolvedValue({ data: { data: [] } })
+    createUser.mockResolvedValue({ data: { data: { id: 20, account: 'performer', group_code: 'Artist', artist_id: 9 } } })
+    const user = userEvent.setup()
+    render(<UserManagement currentUser={{ group_code: 'root' }} />)
+    await user.click(screen.getByRole('button', { name: /个人资料、关联演出/ }))
+    await screen.findByRole('option', { name: '艺人甲（ID 9）' })
+    await user.selectOptions(screen.getByLabelText('关联艺人'), '9')
+    await user.type(screen.getByLabelText('用户账号'), 'performer')
+    await user.type(screen.getByLabelText('初始密码'), '123456')
+    await user.click(screen.getByRole('button', { name: '添加用户' }))
+    await waitFor(() => expect(createUser).toHaveBeenCalledWith(expect.objectContaining({ group_code: 'Artist', artist_id: 9 })))
+  })
   afterEach(() => {
     cleanup()
     vi.clearAllMocks()

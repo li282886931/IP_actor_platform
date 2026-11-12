@@ -218,6 +218,8 @@ def ensure_runtime_columns():
 
     user_columns = {column['name'] for column in inspector.get_columns('users')}
     statements = []
+    if 'artist_id' not in user_columns:
+        statements.append("ALTER TABLE users ADD COLUMN artist_id INTEGER")
     if 'password_hash' not in user_columns:
         statements.append("ALTER TABLE users ADD COLUMN password_hash VARCHAR(128) DEFAULT ''")
     if 'group_code' not in user_columns:
@@ -239,6 +241,12 @@ def ensure_runtime_columns():
         show_columns = {column['name'] for column in inspector.get_columns('shows')}
         if 'poster_url' not in show_columns:
             statements.append("ALTER TABLE shows ADD COLUMN poster_url TEXT")
+
+    if inspector.has_table('ai_generations'):
+        generation_columns = {column['name'] for column in inspector.get_columns('ai_generations')}
+        for column_name in ('tenant_id', 'user_id'):
+            if column_name not in generation_columns:
+                statements.append(f"ALTER TABLE ai_generations ADD COLUMN {column_name} INTEGER")
 
     if inspector.has_table('projects'):
         project_columns = {column['name'] for column in inspector.get_columns('projects')}

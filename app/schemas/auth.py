@@ -24,6 +24,7 @@ class UserCreateIn(BaseModel):
     phone: Optional[str] = ''
     password: str
     group_code: str
+    artist_id: Optional[int] = None
 
 
 class UserUpdateIn(BaseModel):
@@ -32,3 +33,4 @@ class UserUpdateIn(BaseModel):
     password: Optional[str] = None
     group_code: Optional[str] = None
     status: Optional[str] = None
+    artist_id: Optional[int] = None

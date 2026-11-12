@@ -11,6 +11,8 @@ from app.models import AIGeneration
 from app.schemas import AIGenerateIn
 from fastapi import APIRouter
 from fastapi import Depends
+from fastapi import Header
+from app.services.auth import RequestContext, resolve_request_context
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 import json
@@ -22,8 +24,16 @@ import uuid
 router = APIRouter()
 
 
-def fallback_ai_generate_result(payload: AIGenerateIn, db: Session):
-    response = ai_generate(payload, db)
+def generation_context(
+    authorization: str = Header(default=''),
+    tenant_header: str | None = Header(default=None, alias='X-Tenant-Id'),
+    db: Session = Depends(get_db),
+):
+    return resolve_request_context(db, authorization=authorization, tenant_header=tenant_header)
+
+
+def fallback_ai_generate_result(payload: AIGenerateIn, db: Session, context: RequestContext):
+    response = ai_generate(payload, db, context)
     try:
         body = json.loads(response.body.decode('utf-8'))
         return ((body.get('data') or {}).get('result') or '').strip()
@@ -31,11 +41,13 @@ def fallback_ai_generate_result(payload: AIGenerateIn, db: Session):
         return ''
 
 @router.post('/ai/generate')
-def ai_generate(payload: AIGenerateIn, db: Session = Depends(get_db)):
+def ai_generate(payload: AIGenerateIn, db: Session = Depends(get_db), context: RequestContext = Depends(generation_context)):
     generation_nonce = payload.generation_nonce or uuid.uuid4().hex
     generation_seed = random.randint(1, 2_147_483_647)
     prompt = llm_integration.build_ai_generation_prompt(payload, generation_nonce)
-    cache_key = llm_integration.ai_generation_cache_key(payload, generation_nonce)
+    cache_key = llm_integration.ai_generation_cache_key(
+        payload, generation_nonce, tenant_id=context.tenant.id, user_id=context.user.id,
+    )
     cached_generation = redis_get_json(cache_key)
     if cached_generation and cached_generation.get('status') == 'completed' and cached_generation.get('result'):
         return json_ok({"result": cached_generation.get('result'), "cache_hit": True})
@@ -161,21 +173,27 @@ def ai_generate(payload: AIGenerateIn, db: Session = Depends(get_db)):
             """.strip()
 
     try:
-        generation = AIGeneration(type=payload.type, prompt=prompt, result=result_text)
+        generation = AIGeneration(
+            type=payload.type, prompt=prompt, result=result_text,
+            tenant_id=context.tenant.id, user_id=context.user.id,
+        )
         db.add(generation)
         db.commit()
         redis_set_json(cache_key, llm_integration.completed_generation_cache_payload(result_text))
     except Exception as exc:
+        db.rollback()
         print('Failed to save AI generation:', exc)
 
     return json_ok({"result": result_text})
 
 @router.post('/ai/generate/stream')
-def ai_generate_stream(payload: AIGenerateIn, db: Session = Depends(get_db)):
+def ai_generate_stream(payload: AIGenerateIn, db: Session = Depends(get_db), context: RequestContext = Depends(generation_context)):
     generation_nonce = payload.generation_nonce or uuid.uuid4().hex
     generation_seed = random.randint(1, 2_147_483_647)
     prompt = llm_integration.build_ai_generation_prompt(payload, generation_nonce)
-    cache_key = llm_integration.ai_generation_cache_key(payload, generation_nonce)
+    cache_key = llm_integration.ai_generation_cache_key(
+        payload, generation_nonce, tenant_id=context.tenant.id, user_id=context.user.id,
+    )
     llama_server_url = os.environ.get('LLAMA_SERVER_URL', LLAMA_SERVER_URL)
     llama_server_model = os.environ.get('LLAMA_SERVER_MODEL', LLAMA_SERVER_MODEL)
 
@@ -192,7 +210,7 @@ def ai_generate_stream(payload: AIGenerateIn, db: Session = Depends(get_db)):
 
         yield llm_integration.sse_event('progress', {"message": "正在连接本地模型服务"})
         if not llama_server_url:
-            fallback = fallback_ai_generate_result(payload, db)
+            fallback = fallback_ai_generate_result(payload, db, context)
             yield llm_integration.sse_event('final', {"result": fallback})
             return
 
@@ -255,15 +273,19 @@ def ai_generate_stream(payload: AIGenerateIn, db: Session = Depends(get_db)):
             result_text = ''
 
         if not result_text:
-            result_text = fallback_ai_generate_result(payload, db)
+            result_text = fallback_ai_generate_result(payload, db, context)
             saved_by_fallback = True
         if not saved_by_fallback:
             try:
-                generation = AIGeneration(type=payload.type, prompt=prompt, result=result_text)
+                generation = AIGeneration(
+                    type=payload.type, prompt=prompt, result=result_text,
+                    tenant_id=context.tenant.id, user_id=context.user.id,
+                )
                 db.add(generation)
                 db.commit()
                 redis_set_json(cache_key, llm_integration.completed_generation_cache_payload(result_text))
             except Exception as exc:
+                db.rollback()
                 print('Failed to save AI generation stream:', exc)
         yield llm_integration.sse_event('progress', {"message": "内容已整理完成"})
         yield llm_integration.sse_event('final', {"result": result_text})

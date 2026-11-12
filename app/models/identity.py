@@ -37,6 +37,7 @@ class User(Base):
     phone = Column(String(64), default='')
     group_id = Column(Integer, ForeignKey('user_groups.id'), nullable=True)
     group_code = Column(String(64), default='B')
+    artist_id = Column(Integer, ForeignKey('artists.id'), nullable=True)
     status = Column(String(64), default='active')
     created_at = Column(DateTime, server_default=func.current_timestamp())
 

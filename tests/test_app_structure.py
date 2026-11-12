@@ -16,6 +16,8 @@ EXCLUDED_FRAMEWORK_PATHS = {
 }
 
 EXPECTED_ROUTE_SIGNATURES = {
+    ("GET", "/workspaces/investor"),
+    ("GET", "/workspaces/artist"),
     ("DELETE", "/users/{user_id}"),
     ("GET", "/alerts"),
     ("GET", "/analytics/dashboard"),

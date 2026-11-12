@@ -18,21 +18,21 @@ const cleanFinalResult = (value = '') => value
 
 const canUseLocalStorage = () => typeof window !== 'undefined' && Boolean(window.localStorage)
 
-const readGenerationState = () => {
-  if (!canUseLocalStorage()) return {}
+const readGenerationState = (storageKey) => {
+  if (!storageKey || !canUseLocalStorage()) return {}
   try {
-    const parsed = JSON.parse(window.localStorage.getItem(GENERATION_STORAGE_KEY) || '{}')
+    const parsed = JSON.parse(window.localStorage.getItem(storageKey) || '{}')
     return parsed && typeof parsed === 'object' ? parsed : {}
   } catch {
     return {}
   }
 }
 
-const persistGenerationState = (patch) => {
-  if (!canUseLocalStorage()) return
-  const current = readGenerationState()
+const persistGenerationState = (storageKey, patch) => {
+  if (!storageKey || !canUseLocalStorage()) return
+  const current = readGenerationState(storageKey)
   window.localStorage.setItem(
-    GENERATION_STORAGE_KEY,
+    storageKey,
     JSON.stringify({
       ...current,
       ...patch,
@@ -41,8 +41,8 @@ const persistGenerationState = (patch) => {
   )
 }
 
-const initialGenerationState = () => {
-  const stored = readGenerationState()
+const initialGenerationState = (storageKey) => {
+  const stored = readGenerationState(storageKey)
   return {
     form: { ...defaultForm, ...(stored.form || {}) },
     result: cleanFinalResult(stored.result || ''),
@@ -55,8 +55,16 @@ const initialGenerationState = () => {
   }
 }
 
-export default function Generate({ role = 'B' }) {
-  const [initialState] = useState(initialGenerationState)
+export default function Generate({ role = 'B', currentUser, tenantId }) {
+  const storageKey = currentUser?.id && tenantId
+    ? `${GENERATION_STORAGE_KEY}:${tenantId}:${currentUser.id}`
+    : null
+  return <UserGeneration key={storageKey || 'signed-out'} role={role} storageKey={storageKey} />
+}
+
+function UserGeneration({ role, storageKey }) {
+  const [initialState] = useState(() => initialGenerationState(storageKey))
+  const persist = (patch) => persistGenerationState(storageKey, patch)
   const [form, setForm] = useState(initialState.form)
   const [result, setResult] = useState(initialState.result)
   const [status, setStatus] = useState(initialState.status)
@@ -69,19 +77,20 @@ export default function Generate({ role = 'B' }) {
   useEffect(() => () => { activeRequest.current = null }, [])
 
   useEffect(() => {
-    persistGenerationState({ form, result, status, progressMessages, thoughts })
+    persist({ form, result, status, progressMessages, thoughts })
   }, [form, result, status, progressMessages, thoughts])
 
   const updateField = (field, value) => {
     setForm((current) => {
       const next = { ...current, [field]: value }
-      persistGenerationState({ form: next })
+      persist({ form: next })
       return next
     })
   }
 
   const handleGenerate = async (event) => {
     event?.preventDefault()
+    if (!storageKey) return
     const generationNonce = `${Date.now()}-${Math.random().toString(36).slice(2)}`
     const request = { finished: false }
     activeRequest.current = request
@@ -93,7 +102,7 @@ export default function Generate({ role = 'B' }) {
     setResult('')
     setProgressMessages(['已提交创作需求'])
     setThoughts('')
-    persistGenerationState({
+    persist({
       form,
       result: '',
       status: 'loading',
@@ -112,7 +121,7 @@ export default function Generate({ role = 'B' }) {
             if (!isCurrent() || request.finished) return
             if (message) setProgressMessages((current) => {
               const next = [...current, message]
-              persistGenerationState({ progressMessages: next, status: 'loading' })
+              persist({ progressMessages: next, status: 'loading' })
               return next
             })
           },
@@ -120,7 +129,7 @@ export default function Generate({ role = 'B' }) {
             if (!isCurrent() || request.finished) return
             if (content) setThoughts((current) => {
               const next = `${current}${content}`
-              persistGenerationState({ thoughts: next, status: 'loading' })
+              persist({ thoughts: next, status: 'loading' })
               return next
             })
           },
@@ -129,7 +138,7 @@ export default function Generate({ role = 'B' }) {
             streamedResult += content
             const cleaned = cleanFinalResult(streamedResult)
             setResult(cleaned)
-            persistGenerationState({ result: cleaned, status: 'loading' })
+            persist({ result: cleaned, status: 'loading' })
           },
           onFinal: (value) => {
             if (!isCurrent()) return
@@ -138,7 +147,7 @@ export default function Generate({ role = 'B' }) {
             request.finished = true
             setResult(cleaned)
             setStatus('success')
-            persistGenerationState({ result: cleaned, status: 'success' })
+            persist({ result: cleaned, status: 'success' })
           },
         },
       )
@@ -147,14 +156,14 @@ export default function Generate({ role = 'B' }) {
       if (!cleanedFinalResult) throw new Error('EMPTY_RESULT')
       setResult(cleanedFinalResult)
       setStatus('success')
-      persistGenerationState({ result: cleanedFinalResult, status: 'success' })
+      persist({ result: cleanedFinalResult, status: 'success' })
     } catch {
       if (!isCurrent() || request.finished) return
       const partialResult = cleanFinalResult(streamedResult)
       setResult(partialResult)
       setErrorMessage('内容生成未完成')
       setStatus('error')
-      persistGenerationState({ result: partialResult, status: 'error' })
+      persist({ result: partialResult, status: 'error' })
     }
   }
 
@@ -235,7 +244,7 @@ export default function Generate({ role = 'B' }) {
           </div>
 
           <div className="form-actions">
-            <button className="button button-primary" disabled={status === 'loading'} type="submit">
+            <button className="button button-primary" disabled={!storageKey || status === 'loading'} type="submit">
               {status === 'loading' ? (
                 <><span className="loader" aria-hidden="true" />AI 生成中...</>
               ) : '一键生成'}

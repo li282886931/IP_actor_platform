@@ -96,9 +96,11 @@ def find_final_output_start(text: str):
     return match.start() if match else -1
 
 
-def ai_generation_cache_key(payload: AIGenerateIn, generation_nonce: str):
+def ai_generation_cache_key(payload: AIGenerateIn, generation_nonce: str, *, tenant_id: int, user_id: int):
     raw = json.dumps(
         {
+            "tenant_id": tenant_id,
+            "user_id": user_id,
             "type": payload.type,
             "show_name": payload.show_name,
             "artist": payload.artist,

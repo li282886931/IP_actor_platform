@@ -10,6 +10,44 @@ vi.mock('../api', () => ({
 }))
 
 describe('Generate', () => {
+  it('isolates accounts, ignores legacy shared content and restores only the same account', async () => {
+    localStorage.setItem('starhub-ai-generation-state', JSON.stringify({
+      result: '旧共用内容', form: { show_name: '旧共用演出' }, status: 'success',
+    }))
+    generateAIStream.mockResolvedValue('用户甲文案')
+    const { rerender } = render(<Generate currentUser={{ id: 11 }} tenantId={1} />)
+    expect(screen.queryByText('旧共用内容')).not.toBeInTheDocument()
+    await userEvent.type(screen.getByPlaceholderText('输入艺人名称'), '用户甲艺人')
+    await userEvent.click(screen.getByRole('button', { name: /一键生成/ }))
+    expect(await screen.findByText('用户甲文案')).toBeInTheDocument()
+    rerender(<Generate currentUser={{ id: 12 }} tenantId={1} />)
+    expect(screen.queryByText('用户甲文案')).not.toBeInTheDocument()
+    expect(screen.getByPlaceholderText('输入艺人名称')).toHaveValue('')
+    rerender(<Generate currentUser={{ id: 11 }} tenantId={2} />)
+    expect(screen.queryByText('用户甲文案')).not.toBeInTheDocument()
+    rerender(<Generate currentUser={{ id: 11 }} tenantId={1} />)
+    expect(screen.getByText('用户甲文案')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('输入艺人名称')).toHaveValue('用户甲艺人')
+  })
+
+  it('discards events from a previous account after switching during generation', async () => {
+    let handlers
+    let finish
+    generateAIStream.mockImplementation((_payload, callbacks) => {
+      handlers = callbacks
+      return new Promise((resolve) => { finish = resolve })
+    })
+    const { rerender } = render(<Generate currentUser={{ id: 11 }} tenantId={1} />)
+    await userEvent.click(screen.getByRole('button', { name: /一键生成/ }))
+    rerender(<Generate currentUser={{ id: 12 }} tenantId={1} />)
+    handlers.onDelta('甲的迟到内容')
+    handlers.onFinal('甲的最终内容')
+    finish('甲的最终内容')
+    await waitFor(() => expect(screen.getByRole('button', { name: /一键生成/ })).toBeEnabled())
+    expect(screen.queryByText(/甲的/)).not.toBeInTheDocument()
+    expect(localStorage.getItem('starhub-ai-generation-state:1:12')).not.toContain('甲的')
+  })
+
   afterEach(() => {
     cleanup()
     vi.clearAllMocks()
@@ -22,7 +60,7 @@ describe('Generate', () => {
       return 'Generated copy'
     })
 
-    render(<Generate />)
+    render(<Generate currentUser={{ id: 1 }} tenantId={1} />)
 
     await userEvent.click(screen.getByRole('button', { name: /一键生成/ }))
 
@@ -48,7 +86,7 @@ describe('Generate', () => {
       return result
     })
 
-    render(<Generate />)
+    render(<Generate currentUser={{ id: 1 }} tenantId={1} />)
 
     await userEvent.click(screen.getByRole('button', { name: /一键生成/ }))
 
@@ -65,7 +103,7 @@ describe('Generate', () => {
       resolveRequest = resolve
     }))
 
-    render(<Generate />)
+    render(<Generate currentUser={{ id: 1 }} tenantId={1} />)
 
     const button = screen.getByRole('button', { name: /一键生成/ })
     await userEvent.click(button)
@@ -87,7 +125,7 @@ describe('Generate', () => {
         return 'Second generated copy'
       })
 
-    render(<Generate />)
+    render(<Generate currentUser={{ id: 1 }} tenantId={1} />)
 
     const user = userEvent.setup()
     const button = screen.getByRole('button', { name: /一键生成/ })
@@ -117,7 +155,7 @@ describe('Generate', () => {
       return '传播定位\n最终文案'
     })
 
-    render(<Generate />)
+    render(<Generate currentUser={{ id: 1 }} tenantId={1} />)
 
     await userEvent.click(screen.getByRole('button', { name: /一键生成/ }))
 
@@ -134,7 +172,7 @@ describe('Generate', () => {
   })
 
   it('restores completed generated content from local storage when returning to the page', async () => {
-    localStorage.setItem('starhub-ai-generation-state', JSON.stringify({
+    localStorage.setItem('starhub-ai-generation-state:1:1', JSON.stringify({
       form: {
         type: 'poster',
         show_name: '周杰伦·北京演唱会',
@@ -147,7 +185,7 @@ describe('Generate', () => {
       thoughts: '已完成分析',
     }))
 
-    render(<Generate />)
+    render(<Generate currentUser={{ id: 1 }} tenantId={1} />)
 
     expect(screen.getByDisplayValue('周杰伦·北京演唱会')).toBeInTheDocument()
     expect(screen.getByDisplayValue('周杰伦')).toBeInTheDocument()
@@ -168,7 +206,7 @@ describe('Generate', () => {
       return '最终生成内容'
     })
 
-    const { unmount } = render(<Generate />)
+    const { unmount } = render(<Generate currentUser={{ id: 1 }} tenantId={1} />)
     const user = userEvent.setup()
 
     await user.type(screen.getByPlaceholderText('例如：周杰伦嘉年华世界巡回演唱会'), '周杰伦·北京演唱会')
@@ -179,7 +217,7 @@ describe('Generate', () => {
     expect(await screen.findByText('模型正在生成内容')).toBeInTheDocument()
     unmount()
 
-    render(<Generate />)
+    render(<Generate currentUser={{ id: 1 }} tenantId={1} />)
 
     expect(screen.getByDisplayValue('周杰伦·北京演唱会')).toBeInTheDocument()
     expect(screen.getByText('正在分析城市受众')).toBeInTheDocument()
@@ -188,7 +226,7 @@ describe('Generate', () => {
 
     finishStream()
     await waitFor(() => expect(
-      JSON.parse(localStorage.getItem('starhub-ai-generation-state')).status,
+      JSON.parse(localStorage.getItem('starhub-ai-generation-state:1:1')).status,
     ).toBe('error'))
     expect(screen.queryByText('最终生成内容')).not.toBeInTheDocument()
   })
@@ -200,7 +238,7 @@ describe('Generate', () => {
       handlers = callbacks
       return new Promise((resolve) => { finishStream = resolve })
     })
-    render(<Generate />)
+    render(<Generate currentUser={{ id: 1 }} tenantId={1} />)
     await userEvent.click(screen.getByRole('button', { name: /一键生成/ }))
     handlers.onFinal('传播定位\n完成文案')
     await waitFor(() => expect(screen.getByRole('button', { name: /一键生成/ })).toBeEnabled())
@@ -215,7 +253,7 @@ describe('Generate', () => {
       handlers = callbacks
       return new Promise((resolve) => { finishStream = resolve })
     })
-    render(<Generate />)
+    render(<Generate currentUser={{ id: 1 }} tenantId={1} />)
     await userEvent.click(screen.getByRole('button', { name: /一键生成/ }))
     handlers.onDelta('## 传播定位\n\n')
     handlers.onDelta('深圳演出内容')
@@ -226,12 +264,12 @@ describe('Generate', () => {
   })
 
   it('preserves inputs and partial copy when recovering saved loading state', () => {
-    localStorage.setItem('starhub-ai-generation-state', JSON.stringify({
+    localStorage.setItem('starhub-ai-generation-state:1:1', JSON.stringify({
       form: { type: 'poster', show_name: '演唱会', artist: '小张', city: '深圳' },
       status: 'loading',
       result: '已返回的部分文案',
     }))
-    render(<Generate />)
+    render(<Generate currentUser={{ id: 1 }} tenantId={1} />)
     expect(screen.getByDisplayValue('小张')).toBeInTheDocument()
     expect(screen.getByText('已返回的部分文案')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /一键生成/ })).toBeEnabled()

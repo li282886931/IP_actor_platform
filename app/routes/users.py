@@ -3,6 +3,7 @@ from app.database import get_db
 from app.models import Tenant
 from app.models import User
 from app.models import UserGroup
+from app.models import AIGeneration, TenantMember, Artist
 from app.schemas import UserCreateIn
 from app.schemas import UserUpdateIn
 from app.services import GROUPS
@@ -21,6 +22,19 @@ from typing import Optional
 
 router = APIRouter()
 
+def validate_artist_binding(db, group_code, artist_id):
+    if artist_id is None:
+        return
+    if group_code != 'Artist':
+        raise HTTPException(status_code=400, detail='Only artist accounts can bind an artist')
+    if not db.get(Artist, artist_id):
+        raise HTTPException(status_code=400, detail='Artist not found')
+
+def require_binding_admin(db, authorization):
+    context = resolve_request_context(db, authorization=authorization or '')
+    if context.user.group_code != 'root':
+        raise HTTPException(status_code=403, detail='Only administrators can manage artist bindings')
+
 
 @router.get('/user-groups')
 def list_user_groups(db: Session = Depends(get_db)):
@@ -37,10 +51,13 @@ def list_users(db: Session = Depends(get_db)):
     return json_ok([serialize_user(user) for user in users])
 
 @router.post('/users')
-def create_user(payload: UserCreateIn, db: Session = Depends(get_db)):
+def create_user(payload: UserCreateIn, db: Session = Depends(get_db), authorization: Optional[str] = Header(default=None)):
     tenant, _ = get_or_create_default_context(db)
     if payload.group_code not in {group["code"] for group in GROUPS}:
         raise HTTPException(status_code=400, detail='Invalid user group')
+    if payload.group_code == 'Artist' or payload.artist_id is not None:
+        require_binding_admin(db, authorization)
+    validate_artist_binding(db, payload.group_code, payload.artist_id)
     existing = db.query(User).filter(User.account == payload.account).first()
     if existing:
         raise HTTPException(status_code=409, detail='User already exists')
@@ -50,6 +67,7 @@ def create_user(payload: UserCreateIn, db: Session = Depends(get_db)):
         phone=payload.phone or '',
         password_hash=hash_password(payload.password),
         group_code=payload.group_code,
+        artist_id=payload.artist_id,
         status='active',
     )
     group = db.query(UserGroup).filter(UserGroup.tenant_id == tenant.id, UserGroup.name == payload.group_code).first()
@@ -61,11 +79,19 @@ def create_user(payload: UserCreateIn, db: Session = Depends(get_db)):
     return json_ok(serialize_user(user))
 
 @router.patch('/users/{user_id}')
-def update_user(user_id: int, payload: UserUpdateIn, db: Session = Depends(get_db)):
+def update_user(user_id: int, payload: UserUpdateIn, db: Session = Depends(get_db), authorization: Optional[str] = Header(default=None)):
     tenant, _ = get_or_create_default_context(db)
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail='User not found')
+    next_group = payload.group_code if payload.group_code is not None else user.group_code
+    if user.artist_id is not None or next_group == 'Artist' or 'artist_id' in payload.model_fields_set:
+        require_binding_admin(db, authorization)
+    if 'artist_id' in payload.model_fields_set:
+        validate_artist_binding(db, next_group, payload.artist_id)
+        user.artist_id = payload.artist_id
+    if next_group != 'Artist':
+        user.artist_id = None
     if payload.group_code is not None:
         if payload.group_code not in {group["code"] for group in GROUPS}:
             raise HTTPException(status_code=400, detail='Invalid user group')
@@ -93,6 +119,10 @@ def delete_user(user_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail='User not found')
     if user.account == 'root':
         raise HTTPException(status_code=400, detail='Root user cannot be deleted')
+    db.query(AIGeneration).filter(AIGeneration.user_id == user.id).update(
+        {AIGeneration.user_id: None}, synchronize_session=False,
+    )
+    db.query(TenantMember).filter(TenantMember.user_id == user.id).delete(synchronize_session=False)
     db.delete(user)
     db.commit()
     return json_ok({"deleted": True})

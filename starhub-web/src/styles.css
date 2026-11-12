@@ -1,3 +1,60 @@
+.role-workspace { min-width: 0; }
+.role-stat-strip { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+.role-stat-strip > div { display: flex; align-items: center; gap: 12px; padding: 18px 20px; }
+.role-stat-strip > div + div { border-left: 1px solid var(--border); }
+.role-stat-strip svg { color: var(--gold); flex-shrink: 0; }
+.role-stat-strip span { display: grid; gap: 6px; color: var(--text-muted); font-size: 12px; }
+.role-stat-strip strong { color: var(--text); font-size: 23px; font-variant-numeric: tabular-nums; }
+.role-search { max-width: 420px; margin-bottom: 18px; }
+.role-review-list { border-top: 1px solid var(--border); }
+.role-project-review { border-bottom: 1px solid var(--border); }
+.role-project-review summary { display: flex; align-items: center; gap: 16px; padding: 18px 0; cursor: pointer; list-style: none; }
+.role-project-review summary::-webkit-details-marker { display: none; }
+.role-project-review summary:hover strong { color: var(--gold); }
+.role-project-main { display: grid; gap: 8px; flex: 1; min-width: 0; }
+.role-project-main strong { overflow-wrap: anywhere; font-size: 15px; }
+.role-project-main small, .role-project-status, .role-project-side { color: var(--text-muted); font-size: 12px; }
+.role-project-status { padding: 5px 9px; border: 1px solid var(--border); border-radius: 6px; }
+.role-review-toggle { font-size: 12px; color: var(--gold); white-space: nowrap; }
+.role-project-review[open] .role-review-toggle { color: var(--text-muted); }
+.role-review-content { padding: 0 0 18px; }
+.role-review-content h4 { margin: 8px 0 14px; font-size: 13px; }
+.role-value-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 14px; margin: 16px 0; }
+.role-value-grid > div { min-width: 0; padding: 12px 14px; background: var(--surface-subtle); border-radius: 8px; }
+.role-value-grid dt { color: var(--text-muted); font-size: 12px; margin-bottom: 8px; }
+.role-value-grid dd { margin: 0; font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.role-review-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.role-check-item { padding: 12px 0; border-top: 1px solid var(--border); font-size: 13px; }
+.role-check-item span { color: var(--amber); font-size: 11px; margin-left: 12px; }
+.role-check-item p, .role-muted, .role-disclosure { color: var(--text-muted); font-size: 12px; line-height: 1.8; overflow-wrap: anywhere; }
+.role-disclosure { margin: 8px 0 0; }
+.role-artist-heading { display: flex; align-items: center; gap: 14px; }
+.role-artist-heading h3 { margin: 0; }
+.role-artist-heading p { font-size: 12px; color: var(--text-muted); margin: 6px 0 0; }
+.role-verification { margin-left: auto; font-size: 11px; padding: 5px 8px; background: var(--gold-soft); color: var(--gold); border-radius: 6px; white-space: nowrap; }
+.role-profile-more { padding-top: 14px; border-top: 1px solid var(--border); font-size: 13px; }
+.role-profile-more summary { cursor: pointer; color: var(--gold); }
+.role-profile-values { display: grid; gap: 10px; margin: 12px 0; font-size: 12px; overflow-wrap: anywhere; }
+.role-profile-values dt { color: var(--text-muted); margin-bottom: 5px; }
+.role-profile-values dd { margin: 0; }
+.role-opportunity { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 0; border-top: 1px solid var(--border); }
+.role-opportunity h4 { margin: 0 0 8px; font-size: 15px; overflow-wrap: anywhere; }
+.role-opportunity p { color: var(--text-muted); font-size: 12px; margin: 0; }
+.role-opportunity > div:last-child { text-align: right; display: grid; gap: 8px; font-size: 12px; }
+.role-opportunity small { color: var(--gold); }
+.role-project-review summary:focus-visible, .role-profile-more summary:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
+@media (max-width: 640px) {
+  .role-stat-strip > div { padding: 12px 8px; gap: 6px; }
+  .role-stat-strip svg { display: none; }
+  .role-stat-strip strong { font-size: 18px; }
+  .role-stat-strip span { font-size: 10px; }
+  .role-project-review summary { flex-wrap: wrap; gap: 10px; }
+  .role-project-main { flex-basis: calc(100% - 80px); }
+  .role-project-side { flex: 1; }
+  .role-review-columns { grid-template-columns: 1fr; gap: 12px; }
+  .role-artist-heading { flex-wrap: wrap; }
+  .role-workspace .page-lead { flex-wrap: wrap; gap: 12px; }
+}
 :root {
   color-scheme: dark;
   font-family: "PingFang SC", "Source Han Sans SC", "Noto Sans SC", "Microsoft YaHei", system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -628,7 +685,7 @@ select option {
 
 .user-group-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 14px;
 }
 

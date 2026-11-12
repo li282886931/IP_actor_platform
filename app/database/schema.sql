@@ -5,11 +5,15 @@ SET FOREIGN_KEY_CHECKS = 0;
 
 CREATE TABLE ai_generations (
 	id INTEGER NOT NULL AUTO_INCREMENT,
+	tenant_id INTEGER,
+	user_id INTEGER,
 	type VARCHAR(64) NOT NULL,
 	prompt TEXT NOT NULL,
 	result TEXT NOT NULL,
 	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-	PRIMARY KEY (id)
+	PRIMARY KEY (id),
+	FOREIGN KEY(tenant_id) REFERENCES tenants (id),
+	FOREIGN KEY(user_id) REFERENCES users (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE INDEX ix_ai_generations_id ON ai_generations (id);
 
@@ -86,13 +90,15 @@ CREATE TABLE users (
 	phone VARCHAR(64),
 	group_id INTEGER,
 	group_code VARCHAR(64),
+	artist_id INTEGER,
 	status VARCHAR(64),
 	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 	PRIMARY KEY (id),
 	UNIQUE (openid),
 	UNIQUE (unionid),
 	UNIQUE (account),
-	FOREIGN KEY(group_id) REFERENCES user_groups (id)
+	FOREIGN KEY(group_id) REFERENCES user_groups (id),
+	FOREIGN KEY(artist_id) REFERENCES artists (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE INDEX ix_users_id ON users (id);
 

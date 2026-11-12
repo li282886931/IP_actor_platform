@@ -19,6 +19,7 @@ import app.integrations.object_storage as storage_integration
 import app.integrations.wechat as wechat_integration
 import app.routes.ai as ai_routes
 import app.routes.auth as auth_routes
+from app.services.auth import create_session_token
 
 
 def write_minimal_docx(path: Path, paragraphs: list[str]):
@@ -178,6 +179,13 @@ def make_temp_session(monkeypatch):
     return session_factory
 
 
+def ai_test_headers(session_factory):
+    with session_factory() as db:
+        tenant, user = app_module.get_or_create_default_context(db)
+        token = create_session_token(user.id, tenant.id)
+        return {"Authorization": f"Bearer {token}"}
+
+
 def test_init_db_seeds_empty_database(monkeypatch):
     session_factory = make_temp_session(monkeypatch)
 
@@ -239,7 +247,7 @@ def test_ai_generate_returns_nested_result_and_records_generation(monkeypatch):
 
     app_module.app.dependency_overrides[app_module.get_db] = override_db
     try:
-        client = TestClient(app_module.app)
+        client = TestClient(app_module.app, headers=ai_test_headers(session_factory))
         response = client.post(
             "/ai/generate",
             json={
@@ -1520,7 +1528,7 @@ def test_ai_generate_prefers_local_llama_server(monkeypatch):
 
     app_module.app.dependency_overrides[app_module.get_db] = override_db
     try:
-        client = TestClient(app_module.app)
+        client = TestClient(app_module.app, headers=ai_test_headers(session_factory))
         response = client.post(
             "/ai/generate",
             json={
@@ -1555,6 +1563,8 @@ def test_ai_generate_prefers_local_llama_server(monkeypatch):
     try:
         generation = db.query(app_module.AIGeneration).one()
         assert generation.result == "Local llama copy"
+        assert generation.user_id is not None
+        assert generation.tenant_id is not None
     finally:
         db.close()
 
@@ -1596,7 +1606,7 @@ def test_ai_generate_strips_think_blocks_from_final_result(monkeypatch):
 
     app_module.app.dependency_overrides[app_module.get_db] = override_db
     try:
-        response = TestClient(app_module.app).post(
+        response = TestClient(app_module.app, headers=ai_test_headers(session_factory)).post(
             "/ai/generate",
             json={"type": "poster", "show_name": "见面会", "artist": "大牛", "city": "上海"},
         )
@@ -1653,7 +1663,7 @@ def test_ai_generate_stream_disables_thinking_and_returns_clean_final(monkeypatc
 
     app_module.app.dependency_overrides[app_module.get_db] = override_db
     try:
-        with TestClient(app_module.app).stream(
+        with TestClient(app_module.app, headers=ai_test_headers(session_factory)).stream(
             "POST",
             "/ai/generate/stream",
             json={"type": "poster", "show_name": "见面会", "artist": "大牛", "city": "上海"},
@@ -1713,7 +1723,7 @@ def test_ai_generate_stream_discards_plain_analysis_preamble(monkeypatch):
 
     app_module.app.dependency_overrides[app_module.get_db] = override_db
     try:
-        with TestClient(app_module.app).stream(
+        with TestClient(app_module.app, headers=ai_test_headers(session_factory)).stream(
             "POST",
             "/ai/generate/stream",
             json={"type": "poster", "show_name": "见面会", "artist": "大牛", "city": "上海"},
@@ -1753,7 +1763,7 @@ def test_ai_generate_returns_cached_result_from_redis(monkeypatch):
 
     app_module.app.dependency_overrides[app_module.get_db] = override_db
     try:
-        response = TestClient(app_module.app).post(
+        response = TestClient(app_module.app, headers=ai_test_headers(session_factory)).post(
             "/ai/generate",
             json={
                 "type": "poster",
@@ -1799,7 +1809,7 @@ def test_ai_generate_stream_hides_cached_thought_and_returns_result(monkeypatch)
 
     app_module.app.dependency_overrides[app_module.get_db] = override_db
     try:
-        with TestClient(app_module.app).stream(
+        with TestClient(app_module.app, headers=ai_test_headers(session_factory)).stream(
             "POST",
             "/ai/generate/stream",
             json={
@@ -1948,7 +1958,7 @@ def test_root_login_and_user_management(monkeypatch):
 
         groups_response = client.get("/user-groups")
         assert groups_response.status_code == 200
-        assert [group["code"] for group in groups_response.json()["data"]] == ["root", "B", "Brand", "G", "C"]
+        assert [group["code"] for group in groups_response.json()["data"]] == ["root", "B", "Brand", "G", "C", "Investor", "Artist"]
 
         create_response = client.post(
             "/users",

@@ -21,6 +21,8 @@ GROUPS = [
     {"code": "Brand", "name": "品牌方", "permissions": ["project:read"], "role": "Brand"},
     {"code": "G", "name": "政府 / 文旅", "permissions": ["project:read"], "role": "G"},
     {"code": "C", "name": "观众端", "permissions": ["show:read"], "role": "C"},
+    {"code": "Investor", "name": "资方", "permissions": ["investment:read"], "role": "Investor"},
+    {"code": "Artist", "name": "艺人", "permissions": ["artist:own:read"], "role": "Artist"},
 ]
 
 
@@ -30,6 +32,8 @@ DEFAULT_USERS = [
     {"account": "brand_user", "name": "品牌方用户", "group_code": "Brand"},
     {"account": "g_user", "name": "政府文旅用户", "group_code": "G"},
     {"account": "c_user", "name": "观众用户", "group_code": "C"},
+    {"account": "investor_user", "name": "资方用户", "group_code": "Investor"},
+    {"account": "artist_user", "name": "艺人用户", "group_code": "Artist"},
 ]
 
 

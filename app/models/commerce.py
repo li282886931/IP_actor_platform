@@ -46,6 +46,9 @@ class AIGeneration(Base):
     __tablename__ = 'ai_generations'
 
     id = Column(Integer, primary_key=True, index=True)
+    # Legacy records have no verifiable owner and retain NULL ownership.
+    tenant_id = Column(Integer, ForeignKey('tenants.id'), nullable=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=True)
     type = Column(String(64), nullable=False)
     prompt = Column(Text, nullable=False)
     result = Column(Text, nullable=False)

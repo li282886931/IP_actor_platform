@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
 
-import { createUser, deleteUser, listUsers, updateUser } from '../api'
+import { createUser, deleteUser, listUsers, updateUser, searchArtist } from '../api'
 
 const USER_GROUPS = [
+  { code: 'Investor', name: '资方', role: 'Investor', description: '项目评估、资金缺口与风险核验' },
+  { code: 'Artist', name: '艺人', role: 'Artist', description: '个人资料、关联演出与专属宣发' },
   { code: 'B', name: '主办方', role: 'B', description: '项目创建、财务测算、决策推进与任务管理' },
   { code: 'Brand', name: '品牌方', role: 'Brand', description: '查看品牌合作、受众洞察与投放表现' },
   { code: 'G', name: '政府 / 文旅', role: 'G', description: '查看城市文旅、消费拉动与活动风险' },
@@ -15,6 +17,9 @@ function canManageUsers(user) {
 
 export default function UserManagement({ currentUser }) {
   const [users, setUsers] = useState([])
+  const [artists, setArtists] = useState([])
+  const [artistStatus, setArtistStatus] = useState('loading')
+  const [artistAttempt, setArtistAttempt] = useState(0)
   const [selectedGroup, setSelectedGroup] = useState('B')
   const [status, setStatus] = useState('loading')
   const [submitStatus, setSubmitStatus] = useState('idle')
@@ -35,6 +40,25 @@ export default function UserManagement({ currentUser }) {
   })
   const authorized = canManageUsers(currentUser)
   const selectedGroupMeta = USER_GROUPS.find((group) => group.code === selectedGroup) || USER_GROUPS[0]
+
+  useEffect(() => {
+    if (!authorized) return
+    let active = true
+    setArtistStatus('loading')
+    searchArtist('').then(response => {
+      if (active) { setArtists(response.data.data || []); setArtistStatus('success') }
+    }).catch(() => { if (active) setArtistStatus('error') })
+    return () => { active = false }
+  }, [authorized, artistAttempt])
+
+  const artistSelector = (value, onChange, label) => <label className="field">
+    <span>{label}</span><select value={value || ''} onChange={e => onChange(e.target.value)}>
+      <option value="">暂不关联</option>
+      {artists.map(artist => <option key={artist.id} value={artist.id}>{artist.name}（ID {artist.id}）</option>)}
+    </select>
+    {artistStatus === 'loading' && <small>正在加载艺人资料…</small>}
+    {artistStatus === 'error' && <small>艺人资料加载失败 <button type="button" className="button button-secondary" onClick={() => setArtistAttempt(n => n + 1)}>重试加载</button></small>}
+  </label>
 
   useEffect(() => {
     if (!authorized) {
@@ -88,6 +112,7 @@ export default function UserManagement({ currentUser }) {
         phone: form.phone.trim(),
         password: form.password,
         group_code: form.group_code,
+        ...(form.group_code === 'Artist' ? { artist_id: form.artist_id ? Number(form.artist_id) : null } : {}),
       })
       setUsers((current) => [...current, response.data.data])
       setForm({ account: '', name: '', phone: '', password: '', group_code: response.data.data.group_code })
@@ -111,6 +136,7 @@ export default function UserManagement({ currentUser }) {
       phone: user.phone || '',
       password: '',
       group_code: user.group_code || selectedGroup,
+      artist_id: user.artist_id || '',
     })
   }
 
@@ -129,11 +155,17 @@ export default function UserManagement({ currentUser }) {
     if (editForm.password.trim()) {
       payload.password = editForm.password
     }
-    const response = await updateUser(user.id, payload)
-    setUsers((current) => current.map((item) => (
-      item.id === user.id ? response.data.data : item
-    )))
-    cancelEditUser()
+    if (editForm.group_code === 'Artist') payload.artist_id = editForm.artist_id ? Number(editForm.artist_id) : null
+    try {
+      const response = await updateUser(user.id, payload)
+      setUsers((current) => current.map((item) => (
+        item.id === user.id ? response.data.data : item
+      )))
+      cancelEditUser()
+    } catch {
+      setSubmitStatus('error')
+      setMessage('用户修改失败，请检查关联艺人后重试')
+    }
   }
 
   if (!authorized) {
@@ -202,6 +234,7 @@ export default function UserManagement({ currentUser }) {
                 {selectedGroupMeta.name}
               </output>
             </div>
+            {form.group_code === 'Artist' && artistSelector(form.artist_id, value => handleFieldChange('artist_id', value), '关联艺人')}
           </div>
           <button className="button button-primary" disabled={submitStatus === 'loading'} type="submit">
             {submitStatus === 'loading' ? '添加中...' : '添加用户'}
@@ -251,6 +284,7 @@ export default function UserManagement({ currentUser }) {
                       <button className="button button-primary" type="submit">保存修改</button>
                       <button className="button button-secondary" type="button" onClick={cancelEditUser}>取消</button>
                     </div>
+                    {editForm.group_code === 'Artist' && artistSelector(editForm.artist_id, value => handleEditFieldChange('artist_id', value), '编辑关联艺人')}
                   </form>
                 ) : (
                   <>
@@ -258,6 +292,7 @@ export default function UserManagement({ currentUser }) {
                       <b>{user.account}</b>
                       <small>{user.name}</small>
                       {user.phone ? <small>{user.phone}</small> : <small>未绑定手机号</small>}
+                      {user.group_code === 'Artist' && <small>{user.artist_id ? `关联艺人：${artists.find(a => a.id === user.artist_id)?.name || `ID ${user.artist_id}`}` : '艺人资料未关联'}</small>}
                     </div>
                     <strong className="user-group-code">{user.group_code}</strong>
                     <div className="inline-actions user-row-actions">

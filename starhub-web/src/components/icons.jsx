@@ -266,6 +266,10 @@ export function FlareIcon(props) {
 }
 
 const navIcons = {
+  '/investment/projects': ClapperIcon,
+  '/investment/safeguards': WalletIcon,
+  '/performer/profile': UsersIcon,
+  '/performer/opportunities': TicketIcon,
   '/': HomeIcon,
   '/artist': CompassIcon,
   '/generate': SparkIcon,

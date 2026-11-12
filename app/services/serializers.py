@@ -11,6 +11,7 @@ def serialize_user(user: User):
         "name": user.name,
         "phone": user.phone,
         "group_code": user.group_code,
+        "artist_id": user.artist_id,
         "role": group_role(user.group_code),
         "status": user.status,
         "can_manage_users": can_manage_users(user.group_code),

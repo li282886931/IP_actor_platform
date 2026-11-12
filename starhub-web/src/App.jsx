@@ -11,8 +11,12 @@ import Home from './pages/Home'
 import ProjectDetail from './pages/ProjectDetail'
 import ShowDetail from './pages/ShowDetail'
 import UserManagement from './pages/UserManagement'
+import InvestorWorkspace from './pages/InvestorWorkspace'
+import ArtistWorkspace from './pages/ArtistWorkspace'
 
 const roleMeta = {
+  Investor: { label: '资方', title: '资方工作台', desc: '评估项目价值、资金缺口与投资风险' },
+  Artist: { label: '艺人', title: '艺人工作台', desc: '管理个人资料、关联演出与内容宣发' },
   C: { label: '观众端', title: '演出发现', desc: '浏览演出、查看推荐并管理预约' },
   B: { label: '主办方', title: '运营工作台', desc: '掌握项目经营、艺人热度与宣发进展' },
   Brand: { label: '品牌方', title: '品牌合作', desc: '分析受众价值、合作表现与投放机会' },
@@ -20,6 +24,10 @@ const roleMeta = {
 }
 
 const routeTitles = {
+  '/investment/projects': '项目评估',
+  '/investment/safeguards': '资金与风险',
+  '/performer/profile': '我的资料',
+  '/performer/opportunities': '演出机会',
   '/artist': '艺人洞察',
   '/generate': 'AI 宣发',
   '/users': '用户管理',
@@ -76,7 +84,7 @@ function LoginView({
         <div className="login-copy">
           <span className="eyebrow">AI DRIVEN ENTERTAINMENT OPERATIONS</span>
           <h1>连接演出决策、内容宣发与经营增长</h1>
-          <p>面向观众、主办方、品牌与文旅机构的一体化演出运营平台。</p>
+          <p>面向观众、主办方、品牌、文旅、资方与艺人的演出运营平台。</p>
         </div>
         <div className="role-preview-grid">
           {Object.entries(roleMeta).map(([value, item]) => (
@@ -168,6 +176,24 @@ export default function App() {
     const stored = localStorage.getItem('starhub-user')
     return stored ? JSON.parse(stored) : null
   })
+  const [currentTenant, setCurrentTenant] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('starhub-tenant') || 'null') } catch { return null }
+  })
+  useEffect(() => {
+    const syncLogin = () => {
+      try {
+        setCurrentUser(JSON.parse(localStorage.getItem('starhub-user') || 'null'))
+        setCurrentTenant(JSON.parse(localStorage.getItem('starhub-tenant') || 'null'))
+        setIsLoggedIn(localStorage.getItem('starhub-login') === 'true')
+      } catch {
+        setCurrentUser(null)
+        setCurrentTenant(null)
+        setIsLoggedIn(false)
+      }
+    }
+    window.addEventListener('storage', syncLogin)
+    return () => window.removeEventListener('storage', syncLogin)
+  }, [])
   const [account, setAccount] = useState('')
   const [password, setPassword] = useState('')
   const [captchaId, setCaptchaId] = useState('')
@@ -270,6 +296,7 @@ export default function App() {
       }
       if (data.current_tenant) {
         localStorage.setItem('starhub-tenant', JSON.stringify(data.current_tenant))
+        setCurrentTenant(data.current_tenant)
       }
       setIsLoggedIn(true)
       setLoginStatus('success')
@@ -387,6 +414,7 @@ export default function App() {
                 setLoginError('')
                 setLoginStatus('idle')
                 setCurrentUser(null)
+                setCurrentTenant(null)
                 setIsLoggedIn(false)
                 navigate('/', { replace: true })
               }}
@@ -398,12 +426,16 @@ export default function App() {
 
         <main className="workspace-content">
           <Routes>
-            <Route path="/" element={<Home role={activeRole} currentUser={currentUser} />} />
+            <Route path="/" element={activeRole === 'Investor' ? <InvestorWorkspace key={`${currentUser?.id}:${currentTenant?.id}`} /> : activeRole === 'Artist' ? <ArtistWorkspace key={`${currentUser?.id}:${currentTenant?.id}`} /> : <Home role={activeRole} currentUser={currentUser} />} />
+            <Route path="/investment/projects" element={activeRole === 'Investor' ? <InvestorWorkspace mode="projects" key={`${currentUser?.id}:${currentTenant?.id}`} /> : <Navigate replace to="/" />} />
+            <Route path="/investment/safeguards" element={activeRole === 'Investor' ? <InvestorWorkspace mode="safeguards" key={`${currentUser?.id}:${currentTenant?.id}`} /> : <Navigate replace to="/" />} />
+            <Route path="/performer/profile" element={activeRole === 'Artist' ? <ArtistWorkspace mode="profile" key={`${currentUser?.id}:${currentTenant?.id}`} /> : <Navigate replace to="/" />} />
+            <Route path="/performer/opportunities" element={activeRole === 'Artist' ? <ArtistWorkspace mode="opportunities" key={`${currentUser?.id}:${currentTenant?.id}`} /> : <Navigate replace to="/" />} />
             <Route path="/artist" element={<Artist role={activeRole} />} />
-            <Route path="/generate" element={activeRole === 'C' ? <Navigate replace to="/" /> : <Generate role={activeRole} />} />
+            <Route path="/generate" element={['C', 'Investor'].includes(activeRole) ? <Navigate replace to="/" /> : <Generate role={activeRole} currentUser={currentUser} tenantId={currentTenant?.id} />} />
             <Route path="/users" element={canManageUsers ? <UserManagement currentUser={currentUser} /> : <Navigate replace to="/" />} />
             <Route path="/show/:id" element={<ShowDetail role={activeRole} />} />
-            <Route path="/projects/:id" element={<ProjectDetail />} />
+            <Route path="/projects/:id" element={['Investor', 'Artist'].includes(activeRole) ? <Navigate replace to="/" /> : <ProjectDetail />} />
             <Route path="*" element={<Navigate replace to="/" />} />
           </Routes>
         </main>

@@ -3,6 +3,18 @@ import { NavLink } from 'react-router-dom'
 import { BrandMark, NavIcon } from './icons'
 
 const navigationByRole = {
+  Investor: [
+    { to: '/', label: '资方工作台' },
+    { to: '/investment/projects', label: '项目评估' },
+    { to: '/investment/safeguards', label: '资金与风险' },
+    { to: '/artist', label: '市场与艺人' },
+  ],
+  Artist: [
+    { to: '/', label: '艺人工作台' },
+    { to: '/performer/profile', label: '我的资料' },
+    { to: '/performer/opportunities', label: '演出机会' },
+    { to: '/generate', label: 'AI 宣发' },
+  ],
   C: [
     { to: '/', label: '演出发现' },
     { to: '/artist', label: '艺人查询' },
@@ -25,6 +37,10 @@ const navigationByRole = {
 }
 
 const mobileLabels = {
+  '/investment/projects': '项目',
+  '/investment/safeguards': '资金风险',
+  '/performer/profile': '资料',
+  '/performer/opportunities': '演出机会',
   '/': '首页',
   '/artist': '智策',
   '/generate': '宣发',
@@ -89,4 +105,3 @@ export default function Sidebar({ role, canManageUsers = false }) {
     </>
   )
 }
-

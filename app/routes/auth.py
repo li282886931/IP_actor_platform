@@ -5,6 +5,7 @@ from app.infrastructure.cache import redis_get_json
 from app.infrastructure.cache import redis_set_json
 from app.integrations import wechat as wechat_integration
 from app.models import User
+from app.models import TenantMember, UserGroup
 from app.schemas import WebLoginIn
 from app.schemas import WechatLoginIn
 from app.services import create_session_token
@@ -27,6 +28,19 @@ import uuid
 
 
 router = APIRouter()
+
+def ensure_login_membership(db: Session, tenant, user):
+    group = db.query(UserGroup).filter(
+        UserGroup.id == user.group_id, UserGroup.tenant_id == tenant.id,
+    ).first()
+    if not group:
+        raise HTTPException(status_code=403, detail='Account is not linked to this tenant')
+    member = db.query(TenantMember).filter(
+        TenantMember.tenant_id == tenant.id, TenantMember.user_id == user.id,
+    ).first()
+    if not member:
+        db.add(TenantMember(tenant_id=tenant.id, user_id=user.id, role='member'))
+        db.commit()
 
 
 CAPTCHA_TTL_SECONDS = 300
@@ -114,6 +128,7 @@ def web_login(payload: WebLoginIn, db: Session = Depends(get_db)):
     if password_needs_rehash(user.password_hash):
         user.password_hash = hash_password(payload.password)
         db.commit()
+    ensure_login_membership(db, tenant, user)
     token = create_session_token(user.id, tenant.id)
     return json_ok({
         "token": token,
@@ -143,6 +158,7 @@ def wechat_login(payload: WechatLoginIn, request: Request, db: Session = Depends
     if not user:
         raise HTTPException(status_code=403, detail='Phone number is not linked to any account')
 
+    ensure_login_membership(db, tenant, user)
     openid = session.get('openid') or ''
     unionid = session.get('unionid') or ''
     if openid:
