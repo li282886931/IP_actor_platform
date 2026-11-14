@@ -68,9 +68,14 @@ def main():
 
     with SessionLocal() as db:
         initialize_accounts(db, os.environ["INITIAL_ROOT_PASSWORD"])
-    # One worker avoids concurrent schema initialization in the current application.
-    uvicorn.run(app, host="0.0.0.0", port=8000, root_path="/api",
-                proxy_headers=True, forwarded_allow_ips="*")
+
+    workers = int(os.environ.get("WORKERS", "0") or 0)
+    if workers <= 0:
+        workers = max(1, (os.cpu_count() or 2))
+    # Multiple workers handle concurrent requests; init_db() is guarded by a
+    # cross-process file lock so concurrent schema initialization stays safe.
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, root_path="/api",
+                proxy_headers=True, forwarded_allow_ips="*", workers=workers)
 
 
 if __name__ == "__main__":

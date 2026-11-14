@@ -1,4 +1,10 @@
+import os
 from urllib.parse import quote
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - Windows
+    fcntl = None
 
 from sqlalchemy import func, inspect, text
 from sqlalchemy.orm import Session
@@ -286,15 +292,35 @@ def ensure_runtime_columns():
             connection.execute(text(statement))
 
 
+def _acquire_init_lock():
+    if fcntl is None:
+        return None
+    lock_path = os.environ.get('DB_INIT_LOCK_PATH', '/tmp/ip_actor_db_init.lock')
+    lock_file = open(lock_path, 'a+')
+    fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+    return lock_file
+
+
+def _release_init_lock(lock_file):
+    if lock_file is None:
+        return
+    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+    lock_file.close()
+
+
 def init_db():
-    database.Base.metadata.create_all(bind=database.engine)
-    ensure_runtime_columns()
-    db = database.SessionLocal()
+    lock_file = _acquire_init_lock()
     try:
-        seed_initial_data(db)
-        get_or_create_default_context(db)
+        database.Base.metadata.create_all(bind=database.engine)
+        ensure_runtime_columns()
+        db = database.SessionLocal()
+        try:
+            seed_initial_data(db)
+            get_or_create_default_context(db)
+        finally:
+            db.close()
     finally:
-        db.close()
+        _release_init_lock(lock_file)
 
 
 def next_project_version_no(db: Session, project_id: int):
