@@ -272,11 +272,14 @@ def _settings_screen(
             and os.environ.get("WECHAT_MINIAPP_SECRET")
         )
         storage_provider = os.environ.get("OSS_PROVIDER", "local-placeholder").strip().lower()
-        storage_configured = (
-            bool(os.environ.get("MINIO_ACCESS_KEY") and os.environ.get("MINIO_SECRET_KEY"))
-            if storage_provider in {"minio", "local-placeholder"} else
-            bool(storage_provider)
-        )
+        if storage_provider == "aliyun-oss":
+            from app.integrations.object_storage import load_aliyun_oss_config
+            creds = load_aliyun_oss_config()
+            storage_configured = bool(creds["endpoint"] and creds["access_key_id"] and creds["access_key_secret"])
+        elif storage_provider in {"minio", "local-placeholder"}:
+            storage_configured = bool(os.environ.get("MINIO_ACCESS_KEY") and os.environ.get("MINIO_SECRET_KEY"))
+        else:
+            storage_configured = bool(storage_provider)
         connections = {
             "wechat": {"configured": wechat_configured},
             "object_storage": {

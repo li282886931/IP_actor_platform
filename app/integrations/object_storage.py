@@ -1,3 +1,4 @@
+import configparser
 import io
 import os
 import re
@@ -6,7 +7,19 @@ from datetime import timedelta
 
 from fastapi import HTTPException
 
-from app.config import MINIO_BUCKET, MINIO_ENDPOINT, MINIO_SECURE, OSS_PROVIDER
+from app.config import (
+    ALIYUN_OSS_ACCESS_KEY_ID,
+    ALIYUN_OSS_ACCESS_KEY_SECRET,
+    ALIYUN_OSS_BUCKET,
+    ALIYUN_OSS_CONFIG_PATH,
+    ALIYUN_OSS_ENDPOINT,
+    MINIO_BUCKET,
+    MINIO_ENDPOINT,
+    MINIO_SECURE,
+    OSS_PROVIDER,
+)
+
+ALIYUN_OSS_PROVIDER = 'aliyun-oss'
 
 
 def current_oss_provider():
@@ -48,7 +61,92 @@ def ensure_minio_bucket(client, bucket: str):
         client.make_bucket(bucket)
 
 
+def aliyun_oss_bucket_name():
+    return os.environ.get('ALIYUN_OSS_BUCKET', ALIYUN_OSS_BUCKET).strip()
+
+
+def load_aliyun_oss_config():
+    """读取阿里云 OSS 访问配置。
+
+    优先级：环境变量（ALIYUN_OSS_ENDPOINT / ALIYUN_OSS_ACCESS_KEY_ID /
+    ALIYUN_OSS_ACCESS_KEY_SECRET）> 线上服务器 ossutil 配置文件。
+
+    ossutil 的 .ossutilconfig 为标准 INI 格式，例如：
+        [Credentials]
+        language=CH
+        endpoint=oss-cn-hangzhou.aliyuncs.com
+        accessKeyID=LTAI...
+        accessKeySecret=...
+    """
+    endpoint = ALIYUN_OSS_ENDPOINT.strip()
+    access_key_id = ALIYUN_OSS_ACCESS_KEY_ID.strip()
+    access_key_secret = ALIYUN_OSS_ACCESS_KEY_SECRET.strip()
+
+    config_path = ALIYUN_OSS_CONFIG_PATH
+    missing = not endpoint or not access_key_id or not access_key_secret
+    if missing and config_path and os.path.exists(config_path):
+        parser = configparser.ConfigParser()
+        parser.read(config_path)
+        if parser.has_section('Credentials'):
+            endpoint = endpoint or (parser.get('Credentials', 'endpoint', fallback='') or '').strip()
+            access_key_id = access_key_id or (parser.get('Credentials', 'accessKeyID', fallback='') or '').strip()
+            access_key_secret = access_key_secret or (parser.get('Credentials', 'accessKeySecret', fallback='') or '').strip()
+
+    return {
+        'endpoint': endpoint,
+        'access_key_id': access_key_id,
+        'access_key_secret': access_key_secret,
+    }
+
+
+def _aliyun_oss_endpoint_url(endpoint: str):
+    endpoint = (endpoint or '').strip()
+    if not endpoint:
+        return ''
+    if endpoint.startswith('http://') or endpoint.startswith('https://'):
+        return endpoint
+    return f'https://{endpoint}'
+
+
+def create_aliyun_oss_bucket():
+    try:
+        import oss2
+    except ImportError as exc:
+        raise RuntimeError('oss2 SDK is not installed; add "oss2" to requirements') from exc
+
+    creds = load_aliyun_oss_config()
+    if not creds['access_key_id'] or not creds['access_key_secret']:
+        raise RuntimeError('Aliyun OSS credentials are not configured; check /root/.ossutilconfig')
+    endpoint = _aliyun_oss_endpoint_url(creds['endpoint'])
+    if not endpoint:
+        raise RuntimeError('Aliyun OSS endpoint is not configured')
+    bucket_name = aliyun_oss_bucket_name()
+    if not bucket_name:
+        raise RuntimeError('ALIYUN_OSS_BUCKET is required')
+
+    auth = oss2.Auth(creds['access_key_id'], creds['access_key_secret'])
+    return oss2.Bucket(auth, endpoint, bucket_name)
+
+
 def create_upload_target(provider: str, object_key: str, content_type: str):
+    if provider == ALIYUN_OSS_PROVIDER:
+        try:
+            bucket = create_aliyun_oss_bucket()
+            expires = timedelta(seconds=900)
+            upload_url = bucket.sign_url('PUT', object_key, expires, headers={'Content-Type': content_type})
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f'Aliyun OSS upload URL generation failed: {exc}') from exc
+        return {
+            "provider": ALIYUN_OSS_PROVIDER,
+            "bucket": bucket.bucket_name,
+            "upload_url": upload_url,
+            "method": "PUT",
+            "headers": {"Content-Type": content_type},
+            "expires_in_seconds": 900,
+        }
+
     if provider != 'minio':
         return {
             "provider": "local-placeholder",
@@ -87,6 +185,23 @@ def local_report_storage_dir():
 
 
 def store_generated_report(provider: str, object_key: str, content: bytes, content_type: str):
+    if provider == ALIYUN_OSS_PROVIDER:
+        try:
+            bucket = create_aliyun_oss_bucket()
+            bucket.put_object(object_key, content, headers={'Content-Type': content_type})
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f'Aliyun OSS report upload failed: {exc}') from exc
+        return {
+            "provider": ALIYUN_OSS_PROVIDER,
+            "bucket": bucket.bucket_name,
+            "object_key": object_key,
+            "file_url": f"oss://{bucket.bucket_name}/{object_key}",
+            "local_path": "",
+            "size": len(content),
+        }
+
     if provider != 'minio':
         storage_dir = local_report_storage_dir()
         filename = f"{uuid.uuid4().hex}-{safe_object_name(os.path.basename(object_key))}"

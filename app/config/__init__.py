@@ -15,6 +15,13 @@ MINIO_ENDPOINT = '127.0.0.1:9000'
 MINIO_BUCKET = 'ip-actor-platform'
 MINIO_SECURE = False
 
+# Aliyun OSS（兼容线上服务器 /root/.ossutilconfig 配置）
+ALIYUN_OSS_CONFIG_PATH = os.environ.get('ALIYUN_OSS_CONFIG_PATH', '/root/.ossutilconfig')
+ALIYUN_OSS_ENDPOINT = os.environ.get('ALIYUN_OSS_ENDPOINT', '')
+ALIYUN_OSS_BUCKET = os.environ.get('ALIYUN_OSS_BUCKET', '')
+ALIYUN_OSS_ACCESS_KEY_ID = os.environ.get('ALIYUN_OSS_ACCESS_KEY_ID', '')
+ALIYUN_OSS_ACCESS_KEY_SECRET = os.environ.get('ALIYUN_OSS_ACCESS_KEY_SECRET', '')
+
 REDIS_URL = 'redis://127.0.0.1:6379/0'
 REDIS_CACHE_TTL_SECONDS = 3600
 
