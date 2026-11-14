@@ -8,10 +8,12 @@ from urllib.parse import quote
 
 
 def runtime_environment(environ):
+    minimum_lengths = {"INITIAL_ROOT_PASSWORD": 8}
     for name in ("MYSQL_PASSWORD", "REDIS_PASSWORD", "SECRET_KEY", "INITIAL_ROOT_PASSWORD"):
         value = environ.get(name, "")
-        if len(value) < 16 or value.lower().startswith(("change-me", "replace-with")):
-            raise ValueError(f"{name} is required and must have at least 16 characters")
+        required = minimum_lengths.get(name, 16)
+        if len(value) < required or value.lower().startswith(("change-me", "replace-with")):
+            raise ValueError(f"{name} is required and must have at least {required} characters")
     user = quote(environ.get("MYSQL_USER", "ip_actor"), safe="")
     password = quote(environ["MYSQL_PASSWORD"], safe="")
     database = quote(environ.get("MYSQL_DATABASE", "ip_actor_platform"), safe="")
