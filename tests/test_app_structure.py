@@ -98,6 +98,8 @@ EXPECTED_ROUTE_SIGNATURES = {
     ("POST", "/agent/chat"),
     ("POST", "/ai/generate"),
     ("POST", "/ai/generate/stream"),
+    ("POST", "/ai/generate/image"),
+    ("GET", "/ai/images/{image_id}"),
     ("POST", "/alerts/{alert_id}/acknowledge"),
     ("POST", "/alerts/{alert_id}/resolve"),
     ("POST", "/assumptions"),

@@ -1,6 +1,22 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import API, { agentChat, listAgentSources, generateAI, generateAIStream, getInvestorWorkspace, getArtistWorkspace, getAdminWorkspace, getBusinessWorkspace, getBrandWorkspace, getGovernmentWorkspace, getAudienceWorkspace, mockOrder, createUser, updateUser } from './api'
 import { createProject, createProjectVersion, calculateFinance, calculateShow } from './api'
+import { generateAIImage, getAIImage } from './api'
+
+it('authenticates image generation and URL refresh with a 300 second generation timeout', async () => {
+  localStorage.setItem('starhub-token', 'image-session')
+  localStorage.setItem('starhub-tenant', JSON.stringify({ id: 7 }))
+  const post = vi.spyOn(API, 'post').mockResolvedValue({})
+  const get = vi.spyOn(API, 'get').mockResolvedValue({})
+  await generateAIImage({ prompt: '舞台' })
+  await getAIImage(3)
+  expect(post).toHaveBeenCalledWith('/ai/generate/image', { prompt: '舞台' }, {
+    timeout: 300000, headers: { Authorization: 'Bearer image-session', 'X-Tenant-Id': '7' },
+  })
+  expect(get).toHaveBeenCalledWith('/ai/images/3', {
+    headers: { Authorization: 'Bearer image-session', 'X-Tenant-Id': '7' },
+  })
+})
 
 afterEach(() => {
   localStorage.clear()

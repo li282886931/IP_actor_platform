@@ -57,7 +57,9 @@ MySQL 默认 8.0，与项目现有数据库版本保持一致，使用 utf8mb4�
 ```dotenv
 LLM_PROVIDER=siliconflow
 SILICONFLOW_BASE_URL=https://api.siliconflow.cn/v1
-SILICONFLOW_MODEL=Qwen/Qwen3-32B
+SILICONFLOW_MODEL=Qwen/Qwen3.5-35B-A3B
+SILICONFLOW_MAX_TOKENS=8192
+SILICONFLOW_THINKING_BUDGET=2048
 SILICONFLOW_API_KEY=实际硅基流动API密钥
 LLAMA_SERVER_TIMEOUT_SECONDS=300
 LLAMA_SERVER_MAX_TOKENS=800
@@ -68,9 +70,11 @@ WECHAT_MINIAPP_SECRET=实际小程序Secret
 
 Docker 默认使用硅基流动；模型名称须与账号可用模型列表一致，示例模型并不代表已验证账号权限。`SILICONFLOW_BASE_URL` 支持以 `/v1` 结尾的基础地址或完整 `/v1/chat/completions` 地址，要求 HTTPS。硅基流动密钥填写在 `deployment.env` 或运行 Compose 的环境变量中，仅注入后端，不放入 Web 构建参数或仓库。
 
-同步与流式调用均使用 Bearer 认证、顶层 `enable_thinking=true`、300秒超时及默认800 token输出上限；允许模型内部思考，提示词不再使用 `/no_think`。正式结果清洗推理标签，内部推理不向前端发送。配置不完整返回503；云端调用失败返回502或SSE `error`，不保存兜底文案，不自动切换其他付费服务。切换云模型或思考模式会隔离生成缓存。思考与正式结果均可能占用输出预算，可按所选模型及方案长度提高 `LLAMA_SERVER_MAX_TOKENS`。
+同步与流式调用均使用 Bearer 认证、顶层 `enable_thinking=true`、300秒超时。硅基流动采用服务端默认采样，不继承本地模型的 temperature、top_p 和 frequency_penalty。硅基流动以 `SILICONFLOW_MAX_TOKENS` 设置输出上限，默认8192 token，供思考及完整宣发方案共同使用；`SILICONFLOW_THINKING_BUDGET` 默认2048，限制内部思考占用，仍保持思考开启。本地模式仍以 `LLAMA_SERVER_MAX_TOKENS` 设置，默认800。允许模型内部思考，提示词不再使用 `/no_think`。正式结果清洗推理标签，内部推理不向前端发送。配置不完整返回503；云端调用失败返回502或SSE `error`，不保存兜底文案，不自动切换其他付费服务。切换云模型、思考模式或输出预算会隔离生成缓存。
 
-开发时直接启动 Python 默认仍使用本地模式；也可以显式配置：
+云端正文须使用正式方案的 Markdown 标题；标题前的分析不展示、不保存，没有正式标题则返回生成失败。提示词要求缺失信息标注“待确认”，未核验的演出权益、声学技术和票务状态不得写成事实。输出约束版本也参与缓存隔离。提示词与过滤不能替代人工核验，实际发布前仍须核验方案中的事实及素材授权。
+
+直接启动 Python 也默认使用硅基流动；需要本地模型时显式配置：
 
 ```dotenv
 LLM_PROVIDER=llama-server
@@ -100,6 +104,10 @@ docker compose --env-file deployment.env up -d --build backend
 默认沿用应用已有报告下载路径，报告文件写入持久卷。内部配置值 `OSS_PROVIDER` 保持现有本地模式，以保证生成报告后经 `/api/reports/files/...` 下载可用。
 
 如需接入阿里 OSS，设置 `OSS_PROVIDER=aliyun-oss`，并填写 `ALIYUN_OSS_ENDPOINT`、`ALIYUN_OSS_BUCKET`、`ALIYUN_OSS_ACCESS_KEY_ID`、`ALIYUN_OSS_ACCESS_KEY_SECRET`。浏览器直传会使用后端生成的 PUT 签名 URL；后端生成的可行性报告会直接写入 OSS。若配置 `ALIYUN_OSS_PUBLIC_BASE_URL`，报告下载地址使用该公开域名，否则返回 `oss://bucket/key` 供后端或内部系统处理。
+
+已有 ossutil 凭据时，可使用 `deploy/configure_aliyun_oss.py --env deployment.env --oss-config /实际路径/.ossutilconfig --bucket 实际桶名` 配置。工具兼容 `[Credentials]` 与 ossutil v2 `[default]`，将凭据注入后端环境变量，强制 HTTPS Endpoint，备份后原子更新部署文件；原文件及备份权限为 0600，日志不输出密钥。宿主机 `/root/.ossutilconfig` 不会自动出现在非 root 后端容器中；直接注入环境变量后无需把 root 的配置文件挂载给应用。
+
+宣发图片另需固定文生图服务的 `IMAGE_GENERATION_AUTHORIZATION`，值为该服务接受的完整 Authorization 请求头。硅基流动文本模型密钥不适用于此服务。只填入后端部署配置，修改后重新创建后端容器；未取得服务方有效授权前，文生图接口仍不可用。图片展示使用 HTTPS CDN 或 3600 秒私有桶签名地址，数据库保留对象信息，链接过期时重新获取。
 
 如需接入外部 MinIO 或 S3 兼容服务，设置 `OSS_PROVIDER=minio`，并填写 `MINIO_ENDPOINT`、`MINIO_BUCKET`、`MINIO_SECURE`、`MINIO_ACCESS_KEY`、`MINIO_SECRET_KEY`。当前 Compose 不内置对象存储服务，需要使用已有对象存储地址或单独部署。
 

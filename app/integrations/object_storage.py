@@ -4,6 +4,7 @@ import os
 import re
 import uuid
 from datetime import timedelta
+from urllib.parse import quote, urlsplit
 
 from fastapi import HTTPException
 
@@ -251,3 +252,43 @@ def store_generated_report(provider: str, object_key: str, content: bytes, conte
 def safe_object_name(file_name: str):
     sanitized = re.sub(r'[^A-Za-z0-9._-]+', '-', file_name.strip()).strip('.-')
     return sanitized or 'upload.bin'
+
+
+def configured_image_bucket():
+    """Images must be stored in real Aliyun OSS, never a placeholder."""
+    if current_oss_provider() != ALIYUN_OSS_PROVIDER:
+        raise HTTPException(503, '图片存储未启用，请配置 OSS_PROVIDER=aliyun-oss')
+    try:
+        return create_aliyun_oss_bucket()
+    except Exception:
+        raise HTTPException(503, '图片存储未配置完整，请检查阿里 OSS 桶、Endpoint 和访问凭据') from None
+
+
+def generated_image_link(metadata: dict, bucket=None):
+    if metadata['bucket'] != aliyun_oss_bucket_name():
+        raise HTTPException(503, '图片所在 OSS 桶与当前配置不一致，请检查存储配置')
+    bucket = bucket or configured_image_bucket()
+    public_base = aliyun_public_base_url()
+    try:
+        if public_base:
+            url = f"{public_base}/{quote(metadata['object_key'], safe='/')}"
+            ttl = None
+        else:
+            url = bucket.sign_url('GET', metadata['object_key'], 3600)
+            ttl = 3600
+        if urlsplit(url).scheme != 'https' or not urlsplit(url).netloc:
+            raise ValueError('HTTPS required')
+    except Exception:
+        raise HTTPException(503, '无法生成 HTTPS 图片链接，请检查 OSS Endpoint 或 CDN 配置') from None
+    return {**metadata, 'image_url': url, 'expires_in_seconds': ttl}
+
+
+def store_generated_image(bucket, object_key: str, content: bytes, metadata: dict):
+    try:
+        bucket.put_object(object_key, io.BytesIO(content), headers={"Content-Type": metadata['content_type']})
+    except Exception:
+        raise HTTPException(502, '图片上传阿里 OSS 失败，请检查写入权限后重试') from None
+    return {
+        'provider': ALIYUN_OSS_PROVIDER, 'bucket': aliyun_oss_bucket_name(),
+        'object_key': object_key, 'size': len(content), **metadata,
+    }

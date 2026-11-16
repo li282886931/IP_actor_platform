@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 
 import { generateAIStream } from '../api'
+import GeneratedImage from '../components/GeneratedImage'
 
 const contentTypes = [
   { value: 'poster', label: '海报文案', description: '适合票务页、社交平台与线下物料' },
@@ -301,6 +302,7 @@ function UserGeneration({ role, storageKey }) {
           )}
         </section>
       </div>
+      <GeneratedImage storageKey={storageKey} />
     </div>
   )
 }

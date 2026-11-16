@@ -31,6 +31,8 @@ const generationHeaders = () => {
 }
 
 export const generateAI = (data) => API.post('/ai/generate', data, { headers: generationHeaders() })
+export const generateAIImage = (data) => API.post('/ai/generate/image', data, { headers: generationHeaders(), timeout: 300000 })
+export const getAIImage = (id) => API.get(`/ai/images/${id}`, { headers: generationHeaders() })
 export const getInvestorWorkspace = () => API.get('/workspaces/investor', { headers: generationHeaders() })
 export const getArtistWorkspace = () => API.get('/workspaces/artist', { headers: generationHeaders() })
 export const getAdminWorkspace = () => API.get('/workspaces/admin', { headers: generationHeaders() })

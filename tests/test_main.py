@@ -164,6 +164,8 @@ def test_backend_schema_sql_contains_all_model_tables():
 
 
 def make_temp_session(monkeypatch):
+    # Legacy offline tests explicitly select the local provider, never a paid cloud API.
+    monkeypatch.setenv("LLM_PROVIDER", "llama-server")
     engine = create_engine(
         "sqlite://",
         connect_args={"check_same_thread": False},

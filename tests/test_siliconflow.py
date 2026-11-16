@@ -13,7 +13,9 @@ from test_main import llm_integration
 def siliconflow(monkeypatch):
     monkeypatch.setenv("LLM_PROVIDER", "siliconflow")
     monkeypatch.setenv("SILICONFLOW_API_KEY", "test-private-key")
-    monkeypatch.setenv("SILICONFLOW_MODEL", "Qwen/Qwen3-32B")
+    monkeypatch.setenv("SILICONFLOW_MODEL", "Qwen/Qwen3.5-35B-A3B")
+    monkeypatch.setenv("SILICONFLOW_MAX_TOKENS", "8192")
+    monkeypatch.setenv("SILICONFLOW_THINKING_BUDGET", "2048")
     monkeypatch.setenv("SILICONFLOW_BASE_URL", "https://api.siliconflow.cn/v1")
     monkeypatch.setenv("LLAMA_SERVER_URL", "http://unused-local/v1/chat/completions")
 
@@ -64,13 +66,15 @@ def test_siliconflow_authenticated_generation_and_clean_persistence(ai_client, s
     assert url == "https://api.siliconflow.cn/v1/chat/completions"
     assert kwargs["headers"]["Authorization"] == "Bearer test-private-key"
     assert kwargs["timeout"] == 300
-    assert kwargs["json"]["model"] == "Qwen/Qwen3-32B"
+    assert kwargs["json"]["model"] == "Qwen/Qwen3.5-35B-A3B"
     assert kwargs["json"]["enable_thinking"] is True
     prompt = kwargs["json"]["messages"][0]["content"]
     assert not prompt.startswith("/no_think")
     assert "可以在模型 reasoning_content 中组织分析过程" in prompt
-    assert kwargs["json"]["max_tokens"] == 800
-    assert not {"seed", "presence_penalty", "chat_template_kwargs"} & kwargs["json"].keys()
+    assert kwargs["json"]["max_tokens"] == 8192
+    assert kwargs["json"]["thinking_budget"] == 2048
+    assert not {"seed", "presence_penalty", "chat_template_kwargs",
+                "temperature", "top_p", "frequency_penalty"} & kwargs["json"].keys()
     assert kwargs.get("stream", False) == route.endswith("/stream")
     with sessions() as db:
         assert db.query(AIGeneration).one().result == content
@@ -197,4 +201,71 @@ def test_docker_passes_cloud_settings_without_bundling_secret(tmp_path):
     assert environment["LLM_PROVIDER"] == "siliconflow"
     assert environment["SILICONFLOW_API_KEY"] == ""
     assert environment["SILICONFLOW_BASE_URL"] == "https://api.siliconflow.cn/v1"
-    assert environment["SILICONFLOW_MODEL"] == "Qwen/Qwen3-32B"
+    assert environment["SILICONFLOW_MODEL"] == "Qwen/Qwen3.5-35B-A3B"
+    assert environment["SILICONFLOW_MAX_TOKENS"] == "8192"
+    assert environment["SILICONFLOW_THINKING_BUDGET"] == "2048"
+
+
+def test_default_configuration_selects_new_cloud_model(monkeypatch):
+    import runpy
+    from pathlib import Path
+
+    for name in ("LLM_PROVIDER", "SILICONFLOW_MODEL", "SILICONFLOW_MAX_TOKENS", "SILICONFLOW_THINKING_BUDGET"):
+        monkeypatch.delenv(name, raising=False)
+    values = runpy.run_path(str(Path(__file__).resolve().parents[1] / "app/config/__init__.py"))
+    assert values["LLM_PROVIDER"] == "siliconflow"
+    assert values["SILICONFLOW_MODEL"] == "Qwen/Qwen3.5-35B-A3B"
+    assert values["SILICONFLOW_MAX_TOKENS"] == 8192
+    assert values["SILICONFLOW_THINKING_BUDGET"] == 2048
+
+
+def test_local_generation_retains_local_sampling_parameters():
+    connection = llm_integration.GenerationConnection("llama-server", "http://local", "local-model")
+    body = llm_integration.generation_request(connection, "正文", 42, 800)["json"]
+    assert body["temperature"] == 0.95
+    assert body["top_p"] == 0.92
+    assert body["frequency_penalty"] == 0.35
+    assert body["seed"] == 42
+    assert body["max_tokens"] == 800
+
+
+def test_cloud_prompt_requires_final_heading_and_unverified_claim_boundaries():
+    from app.schemas import AIGenerateIn
+    prompt = llm_integration.build_ai_generation_prompt(AIGenerateIn(type="poster"), "batch", allow_thinking=True)
+    assert "# 演出宣发方案" in prompt
+    assert "不得写成既定事实" in prompt
+    assert "余票告急" in prompt
+
+
+@pytest.mark.parametrize("route", ["/ai/generate", "/ai/generate/stream"])
+def test_cloud_stream_skips_analysis_preamble_before_final_heading(ai_client, siliconflow, monkeypatch, route):
+    client, sessions, _ = ai_client
+    headers, _ = login(client, monkeypatch, "b_user")
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"choices": [{"message": {"content":
+                "传播定位分析：内部规划。\n最终 Content 将输出方案。\ncontent\n"
+                "# 演出宣发方案\n## 传播定位\n已核验资料。"}}]}
+
+        def iter_lines(self, **kwargs):
+            for content in ["传播定位分析：内部规划。\n最终 Content 将输出方案。\ncontent\n",
+                            "# 演出宣发方案\n## 传播定位\n已核验资料。"]:
+                yield ("data: " + json.dumps({"choices": [{"delta": {"content": content}}]})).encode()
+            yield b"data: [DONE]"
+
+    monkeypatch.setattr(llm_integration.requests, "post", lambda *a, **kw: Response())
+    response = client.post(route, headers=headers, json={"type": "poster"})
+    assert "内部规划" not in response.text
+    assert "最终 Content" not in response.text
+    with sessions() as db:
+        assert db.query(AIGeneration).one().result.startswith("# 演出宣发方案")

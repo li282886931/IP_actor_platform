@@ -101,7 +101,11 @@ def ai_generate(payload: AIGenerateIn, db: Session = Depends(get_db), context: R
             print('AI API error:', exc)
             result_text = None
 
-    result_text = llm_integration.sanitize_ai_output(result_text or '')
+    result_text = llm_integration.sanitize_ai_output(
+        result_text or '', require_markdown=connection.provider == 'siliconflow',
+    )
+    if connection.provider == 'siliconflow' and not result_text:
+        raise HTTPException(status_code=502, detail='硅基流动未返回正式方案正文，请重试')
     if not result_text:
         if payload.type == 'poster':
             result_text = f"""
@@ -259,7 +263,9 @@ def ai_generate_stream(payload: AIGenerateIn, db: Session = Depends(get_db), con
                                 yield llm_integration.sse_event('delta', {"content": visible_content})
                             else:
                                 preamble_buffer += visible_content
-                                start_index = llm_integration.find_final_output_start(preamble_buffer)
+                                start_index = llm_integration.find_final_output_start(
+                                    preamble_buffer, require_markdown=connection.provider == 'siliconflow',
+                                )
                                 if start_index >= 0:
                                     final_content = preamble_buffer[start_index:]
                                     if final_content:
@@ -269,7 +275,9 @@ def ai_generate_stream(payload: AIGenerateIn, db: Session = Depends(get_db), con
                                     final_started = True
                 if connection.provider == 'siliconflow' and not upstream_done:
                     raise ValueError('incomplete_upstream_stream')
-                result_text = llm_integration.sanitize_ai_output(''.join(chunks) or preamble_buffer)
+                result_text = llm_integration.sanitize_ai_output(
+                    ''.join(chunks) or preamble_buffer, require_markdown=connection.provider == 'siliconflow',
+                )
         except Exception as exc:
             if connection.provider == 'siliconflow':
                 yield llm_integration.sse_event('error', {"message": "硅基流动生成失败，请检查密钥、模型权限及服务状态后重试"})

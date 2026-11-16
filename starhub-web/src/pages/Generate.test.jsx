@@ -7,7 +7,17 @@ import { generateAIStream } from '../api'
 
 vi.mock('../api', () => ({
   generateAIStream: vi.fn(),
+  generateAIImage: vi.fn(),
+  getAIImage: vi.fn(),
 }))
+
+it('includes independent image creation in the publicity page', () => {
+  render(<Generate currentUser={{ id: 1 }} tenantId={1} />)
+  expect(screen.getByLabelText('图片创作描述')).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: '生成图片' })).toBeDisabled()
+  cleanup()
+  localStorage.clear()
+})
 
 describe('Generate', () => {
   it('isolates accounts, ignores legacy shared content and restores only the same account', async () => {
