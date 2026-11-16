@@ -131,6 +131,17 @@ const calibrationWxml = `
     <view class="item"><view class="item-main"><view class="item-title">实际利润</view></view><view class="badge">{{options.calibration_loop.actual_profit}}</view></view>
   </view>`
 
+const decisionV5Wxml = `
+  <view wx:if="{{options.decision_v5}}" class="panel">
+    <view class="panel-title">决策风控报告 #{{options.decision_v5.report_id}}</view>
+    <view class="item-desc">规则版本 #{{options.decision_v5.rule_version_id}} · 同步工作台核验结果</view>
+    <view wx:for="{{options.decision_v5.items}}" wx:key="label" class="item">
+      <view class="item-main"><view class="item-title">{{item.label}}</view></view>
+      <view class="badge">{{item.value}}</view>
+    </view>
+    <view wx:for="{{options.decision_v5.messages}}" wx:key="*this" class="item-desc">{{item}}</view>
+  </view>`
+
 const metricGridWxml = `
   <view wx:if="{{options.metrics.length}}" class="metric-grid">
     <view
@@ -225,6 +236,7 @@ export const buildScreenWxml = (screenId, { includeBack = false } = {}) => {
   if (screenId === 'S53') specialPanels.push(projectWorkWxml)
   if (screenId === 'S64') specialPanels.push(ticketingRingWxml)
   if (screenId === 'S66') specialPanels.push(calibrationWxml)
+  if (['S34', 'S35', 'S45', 'S46', 'S50', 'S65', 'S66'].includes(screenId)) specialPanels.push(decisionV5Wxml)
   const pptSection = specialPanels.length ? `\n${specialPanels.join('\n')}` : ''
   return `<view class="page">${includeBack ? '\n  <button class="home-button" bindtap="onBackTap">‹</button>' : ''}
   <view class="hero">

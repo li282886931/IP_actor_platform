@@ -17,6 +17,7 @@ from .llm import (
     sse_event,
 )
 from .object_storage import (
+    create_aliyun_oss_bucket,
     create_minio_client,
     create_upload_target,
     current_oss_provider,
@@ -33,6 +34,7 @@ __all__ = [
     "ai_generation_cache_key",
     "build_ai_generation_prompt",
     "completed_generation_cache_payload",
+    "create_aliyun_oss_bucket",
     "create_minio_client",
     "create_upload_target",
     "current_oss_provider",

@@ -8,6 +8,14 @@ import { fileURLToPath } from 'node:url'
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const appConfigPath = resolve(root, 'src/app.config.ts')
 
+test('native v5 judgement and review screens render shared report values', async () => {
+  const { buildScreenWxml } = await import('../tools/wechat-screen-templates.mjs')
+  for (const id of ['S34', 'S35', 'S45', 'S46', 'S50', 'S65', 'S66']) {
+    assert.match(buildScreenWxml(id), /options\.decision_v5\.items/)
+    assert.match(buildScreenWxml(id), /options\.decision_v5\.messages/)
+  }
+})
+
 const screenIds = Array.from({ length: 84 }, (_, index) => `S${String(index + 1).padStart(2, '0')}`)
 const apiPaths = [
   '/miniapp/entities/',

@@ -20,6 +20,7 @@ import GovernmentWorkspace from './pages/GovernmentWorkspace'
 import AudienceWorkspace from './pages/AudienceWorkspace'
 import CollaborationWorkspace from './pages/CollaborationWorkspace'
 import PersonalPreferences from './pages/PersonalPreferences'
+import DecisionPlatform from './pages/DecisionPlatform'
 import { roleMeta, routeTitles, roleFromUser, canAccessRoute } from './roleConfig'
 
 const homeByRole = { B: BusinessWorkspace, Brand: BrandWorkspace, G: GovernmentWorkspace, C: AudienceWorkspace, Investor: InvestorWorkspace, Artist: ArtistWorkspace }
@@ -369,8 +370,11 @@ export default function App() {
                 className="button button-primary topbar-create"
                 type="button"
                 onClick={() => {
-                  if (effectivePath !== '/operations/projects') navigate('/operations/projects')
-                  setTimeout(() => window.dispatchEvent(new CustomEvent(FOCUS_PROJECT_CREATE_EVENT)), 0)
+                  if (effectivePath !== '/operations/projects') {
+                    navigate('/operations/projects', { state: { focusProjectCreate: true } })
+                  } else {
+                    window.dispatchEvent(new CustomEvent(FOCUS_PROJECT_CREATE_EVENT))
+                  }
                 }}
               >
                 <PlusIcon size={16} />
@@ -411,6 +415,14 @@ export default function App() {
             <Route path="/" element={activeRole === 'Admin' ? <Navigate replace to="/users" /> : <HomePage />} />
             <Route path="/collaboration" element={guard(<CollaborationWorkspace role={activeRole} currentUser={currentUser} />)} />
             <Route path="/preferences" element={guard(<PersonalPreferences role={activeRole} />)} />
+            <Route path="/operations/decision" element={guard(<DecisionPlatform role={activeRole} mode="decision" />)} />
+            <Route path="/operations/review" element={guard(<DecisionPlatform role={activeRole} mode="review" />)} />
+            <Route path="/partnership/valuation" element={guard(<DecisionPlatform role={activeRole} mode="valuation" />)} />
+            <Route path="/investment/returns" element={guard(<DecisionPlatform role={activeRole} mode="returns" />)} />
+            <Route path="/city/assets" element={guard(<DecisionPlatform role={activeRole} mode="assets" />)} />
+            <Route path="/performer/community" element={guard(<DecisionPlatform role={activeRole} mode="community" />)} />
+            <Route path="/audience/plan" element={guard(<DecisionPlatform role={activeRole} mode="plan" />)} />
+            <Route path="/calendar" element={guard(<DecisionPlatform role={activeRole} mode="calendar" />)} />
             <Route path="/admin/data" element={guard(<AdminWorkspace mode="data" />)} />
             <Route path="/operations/projects" element={guard(<Home role="B" currentUser={currentUser} />)} />
             <Route path="/operations/tasks" element={guard(<BusinessWorkspace mode="tasks" />)} />

@@ -1,4 +1,5 @@
 from app.core.responses import json_ok
+from app.core.dependencies import project_write_context
 from app.database import get_db
 from app.models import Artist
 from app.models import Project
@@ -6,7 +7,6 @@ from app.models import ProjectVersion
 from app.models import Venue
 from app.schemas import ProjectIn
 from app.services import get_default_tenant_id
-from app.services import get_or_create_default_context
 from app.services import next_project_version_no
 from app.services import project_input_snapshot
 from app.services import serialize_project
@@ -27,8 +27,8 @@ def list_projects(db: Session = Depends(get_db)):
     return json_ok([serialize_project(project) for project in projects])
 
 @router.post('/projects')
-def create_project(payload: ProjectIn, db: Session = Depends(get_db)):
-    tenant, user = get_or_create_default_context(db)
+def create_project(payload: ProjectIn, db: Session = Depends(get_db), ctx=Depends(project_write_context)):
+    tenant, user = ctx.tenant, ctx.user
     if payload.artist_id and not db.query(Artist).filter(Artist.id == payload.artist_id).first():
         raise HTTPException(status_code=404, detail='Artist not found')
     if payload.venue_id and not db.query(Venue).filter(
@@ -108,8 +108,8 @@ def list_project_versions(project_id: int, db: Session = Depends(get_db)):
     return json_ok([serialize_version(version) for version in versions])
 
 @router.post('/projects/{project_id}/versions')
-def create_project_version(project_id: int, payload: ProjectIn, db: Session = Depends(get_db)):
-    tenant, user = get_or_create_default_context(db)
+def create_project_version(project_id: int, payload: ProjectIn, db: Session = Depends(get_db), ctx=Depends(project_write_context)):
+    tenant, user = ctx.tenant, ctx.user
     project = db.query(Project).filter(Project.id == project_id, Project.tenant_id == tenant.id).first()
     if not project:
         raise HTTPException(status_code=404, detail='Project not found')

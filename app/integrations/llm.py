@@ -92,8 +92,49 @@ def split_think_content(text: str):
 
 
 def find_final_output_start(text: str):
-    match = re.search(r'(?:#{1,3}\s*)?(?:传播定位|核心文案|演出宣发方案|社交平台短文案|短视频脚本|投放建议)', text)
+    match = re.search(
+        r'^[ \t]*#{1,6}[ \t]+(?=\S)|(?:#{1,3}\s*)?(?:传播定位|核心文案|演出宣发方案|社交平台短文案|短视频脚本|投放建议)',
+        text, flags=re.MULTILINE,
+    )
     return match.start() if match else -1
+
+
+class VisibleContentStream:
+    """Filter thinking tags even when upstream splits their delimiters."""
+
+    def __init__(self):
+        self.pending = ''
+        self.thinking = False
+
+    def feed(self, content: str) -> str:
+        self.pending += content
+        output = []
+        while self.pending:
+            if self.thinking:
+                close = re.search(r'</think\s*>', self.pending, flags=re.IGNORECASE)
+                if not close:
+                    break
+                self.pending = self.pending[close.end():]
+                self.thinking = False
+                continue
+            start = self.pending.find('<')
+            if start < 0:
+                output.append(self.pending)
+                self.pending = ''
+                break
+            output.append(self.pending[:start])
+            self.pending = self.pending[start:]
+            lower = self.pending.lower()
+            opening = re.match(r'<think\b[^>]*>', self.pending, flags=re.IGNORECASE)
+            if opening:
+                self.pending = self.pending[opening.end():]
+                self.thinking = True
+            elif '<think'.startswith(lower) or re.match(r'<think\b[^>]*$', lower):
+                break
+            else:
+                output.append('<')
+                self.pending = self.pending[1:]
+        return ''.join(output)
 
 
 def ai_generation_cache_key(payload: AIGenerateIn, generation_nonce: str, *, tenant_id: int, user_id: int):

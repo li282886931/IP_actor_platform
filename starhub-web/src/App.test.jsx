@@ -226,13 +226,11 @@ describe('App workbench shell', () => {
     expect(createButton).toBeInTheDocument()
     expect(document.querySelector('.user-avatar')).toHaveTextContent('B')
 
-    let focused = false
-    const onFocus = () => { focused = true }
-    window.addEventListener('starhub:focus-project-create', onFocus)
     await user.click(createButton)
-    await waitFor(() => expect(focused).toBe(true))
+    await waitFor(() => expect(screen.getByLabelText('项目名称')).toHaveFocus())
     expect(window.location.pathname).toBe('/operations/projects')
-    window.removeEventListener('starhub:focus-project-create', onFocus)
+    await user.click(createButton)
+    expect(screen.getByLabelText('项目名称')).toHaveFocus()
   })
 
   it('uses root permissions instead of stale visitor role cache', async () => {

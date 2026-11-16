@@ -3,6 +3,76 @@
 SET NAMES utf8mb4;
 SET FOREIGN_KEY_CHECKS = 0;
 
+CREATE TABLE city_profiles (
+ id INTEGER NOT NULL AUTO_INCREMENT PRIMARY KEY,
+ tenant_id INTEGER NOT NULL,
+ name VARCHAR(128) NOT NULL,
+ profile JSON NOT NULL,
+ created_by INTEGER NOT NULL,
+ revision INTEGER NOT NULL,
+ CONSTRAINT uq_city_profile_name UNIQUE (tenant_id, name),
+ FOREIGN KEY (tenant_id) REFERENCES tenants (id),
+ FOREIGN KEY (created_by) REFERENCES users (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE decision_rule_versions (
+ id INTEGER NOT NULL AUTO_INCREMENT PRIMARY KEY,
+ tenant_id INTEGER NOT NULL,
+ version_no INTEGER NOT NULL,
+ name VARCHAR(255) NOT NULL,
+ config JSON NOT NULL,
+ source TEXT NOT NULL,
+ status VARCHAR(32) NOT NULL,
+ parent_id INTEGER,
+ created_by INTEGER NOT NULL,
+ created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+ CONSTRAINT uq_decision_rule_version UNIQUE (tenant_id, version_no),
+ FOREIGN KEY (tenant_id) REFERENCES tenants (id),
+ FOREIGN KEY (parent_id) REFERENCES decision_rule_versions (id),
+ FOREIGN KEY (created_by) REFERENCES users (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE decision_reports (
+ id INTEGER NOT NULL AUTO_INCREMENT PRIMARY KEY,
+ tenant_id INTEGER NOT NULL,
+ project_id INTEGER NOT NULL,
+ project_version_id INTEGER,
+ rule_version_id INTEGER NOT NULL,
+ fingerprint VARCHAR(64) NOT NULL,
+ inputs JSON NOT NULL,
+ rule_snapshot JSON NOT NULL,
+ result JSON NOT NULL,
+ verification_status VARCHAR(32) NOT NULL,
+ created_by INTEGER NOT NULL,
+ created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+ CONSTRAINT uq_decision_report_inputs UNIQUE (project_id, fingerprint),
+ FOREIGN KEY (tenant_id) REFERENCES tenants (id),
+ FOREIGN KEY (project_id) REFERENCES projects (id),
+ FOREIGN KEY (project_version_id) REFERENCES project_versions (id),
+ FOREIGN KEY (rule_version_id) REFERENCES decision_rule_versions (id),
+ FOREIGN KEY (created_by) REFERENCES users (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE operating_records (
+ id INTEGER NOT NULL AUTO_INCREMENT PRIMARY KEY,
+ tenant_id INTEGER NOT NULL,
+ owner_id INTEGER NOT NULL,
+ project_id INTEGER,
+ kind VARCHAR(32) NOT NULL,
+ record_key VARCHAR(128) NOT NULL,
+ title VARCHAR(255) NOT NULL,
+ payload JSON NOT NULL,
+ result JSON,
+ status VARCHAR(32) NOT NULL,
+ revision INTEGER NOT NULL,
+ created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+ updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+ CONSTRAINT uq_operating_record_owner UNIQUE (tenant_id, owner_id, kind, record_key),
+ FOREIGN KEY (tenant_id) REFERENCES tenants (id),
+ FOREIGN KEY (owner_id) REFERENCES users (id),
+ FOREIGN KEY (project_id) REFERENCES projects (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE project_grants (
  id INTEGER NOT NULL AUTO_INCREMENT PRIMARY KEY,
  tenant_id INTEGER NOT NULL,

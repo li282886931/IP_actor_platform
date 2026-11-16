@@ -6,6 +6,7 @@ from app.miniapp.screens import SCREEN_PROVIDERS
 from app.miniapp.screens import ScreenRequestContext
 from app.miniapp.screens import build_miniapp_screen
 from app.models import Artist
+from app.models import DecisionReport
 from app.models import Project
 from app.models import TenantMember
 from app.models import User
@@ -14,6 +15,7 @@ from app.schemas import ArtistOut
 from app.services import resolve_request_context
 from app.services import serialize_project
 from app.services import serialize_user
+from app.services.collaboration import project_access
 from fastapi import APIRouter
 from fastapi import Depends
 from fastapi import HTTPException
@@ -198,6 +200,33 @@ def get_miniapp_screen(
         ),
         db,
     )
+    if project_id and screen_id in {"S34", "S35", "S45", "S46", "S50", "S65", "S66"}:
+        try:
+            project_access(db, request_context, project_id, duty="finance")
+        except HTTPException:
+            pass
+        else:
+            report = db.query(DecisionReport).filter_by(project_id=project_id, tenant_id=tenant_id).order_by(DecisionReport.id.desc()).first()
+            if report:
+                result = report.result
+                def percent(value):
+                    return f"{value * 100:.2f}%" if value is not None else "待补齐"
+                labels = {"V1": "批文与不可退支出红线", "V2": "综合保本超标", "V3": "需止损预案",
+                          "V4": "艺人或涉外审批红线", "V5": "公售比例不足"}
+                messages = [labels.get(key, key) for key in result["vetoes"] + result["plan_triggers"]]
+                if result["configuration_gaps"]:
+                    messages.append("12维评分卡或32条规则待补齐，不能作完整风控结论")
+                if result["missing_fields"]:
+                    messages.append("真实参数待补齐")
+                data.options["decision_v5"] = {
+                    "report_id": report.id, "rule_version_id": report.rule_version_id,
+                    "items": [
+                        {"label": "纯票房保本", "value": percent(result["finance"]["pure_breakeven"])},
+                        {"label": "综合保本", "value": percent(result["finance"]["comprehensive_breakeven"])},
+                        {"label": "风险评分", "value": f'{result["score"]["value"]} / 120' if result["score"]["value"] is not None else "评分待配置"},
+                        {"label": "核验状态", "value": "已核验" if report.verification_status == "verified" else "待人工核验"},
+                    ], "messages": messages,
+                }
     return json_ok(data.model_dump())
 
 @router.get('/miniapp/entities/{entity_type}/{entity_id}')

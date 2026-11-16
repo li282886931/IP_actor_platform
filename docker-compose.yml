@@ -16,6 +16,7 @@ services:
         VITE_API_BASE_URL: /api
         NODE_IMAGE: ${NODE_IMAGE:-node:22-alpine}
         NGINX_IMAGE: ${NGINX_IMAGE:-nginx:1.28-alpine}
+        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmmirror.com}
     ports:
       - "${WEB_BIND_IP:-0.0.0.0}:${WEB_PORT:-8080}:80"
     depends_on:
@@ -36,6 +37,7 @@ services:
       dockerfile: Dockerfile.backend
       args:
         PYTHON_IMAGE: ${PYTHON_IMAGE:-python:3.11-slim-bookworm}
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}
     env_file:
       - path: ${CONNECTOR_ENV_FILE:-./deployment.connectors.env}
         required: false
@@ -52,18 +54,21 @@ services:
       TOKEN_TTL_SECONDS: ${TOKEN_TTL_SECONDS:-43200}
       REDIS_CACHE_TTL_SECONDS: ${REDIS_CACHE_TTL_SECONDS:-3600}
       OSS_PROVIDER: ${OSS_PROVIDER:-local-placeholder}
-      MINIO_ENDPOINT: minio:9000
-      MINIO_BUCKET: ${MINIO_BUCKET:-ip-actor-platform}
-      MINIO_SECURE: "false"
-      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:?MINIO_ROOT_USER is required}
-      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}
-      ALIYUN_OSS_BUCKET: ${ALIYUN_OSS_BUCKET:-}
       ALIYUN_OSS_ENDPOINT: ${ALIYUN_OSS_ENDPOINT:-}
+      ALIYUN_OSS_BUCKET: ${ALIYUN_OSS_BUCKET:-}
       ALIYUN_OSS_ACCESS_KEY_ID: ${ALIYUN_OSS_ACCESS_KEY_ID:-}
       ALIYUN_OSS_ACCESS_KEY_SECRET: ${ALIYUN_OSS_ACCESS_KEY_SECRET:-}
+      ALIYUN_OSS_PUBLIC_BASE_URL: ${ALIYUN_OSS_PUBLIC_BASE_URL:-}
+      ALIYUN_OSS_CONFIG_PATH: ${ALIYUN_OSS_CONFIG_PATH:-/root/.ossutilconfig}
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-}
+      MINIO_BUCKET: ${MINIO_BUCKET:-ip-actor-platform}
+      MINIO_SECURE: ${MINIO_SECURE:-false}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-}
       LLAMA_SERVER_URL: ${LLAMA_SERVER_URL:-}
       LLAMA_SERVER_MODEL: ${LLAMA_SERVER_MODEL:-local-model}
-      LLAMA_SERVER_MAX_TOKENS: "800"
+      LLAMA_SERVER_TIMEOUT_SECONDS: ${LLAMA_SERVER_TIMEOUT_SECONDS:-300}
+      LLAMA_SERVER_MAX_TOKENS: ${LLAMA_SERVER_MAX_TOKENS:-800}
       WECHAT_MINIAPP_APPID: ${WECHAT_MINIAPP_APPID:-}
       WECHAT_MINIAPP_SECRET: ${WECHAT_MINIAPP_SECRET:-}
       ANALYSIS_ALLOWED_ORIGINS: ${ANALYSIS_ALLOWED_ORIGINS:-}
@@ -71,7 +76,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
-      - reports_data:/app/storage
+      - ${REPORTS_DATA_SOURCE:-reports_data}:/app/storage
     read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=128m
@@ -81,8 +86,6 @@ services:
       mysql:
         condition: service_healthy
       redis:
-        condition: service_healthy
-      minio:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ping', timeout=3)"]
@@ -105,7 +108,7 @@ services:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
     volumes:
-      - mysql_data:/var/lib/mysql
+      - ${MYSQL_DATA_SOURCE:-mysql_data}:/var/lib/mysql
     healthcheck:
       test: ["CMD-SHELL", "MYSQL_PWD=\"$${MYSQL_PASSWORD}\" mysql --host=127.0.0.1 --user=\"$${MYSQL_USER}\" --database=\"$${MYSQL_DATABASE}\" --silent --execute='SELECT 1' >/dev/null"]
       interval: 10s
@@ -121,7 +124,7 @@ services:
       REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
     command: ["sh", "-c", "exec redis-server --appendonly yes --requirepass \"$$REDIS_PASSWORD\""]
     volumes:
-      - redis_data:/data
+      - ${REDIS_DATA_SOURCE:-redis_data}:/data
     healthcheck:
       test: ["CMD-SHELL", "REDISCLI_AUTH=\"$${REDIS_PASSWORD}\" redis-cli ping | grep -q PONG"]
       interval: 10s
@@ -130,28 +133,7 @@ services:
     restart: unless-stopped
     logging: *default-logging
 
-  minio:
-    image: ${MINIO_IMAGE:-quay.io/minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e}
-    environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?MINIO_ROOT_USER is required}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}
-    command: ["server", "/data", "--console-address", ":9001"]
-    ports:
-      - "${MINIO_BIND_IP:-127.0.0.1}:${MINIO_PORT:-9000}:9000"
-      - "${MINIO_BIND_IP:-127.0.0.1}:${MINIO_CONSOLE_PORT:-9001}:9001"
-    volumes:
-      - minio_data:/data
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://127.0.0.1:9000/minio/health/live"]
-      interval: 10s
-      timeout: 5s
-      start_period: 20s
-      retries: 5
-    restart: unless-stopped
-    logging: *default-logging
-
 volumes:
   mysql_data:
   redis_data:
-  minio_data:
   reports_data:

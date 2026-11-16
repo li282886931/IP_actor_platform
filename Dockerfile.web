@@ -2,6 +2,8 @@ ARG NODE_IMAGE=node:22-alpine
 ARG NGINX_IMAGE=nginx:1.28-alpine
 FROM ${NODE_IMAGE} AS build
 WORKDIR /app
+ARG NPM_REGISTRY=https://registry.npmmirror.com
+RUN npm config set registry ${NPM_REGISTRY}
 COPY starhub-web/package.json starhub-web/package-lock.json ./
 RUN npm ci
 COPY starhub-web ./

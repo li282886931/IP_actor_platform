@@ -342,6 +342,8 @@ AI 文案生成优先调用本地 `llama_server`，然后再尝试 DashScope，�
 ```python
 LLAMA_SERVER_URL = 'http://127.0.0.1:8080/v1/chat/completions'
 LLAMA_SERVER_MODEL = 'local-model'
+LLAMA_SERVER_TIMEOUT_SECONDS = 300
+LLAMA_SERVER_MAX_TOKENS = 800
 ```
 
 如果你的本地服务端口或模型名不同，可以用环境变量覆盖：
@@ -349,6 +351,8 @@ LLAMA_SERVER_MODEL = 'local-model'
 ```bash
 export LLAMA_SERVER_URL='http://127.0.0.1:8080/v1/chat/completions'
 export LLAMA_SERVER_MODEL='qwen-local'
+export LLAMA_SERVER_TIMEOUT_SECONDS='300'
+export LLAMA_SERVER_MAX_TOKENS='800'
 ```
 
 接口按 llama.cpp server 的 OpenAI-compatible `/v1/chat/completions` 格式调用。

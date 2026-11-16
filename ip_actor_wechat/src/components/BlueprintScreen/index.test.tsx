@@ -105,6 +105,16 @@ const response = (overrides: Partial<MiniappScreenData> = {}): MiniappScreenData
 })
 
 describe('BlueprintScreen aggregated loading', () => {
+  it('renders v5 report values from the shared authenticated screen response', async () => {
+    taroMocks.getMiniappScreen.mockResolvedValue(response({ screen_id: 'S34', options: {
+      decision_v5: { report_id: 7, rule_version_id: 3,
+        items: [{ label: '综合保本', value: '38.64%' }], messages: ['真实参数待补齐'] },
+    } }))
+    render(<BlueprintScreen screenId='S34' />)
+    expect(await screen.findByText('决策风控报告 #7')).toBeInTheDocument()
+    expect(screen.getByText('38.64%')).toBeInTheDocument()
+    expect(screen.getByText('真实参数待补齐')).toBeInTheDocument()
+  })
   beforeEach(() => {
     taroMocks.getMiniappScreen.mockReset()
     taroMocks.calculateShow.mockReset()

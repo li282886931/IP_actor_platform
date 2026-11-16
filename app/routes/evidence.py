@@ -303,10 +303,17 @@ def complete_oss_upload(upload_id: int, payload: OSSUploadCompleteIn, db: Sessio
             storage_integration.create_minio_client().stat_object(upload.bucket, upload.object_key)
         except Exception as exc:
             raise HTTPException(status_code=502, detail=f'MinIO object verification failed: {exc}') from exc
+    elif upload.provider == 'aliyun-oss':
+        try:
+            storage_integration.create_aliyun_oss_bucket().get_object_meta(upload.object_key)
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f'Aliyun OSS object verification failed: {exc}') from exc
 
     file_url = payload.file_url or (
         f"minio://{upload.bucket}/{upload.object_key}"
         if upload.provider == 'minio'
+        else storage_integration.aliyun_file_url(upload.bucket, upload.object_key)
+        if upload.provider == 'aliyun-oss'
         else f"oss://local-placeholder/{upload.object_key}"
     )
     upload.fact_id = fact_id

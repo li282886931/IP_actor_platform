@@ -16,6 +16,23 @@ EXCLUDED_FRAMEWORK_PATHS = {
 }
 
 EXPECTED_ROUTE_SIGNATURES = {
+    ("GET", "/cities"),
+    ("POST", "/cities"),
+    ("GET", "/decision/workspace"),
+    ("GET", "/decision/catalog"),
+    ("POST", "/decision/catalog/install"),
+    ("GET", "/decision/rules"),
+    ("POST", "/decision/rules"),
+    ("GET", "/decision/reports/{report_id}/replay"),
+    ("POST", "/decision/reports/{report_id}/verify"),
+    ("POST", "/decision/projects/{project_id}/stage"),
+    ("POST", "/decision/projects/{project_id}/scenarios"),
+    ("POST", "/decision/records"),
+    ("POST", "/decision/records/{row_id}/verify"),
+    ("GET", "/projects/{project_id}/report"),
+    ("POST", "/projects/{project_id}/report"),
+    ("PUT", "/projects/{project_id}/actuals"),
+    ("POST", "/reports/{report_id}/calibrate"),
     ("GET", "/agent/sources"),
     ("GET", "/collaboration"),
     ("POST", "/collaboration/grants"),
@@ -128,6 +145,7 @@ EXPECTED_ROUTE_SIGNATURES = {
 }
 
 EXPECTED_TABLE_NAMES = {
+    "city_profiles", "decision_rule_versions", "decision_reports", "operating_records",
     "project_grants", "collaboration_items", "collaboration_history",
     "collaboration_receipts", "personal_records", "show_project_bindings",
     "agent_permissions",

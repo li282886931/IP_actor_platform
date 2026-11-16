@@ -831,6 +831,9 @@ export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
       .map(([key, label]) => ({ label, value: cockpit.scenarios?.[key]?.profit ?? null }))
   }, [cockpit?.scenarios, screenId])
   const actualsSummary = options.actuals_summary as { actual_profit?: number | null } | undefined
+  const decisionV5 = options.decision_v5 as {
+    report_id: number; rule_version_id: number; items: { label: string; value: string }[]; messages: string[]
+  } | undefined
   const calibrationLoop = options.calibration_loop as {
     forecast_profit?: number | null
     actual_profit?: number | null
@@ -907,6 +910,12 @@ export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
       )}
       {screenId === 'S52' && <WorkBriefing briefing={briefing} />}
       {screenId === 'S53' && <ProjectWorkPanel projectWork={projectWork} />}
+      {decisionV5 && <View className={styles.section}>
+        <Text className={styles.sectionTitle}>{`决策风控报告 #${decisionV5.report_id}`}</Text>
+        <Text>{`规则版本 #${decisionV5.rule_version_id} · 同步工作台核验结果`}</Text>
+        <KeyValueGrid items={decisionV5.items} />
+        {decisionV5.messages.map((message, index) => <View key={index}><Text>{message}</Text></View>)}
+      </View>}
       {['S64', 'S65', 'S66'].includes(screenId) && (
         <>
           <LifecycleTimeline currentStage={screenId === 'S64' ? '售票' : screenId === 'S65' ? '结算' : '校准'} />

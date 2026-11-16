@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import API, { agentChat, listAgentSources, generateAI, generateAIStream, getInvestorWorkspace, getArtistWorkspace, getAdminWorkspace, getBusinessWorkspace, getBrandWorkspace, getGovernmentWorkspace, getAudienceWorkspace, mockOrder, createUser, updateUser } from './api'
+import { createProject, createProjectVersion, calculateFinance, calculateShow } from './api'
 
 afterEach(() => {
   localStorage.clear()
@@ -60,4 +61,25 @@ it('authenticates live analysis tool discovery and execution', async () => {
   await agentChat({ project_id: 2, message: '读取', reads: [{ source_id: 1 }] })
   expect(get.mock.calls[0][1].headers.Authorization).toBe('Bearer analysis-session')
   expect(post.mock.calls[0][2].headers['X-Tenant-Id']).toBe('4')
+})
+
+it('uses the current account and tenant for project and finance writes, including account switches', async () => {
+  const post = vi.spyOn(API, 'post').mockResolvedValue({})
+  for (const [token, tenantId] of [['host-session', 4], ['second-host', 8]]) {
+    localStorage.setItem('starhub-token', token)
+    localStorage.setItem('starhub-tenant', JSON.stringify({ id: tenantId }))
+    const writes = [
+      [() => createProject({ name: '项目' }), '/projects'],
+      [() => createProjectVersion(2, { name: '修订' }), '/projects/2/versions'],
+      [() => calculateFinance({ project_id: 2 }), '/finance/calculate'],
+      [() => calculateShow({ project_id: 2 }), '/finance/show-calculation'],
+    ]
+    for (const [write, path] of writes) {
+      await write()
+      expect(post.mock.lastCall[0]).toBe(path)
+      expect(post.mock.lastCall[2]?.headers).toEqual({
+        Authorization: `Bearer ${token}`, 'X-Tenant-Id': String(tenantId),
+      })
+    }
+  }
 })

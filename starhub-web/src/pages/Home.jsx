@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 
 import {
   calculateFinance,
@@ -37,6 +37,7 @@ function MetricGrid({ metrics }) {
 }
 
 function BusinessWorkbench() {
+  const location = useLocation()
   const [projects, setProjects] = useState([])
   const [tasks, setTasks] = useState([])
   const [analytics, setAnalytics] = useState(null)
@@ -94,6 +95,13 @@ function BusinessWorkbench() {
     window.addEventListener('starhub:focus-project-create', focusCreateForm)
     return () => window.removeEventListener('starhub:focus-project-create', focusCreateForm)
   }, [])
+
+  useEffect(() => {
+    if (location.state?.focusProjectCreate) {
+      createNameInputRef.current?.focus()
+      createNameInputRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'center' })
+    }
+  }, [location.key, location.state])
 
   const handleFieldChange = (field, value) => {
     setForm((current) => ({ ...current, [field]: value }))

@@ -13,6 +13,7 @@ from app.config import (
     ALIYUN_OSS_BUCKET,
     ALIYUN_OSS_CONFIG_PATH,
     ALIYUN_OSS_ENDPOINT,
+    ALIYUN_OSS_PUBLIC_BASE_URL,
     MINIO_BUCKET,
     MINIO_ENDPOINT,
     MINIO_SECURE,
@@ -35,6 +36,21 @@ def minio_secure_enabled():
     if value is None:
         return bool(MINIO_SECURE)
     return value.strip().lower() in {'1', 'true', 'yes', 'on'}
+
+
+def aliyun_oss_bucket_name():
+    return os.environ.get('ALIYUN_OSS_BUCKET', ALIYUN_OSS_BUCKET).strip()
+
+
+def aliyun_public_base_url():
+    return os.environ.get('ALIYUN_OSS_PUBLIC_BASE_URL', ALIYUN_OSS_PUBLIC_BASE_URL).strip().rstrip('/')
+
+
+def aliyun_file_url(bucket: str, object_key: str):
+    public_base = aliyun_public_base_url()
+    if public_base:
+        return f"{public_base}/{object_key}"
+    return f"oss://{bucket}/{object_key}"
 
 
 def create_minio_client():
@@ -61,10 +77,6 @@ def ensure_minio_bucket(client, bucket: str):
         client.make_bucket(bucket)
 
 
-def aliyun_oss_bucket_name():
-    return os.environ.get('ALIYUN_OSS_BUCKET', ALIYUN_OSS_BUCKET).strip()
-
-
 def load_aliyun_oss_config():
     """读取阿里云 OSS 访问配置。
 
@@ -78,11 +90,11 @@ def load_aliyun_oss_config():
         accessKeyID=LTAI...
         accessKeySecret=...
     """
-    endpoint = ALIYUN_OSS_ENDPOINT.strip()
-    access_key_id = ALIYUN_OSS_ACCESS_KEY_ID.strip()
-    access_key_secret = ALIYUN_OSS_ACCESS_KEY_SECRET.strip()
+    endpoint = os.environ.get('ALIYUN_OSS_ENDPOINT', ALIYUN_OSS_ENDPOINT).strip()
+    access_key_id = os.environ.get('ALIYUN_OSS_ACCESS_KEY_ID', ALIYUN_OSS_ACCESS_KEY_ID).strip()
+    access_key_secret = os.environ.get('ALIYUN_OSS_ACCESS_KEY_SECRET', ALIYUN_OSS_ACCESS_KEY_SECRET).strip()
 
-    config_path = ALIYUN_OSS_CONFIG_PATH
+    config_path = os.environ.get('ALIYUN_OSS_CONFIG_PATH', ALIYUN_OSS_CONFIG_PATH)
     missing = not endpoint or not access_key_id or not access_key_secret
     if missing and config_path and os.path.exists(config_path):
         parser = configparser.ConfigParser()
@@ -129,21 +141,21 @@ def create_aliyun_oss_bucket():
 
 
 def create_upload_target(provider: str, object_key: str, content_type: str):
-    if provider == ALIYUN_OSS_PROVIDER:
+    if provider == 'aliyun-oss':
+        bucket = aliyun_oss_bucket_name()
+        if not bucket:
+            raise HTTPException(status_code=500, detail='ALIYUN_OSS_BUCKET is required')
+        headers = {"Content-Type": content_type}
         try:
-            bucket = create_aliyun_oss_bucket()
-            expires = timedelta(seconds=900)
-            upload_url = bucket.sign_url('PUT', object_key, expires, headers={'Content-Type': content_type})
-        except HTTPException:
-            raise
+            upload_url = create_aliyun_oss_bucket().sign_url("PUT", object_key, 900, headers=headers)
         except Exception as exc:
             raise HTTPException(status_code=502, detail=f'Aliyun OSS upload URL generation failed: {exc}') from exc
         return {
-            "provider": ALIYUN_OSS_PROVIDER,
-            "bucket": bucket.bucket_name,
+            "provider": "aliyun-oss",
+            "bucket": bucket,
             "upload_url": upload_url,
             "method": "PUT",
-            "headers": {"Content-Type": content_type},
+            "headers": headers,
             "expires_in_seconds": 900,
         }
 
@@ -185,19 +197,19 @@ def local_report_storage_dir():
 
 
 def store_generated_report(provider: str, object_key: str, content: bytes, content_type: str):
-    if provider == ALIYUN_OSS_PROVIDER:
+    if provider == 'aliyun-oss':
+        bucket = aliyun_oss_bucket_name()
+        if not bucket:
+            raise HTTPException(status_code=500, detail='ALIYUN_OSS_BUCKET is required')
         try:
-            bucket = create_aliyun_oss_bucket()
-            bucket.put_object(object_key, content, headers={'Content-Type': content_type})
-        except HTTPException:
-            raise
+            create_aliyun_oss_bucket().put_object(object_key, io.BytesIO(content), headers={"Content-Type": content_type})
         except Exception as exc:
             raise HTTPException(status_code=502, detail=f'Aliyun OSS report upload failed: {exc}') from exc
         return {
-            "provider": ALIYUN_OSS_PROVIDER,
-            "bucket": bucket.bucket_name,
+            "provider": "aliyun-oss",
+            "bucket": bucket,
             "object_key": object_key,
-            "file_url": f"oss://{bucket.bucket_name}/{object_key}",
+            "file_url": aliyun_file_url(bucket, object_key),
             "local_path": "",
             "size": len(content),
         }

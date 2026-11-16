@@ -408,6 +408,115 @@ def test_oss_upload_initiate_uses_minio_presigned_url_when_enabled(monkeypatch):
         db.close()
 
 
+def test_oss_upload_initiate_uses_aliyun_oss_signed_url_when_enabled(monkeypatch):
+    client, session_factory = make_test_client(monkeypatch)
+    monkeypatch.setenv("OSS_PROVIDER", "aliyun-oss")
+    monkeypatch.setenv("ALIYUN_OSS_ENDPOINT", "https://oss-cn-hangzhou.aliyuncs.com")
+    monkeypatch.setenv("ALIYUN_OSS_BUCKET", "ip-actor-aliyun-test")
+    monkeypatch.setenv("ALIYUN_OSS_ACCESS_KEY_ID", "ak")
+    monkeypatch.setenv("ALIYUN_OSS_ACCESS_KEY_SECRET", "sk")
+
+    calls = []
+
+    class FakeAliyunBucket:
+        def sign_url(self, method, object_key, expires, headers=None):
+            calls.append(("sign_url", method, object_key, expires, headers))
+            return f"https://ip-actor-aliyun-test.oss-cn-hangzhou.aliyuncs.com/{object_key}?OSSAccessKeyId=fake"
+
+        def get_object_meta(self, object_key):
+            calls.append(("get_object_meta", object_key))
+
+    monkeypatch.setattr(storage_integration, "create_aliyun_oss_bucket", lambda: FakeAliyunBucket())
+
+    try:
+        project = client.post("/projects", json={"name": "阿里 OSS 上传项目", "city": "杭州"}).json()["data"]
+        response = client.post("/oss/uploads/initiate", json={
+            "project_id": project["id"],
+            "file_name": "aliyun-contract.pdf",
+            "content_type": "application/pdf",
+            "evidence_type": "contract",
+        })
+        assert response.status_code == 200
+        upload = response.json()["data"]
+        assert upload["provider"] == "aliyun-oss"
+        assert upload["bucket"] == "ip-actor-aliyun-test"
+        assert upload["method"] == "PUT"
+        assert upload["upload_url"].startswith("https://ip-actor-aliyun-test.oss-cn-hangzhou.aliyuncs.com/")
+        assert upload["headers"]["Content-Type"] == "application/pdf"
+        assert calls[0] == ("sign_url", "PUT", upload["object_key"], 900, {"Content-Type": "application/pdf"})
+
+        complete = client.post(f"/oss/uploads/{upload['id']}/complete", json={"size": 4096, "checksum": "sha256-aliyun"})
+        assert complete.status_code == 200
+        completed = complete.json()["data"]
+        assert completed["upload"]["file_url"] == f"oss://ip-actor-aliyun-test/{upload['object_key']}"
+        assert completed["evidence"]["file_url"] == completed["upload"]["file_url"]
+        assert calls[-1] == ("get_object_meta", upload["object_key"])
+    finally:
+        app_module.app.dependency_overrides.clear()
+
+    db = session_factory()
+    try:
+        saved_upload = db.query(app_module.OSSUpload).one()
+        assert saved_upload.provider == "aliyun-oss"
+        assert saved_upload.bucket == "ip-actor-aliyun-test"
+    finally:
+        db.close()
+
+
+def test_feasibility_report_uploads_generated_docx_to_aliyun_oss(monkeypatch):
+    client, session_factory = make_test_client(monkeypatch)
+    monkeypatch.setenv("OSS_PROVIDER", "aliyun-oss")
+    monkeypatch.setenv("ALIYUN_OSS_ENDPOINT", "https://oss-cn-hangzhou.aliyuncs.com")
+    monkeypatch.setenv("ALIYUN_OSS_BUCKET", "ip-actor-aliyun-test")
+    monkeypatch.setenv("ALIYUN_OSS_ACCESS_KEY_ID", "ak")
+    monkeypatch.setenv("ALIYUN_OSS_ACCESS_KEY_SECRET", "sk")
+    monkeypatch.setenv("ALIYUN_OSS_PUBLIC_BASE_URL", "https://cdn.example.com")
+
+    calls = []
+
+    class FakeAliyunBucket:
+        def put_object(self, object_key, data, headers=None):
+            content = data.read() if hasattr(data, "read") else data
+            calls.append(("put_object", object_key, content[:2], headers))
+
+    monkeypatch.setattr(storage_integration, "create_aliyun_oss_bucket", lambda: FakeAliyunBucket())
+
+    try:
+        project = client.post("/projects", json={
+            "name": "阿里 OSS 可研项目",
+            "city": "杭州",
+            "expected_attendance": 1000,
+            "avg_ticket_price": 500,
+            "artist_fee": 100000,
+            "venue_cost": 60000,
+            "marketing_cost": 20000,
+            "production_cost": 50000,
+        }).json()["data"]
+        response = client.post(f"/projects/{project['id']}/feasibility-report", json={"use_ai_copy": False, "tax_fee_rate": 0.15})
+        assert response.status_code == 200
+        report = response.json()["data"]
+        assert report["file_url"].startswith("https://cdn.example.com/projects/")
+        assert report["download_url"] == report["file_url"]
+        assert report["evidence"]["metadata"]["provider"] == "aliyun-oss"
+        assert calls[0][0] == "put_object"
+        assert calls[0][1].endswith(f"/project-{project['id']}-feasibility-report.docx")
+        assert calls[0][2] == b"PK"
+        assert calls[0][3]["Content-Type"] == "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    finally:
+        app_module.app.dependency_overrides.clear()
+
+    db = session_factory()
+    try:
+        evidence = db.query(app_module.Evidence).filter(
+            app_module.Evidence.project_id == project["id"],
+            app_module.Evidence.evidence_type == "feasibility_report",
+        ).one()
+        assert evidence.file_url.startswith("https://cdn.example.com/projects/")
+        assert evidence.meta["local_path"] == ""
+    finally:
+        db.close()
+
+
 def test_feasibility_report_uploads_generated_docx_to_minio(monkeypatch):
     client, session_factory = make_test_client(monkeypatch)
     monkeypatch.setenv("OSS_PROVIDER", "minio")

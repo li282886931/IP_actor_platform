@@ -201,6 +201,7 @@ def ai_generate_stream(payload: AIGenerateIn, db: Session = Depends(get_db), con
         chunks = []
         preamble_buffer = ''
         final_started = False
+        visible_stream = llm_integration.VisibleContentStream()
         saved_by_fallback = False
         cached_generation = redis_get_json(cache_key)
         if cached_generation and cached_generation.get('status') == 'completed' and cached_generation.get('result'):
@@ -250,7 +251,7 @@ def ai_generate_stream(payload: AIGenerateIn, db: Session = Depends(get_db), con
                         continue
                     content, _ = llm_integration.extract_stream_delta(data)
                     if content:
-                        visible_content, _ = llm_integration.split_think_content(content)
+                        visible_content = visible_stream.feed(content)
                         if visible_content:
                             if final_started:
                                 chunks.append(visible_content)
@@ -265,8 +266,6 @@ def ai_generate_stream(payload: AIGenerateIn, db: Session = Depends(get_db), con
                                         yield llm_integration.sse_event('delta', {"content": final_content})
                                     preamble_buffer = ''
                                     final_started = True
-                                elif len(preamble_buffer) > 24:
-                                    preamble_buffer = preamble_buffer[-16:]
                 result_text = llm_integration.sanitize_ai_output(''.join(chunks) or preamble_buffer)
         except Exception as exc:
             yield llm_integration.sse_event('progress', {"message": f"流式生成不可用，已切换为后端兜底内容：{exc}"})

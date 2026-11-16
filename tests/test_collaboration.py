@@ -338,10 +338,13 @@ def test_audience_cancel_restore_history_and_confirmed_show_notifications(collab
     assert get("c_user").json()["data"]["notifications"] == []
     assert post("c_user", "/reservations", {"order_id": order_id, "action": "restore", "request_key": "restore"}).status_code == 200
     update["changes"]["date"] = "2026-12-03"
+    update["changes"].update({"description": "交通信息已核验", "status": "scheduled"})
     update["request_key"] = "update2"
     assert post("b_user", "/shows/update", update).status_code == 200
     assert post("b_user", "/shows/update", update).status_code == 200
     notice = get("c_user").json()["data"]["notifications"][0]
+    assert notice["title"] == "演出信息已更新 · 已确认演出"
+    assert notice["content"] == "演出时间：2026-12-03；演出说明：交通信息已核验；演出状态：已排期"
     assert post("c_user", f'/notifications/{notice["id"]}/read', {"request_key": "read"}).status_code == 200
     assert len(get("c_user", f"/reservations/{order_id}/history").json()["data"]) == 2
     with sessions() as db:

@@ -1,4 +1,5 @@
 from app.core.responses import json_ok
+from app.core.dependencies import project_write_context
 from app.database import get_db
 from app.models import Project
 from app.models import ProjectVersion
@@ -9,7 +10,6 @@ from app.services import calculate_breakeven_result
 from app.services import calculate_finance_result
 from app.services import calculate_show_result
 from app.services import get_default_tenant_id
-from app.services import get_or_create_default_context
 from app.services import next_project_version_no
 from app.services import project_input_snapshot
 from fastapi import APIRouter
@@ -23,8 +23,8 @@ router = APIRouter()
 
 
 @router.post('/finance/calculate')
-def finance_calculate(payload: FinanceCalculateIn, db: Session = Depends(get_db)):
-    tenant, user = get_or_create_default_context(db)
+def finance_calculate(payload: FinanceCalculateIn, db: Session = Depends(get_db), ctx=Depends(project_write_context)):
+    tenant, user = ctx.tenant, ctx.user
     project = db.query(Project).filter(Project.id == payload.project_id, Project.tenant_id == tenant.id).first()
     if not project:
         raise HTTPException(status_code=404, detail='Project not found')
@@ -70,8 +70,8 @@ def finance_breakeven(payload: FinanceBreakevenIn, db: Session = Depends(get_db)
     return json_ok(result)
 
 @router.post('/finance/show-calculation')
-def finance_show_calculation(payload: ShowCalculationIn, db: Session = Depends(get_db)):
-    tenant, user = get_or_create_default_context(db)
+def finance_show_calculation(payload: ShowCalculationIn, db: Session = Depends(get_db), ctx=Depends(project_write_context)):
+    tenant, user = ctx.tenant, ctx.user
     project = db.query(Project).filter(Project.id == payload.project_id, Project.tenant_id == tenant.id).first()
     if not project:
         raise HTTPException(status_code=404, detail='Project not found')
