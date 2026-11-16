@@ -18,6 +18,7 @@ def image_bytes(fmt="PNG"):
 @pytest.fixture
 def image_service(monkeypatch):
     from app.integrations import image_generation
+    monkeypatch.setenv("IMAGE_GENERATION_AUTHORIZATION", "Bearer image-test-secret")
     calls = {"downloads": [], "uploads": [], "signs": []}
     content = image_bytes()
 
@@ -187,6 +188,47 @@ def test_redirect_auth_failure_is_not_followed(ai_client, monkeypatch, image_ser
     assert response.status_code == 502
     assert "鉴权" in response.json()["detail"]
     assert not image_service["uploads"]
+
+
+@pytest.mark.parametrize("authorization", ["", "  ", "Bearer secret\r\nInjected: value"])
+def test_missing_or_invalid_image_authorization_fails_before_network(
+    ai_client, monkeypatch, image_service, authorization,
+):
+    client, sessions, _ = ai_client
+    headers, _ = login(client, monkeypatch, "b_user")
+    monkeypatch.setenv("IMAGE_GENERATION_AUTHORIZATION", authorization)
+    response = client.post("/ai/generate/image", headers=headers, json={"prompt": "舞台"})
+    assert response.status_code == 503
+    assert "IMAGE_GENERATION_AUTHORIZATION" in response.json()["detail"]
+    assert "secret" not in response.text
+    assert not image_service["downloads"] and not image_service["uploads"]
+    with sessions() as db:
+        assert db.query(AIGeneration).filter_by(type="image").count() == 0
+
+
+@pytest.mark.parametrize("exception,status,message", [
+    ("ConnectionError", 502, "网络"),
+    ("SSLError", 502, "TLS"),
+    ("ConnectTimeout", 504, "超时"),
+    ("ReadTimeout", 504, "超时"),
+    ("HTTPError", 502, "异常响应"),
+])
+def test_image_transport_errors_are_actionable_and_do_not_leak(
+    ai_client, monkeypatch, image_service, exception, status, message,
+):
+    from app.integrations import image_generation
+    client, sessions, _ = ai_client
+    headers, _ = login(client, monkeypatch, "b_user")
+    def fail(*args, **kwargs):
+        raise getattr(image_generation.requests.exceptions, exception)("private-token-and-url")
+    monkeypatch.setattr(image_generation.requests, "get", fail)
+    response = client.post("/ai/generate/image", headers=headers, json={"prompt": "舞台"})
+    assert response.status_code == status
+    assert message in response.json()["detail"]
+    assert "private-token" not in response.text
+    assert not image_service["uploads"]
+    with sessions() as db:
+        assert db.query(AIGeneration).filter_by(type="image").count() == 0
 
 
 def test_database_failure_does_not_report_success(ai_client, monkeypatch, image_service):

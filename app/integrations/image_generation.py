@@ -38,8 +38,13 @@ def generate_image(prompt: str, image_size: str):
         "detailed composition, no text, no logos, no watermarks; "
         "do not invent event dates, ticket prices or technical specifications."
     )
-    authorization = os.environ.get('IMAGE_GENERATION_AUTHORIZATION', '').strip()
-    headers = {'Authorization': authorization} if authorization else {}
+    raw_authorization = os.environ.get('IMAGE_GENERATION_AUTHORIZATION', '')
+    authorization = raw_authorization.strip()
+    if not authorization:
+        raise HTTPException(503, "文生图服务未配置授权，请管理员配置 IMAGE_GENERATION_AUTHORIZATION")
+    if any(ord(char) < 32 or ord(char) > 126 for char in raw_authorization):
+        raise HTTPException(503, "文生图授权格式无效，请管理员检查 IMAGE_GENERATION_AUTHORIZATION")
+    headers = {'Authorization': authorization}
     deadline = time.monotonic() + 240
     try:
         with requests.get(
@@ -53,12 +58,20 @@ def generate_image(prompt: str, image_size: str):
             content = bytearray()
             for chunk in response.iter_content(chunk_size=65536):
                 if time.monotonic() > deadline:
-                    raise HTTPException(502, "图片生成超时，请稍后重试")
+                    raise HTTPException(504, "图片生成超时，请稍后重试")
                 content.extend(chunk)
                 if len(content) > MAX_IMAGE_BYTES:
                     raise HTTPException(502, "生成图片超过 20 MB，请调整尺寸后重试")
     except HTTPException:
         raise
+    except requests.exceptions.Timeout:
+        raise HTTPException(504, "文生图服务连接或生成超时，请稍后重试") from None
+    except requests.exceptions.SSLError:
+        raise HTTPException(502, "文生图服务 TLS 连接失败，请管理员检查证书和网络代理") from None
+    except requests.exceptions.ConnectionError:
+        raise HTTPException(502, "无法连接文生图服务，请管理员检查服务器网络、DNS 和服务访问路由") from None
+    except requests.exceptions.HTTPError:
+        raise HTTPException(502, "文生图服务返回异常响应，请稍后重试或联系管理员") from None
     except Exception:
         raise HTTPException(502, "图片生成服务连接失败，请稍后重试") from None
     content = bytes(content)

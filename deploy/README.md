@@ -109,6 +109,8 @@ docker compose --env-file deployment.env up -d --build backend
 
 宣发图片另需固定文生图服务的 `IMAGE_GENERATION_AUTHORIZATION`，值为该服务接受的完整 Authorization 请求头。硅基流动文本模型密钥不适用于此服务。只填入后端部署配置，修改后重新创建后端容器；未取得服务方有效授权前，文生图接口仍不可用。图片展示使用 HTTPS CDN 或 3600 秒私有桶签名地址，数据库保留对象信息，链接过期时重新获取。
 
+缺失或格式无效的授权返回 503，且不发起出图请求；上游拒绝授权返回 502，网络或 TLS 失败返回对应的 502 提示，连接/生成超时返回 504。不要把配置缺失当作暂时失败反复重试。服务器还必须能够访问此服务：2026-11-16 实测域名解析到 `10.8.x.x` 与 `fdbd:...` 内网地址，当前部署服务器无法连接。应由服务方提供授权的访问路由或代理；只填写密钥无法解决网络不可达。不得使用文本模型密钥、OSS AK/SK 或开发工具会话替代文生图授权。
+
 如需接入外部 MinIO 或 S3 兼容服务，设置 `OSS_PROVIDER=minio`，并填写 `MINIO_ENDPOINT`、`MINIO_BUCKET`、`MINIO_SECURE`、`MINIO_ACCESS_KEY`、`MINIO_SECRET_KEY`。当前 Compose 不内置对象存储服务，需要使用已有对象存储地址或单独部署。
 
 ## 维护与数据迁移
