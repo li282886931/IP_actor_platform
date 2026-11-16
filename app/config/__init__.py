@@ -9,6 +9,10 @@ LLAMA_SERVER_URL = os.environ.get('LLAMA_SERVER_URL', 'http://127.0.0.1:8080/v1/
 LLAMA_SERVER_MODEL = os.environ.get('LLAMA_SERVER_MODEL', 'local-model')
 LLAMA_SERVER_TIMEOUT_SECONDS = int(os.environ.get('LLAMA_SERVER_TIMEOUT_SECONDS', '300'))
 LLAMA_SERVER_MAX_TOKENS = int(os.environ.get('LLAMA_SERVER_MAX_TOKENS', '800'))
+LLM_PROVIDER = os.environ.get('LLM_PROVIDER', 'llama-server')
+SILICONFLOW_BASE_URL = os.environ.get('SILICONFLOW_BASE_URL', 'https://api.siliconflow.cn/v1')
+SILICONFLOW_MODEL = os.environ.get('SILICONFLOW_MODEL', 'Qwen/Qwen3-32B')
+SILICONFLOW_API_KEY = os.environ.get('SILICONFLOW_API_KEY', 'sk-dhvvjqngxuazjycechdbcrfmttvqhmhoisvmraodpnyvnrxs')
 
 OSS_PROVIDER = 'local-placeholder'
 MINIO_ENDPOINT = '127.0.0.1:9000'

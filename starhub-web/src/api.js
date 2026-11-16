@@ -63,6 +63,7 @@ export const generateAIStream = async (data, handlers = {}) => {
       if (!dataLine) continue
       const event = parseSsePayload(dataLine.replace(/^data:\s*/, ''))
       if (!event) continue
+      if (event.event === 'error') throw new Error(event.message || '内容生成未完成')
       if (event.event === 'progress') handlers.onProgress?.(event.message || '')
       if (event.event === 'thought') handlers.onThought?.(stripThinkContent(event.content || ''))
       if (event.event === 'delta') handlers.onDelta?.(stripThinkContent(event.content || ''))

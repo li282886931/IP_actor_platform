@@ -8,6 +8,24 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
+it('rejects an upstream SSE error instead of returning partial content as a completed generation', async () => {
+  const onFinal = vi.fn()
+  const onDelta = vi.fn()
+  const body = new ReadableStream({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode(
+        'data: {"event":"delta","content":"部分文案"}\n\n' +
+        'data: {"event":"error","message":"硅基流动生成失败，请重试"}\n\n',
+      ))
+      controller.close()
+    },
+  })
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, body }))
+  await expect(generateAIStream({ type: 'poster' }, { onFinal, onDelta })).rejects.toThrow('硅基流动生成失败')
+  expect(onDelta).toHaveBeenCalledWith('部分文案')
+  expect(onFinal).not.toHaveBeenCalled()
+})
+
 it('authenticates role workspaces and admin artist binding requests using the current session', async () => {
   localStorage.setItem('starhub-token', 'signed-session')
   localStorage.setItem('starhub-tenant', JSON.stringify({ id: 5 }))

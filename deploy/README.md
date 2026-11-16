@@ -55,6 +55,25 @@ MySQL 默认 8.0，与项目现有数据库版本保持一致，使用 utf8mb4�
 编辑 `deployment.env`：
 
 ```dotenv
+LLM_PROVIDER=siliconflow
+SILICONFLOW_BASE_URL=https://api.siliconflow.cn/v1
+SILICONFLOW_MODEL=Qwen/Qwen3-32B
+SILICONFLOW_API_KEY=实际硅基流动API密钥
+LLAMA_SERVER_TIMEOUT_SECONDS=300
+LLAMA_SERVER_MAX_TOKENS=800
+ANALYSIS_ALLOWED_ORIGINS=https://实际MCP服务,https://实际API服务
+WECHAT_MINIAPP_APPID=实际小程序AppID
+WECHAT_MINIAPP_SECRET=实际小程序Secret
+```
+
+Docker 默认使用硅基流动；模型名称须与账号可用模型列表一致，示例模型并不代表已验证账号权限。`SILICONFLOW_BASE_URL` 支持以 `/v1` 结尾的基础地址或完整 `/v1/chat/completions` 地址，要求 HTTPS。硅基流动密钥填写在 `deployment.env` 或运行 Compose 的环境变量中，仅注入后端，不放入 Web 构建参数或仓库。
+
+同步与流式调用均使用 Bearer 认证、顶层 `enable_thinking=true`、300秒超时及默认800 token输出上限；允许模型内部思考，提示词不再使用 `/no_think`。正式结果清洗推理标签，内部推理不向前端发送。配置不完整返回503；云端调用失败返回502或SSE `error`，不保存兜底文案，不自动切换其他付费服务。切换云模型或思考模式会隔离生成缓存。思考与正式结果均可能占用输出预算，可按所选模型及方案长度提高 `LLAMA_SERVER_MAX_TOKENS`。
+
+开发时直接启动 Python 默认仍使用本地模式；也可以显式配置：
+
+```dotenv
+LLM_PROVIDER=llama-server
 LLAMA_SERVER_URL=http://host.docker.internal:8080/v1/chat/completions
 LLAMA_SERVER_MODEL=qwen-local
 LLAMA_SERVER_TIMEOUT_SECONDS=300
@@ -66,12 +85,12 @@ WECHAT_MINIAPP_SECRET=实际小程序Secret
 
 `host.docker.internal` 指向宿主机；容器中的 `127.0.0.1` 只指向该容器。宿主机模型服务必须监听容器能到达的地址，例如 `0.0.0.0:8080`；不必公开模型端口到公网。其他服务器上的模型使用真实服务地址。
 
-默认 `LLAMA_SERVER_URL` 为空，防止误访问容器自身的 8080 端口。未配置模型时沿用当前应用的明确回退行为；此套文件不附带 GPU、模型权重或模型服务。默认模型输出上限 800 token，AI 超时为 300 秒，Nginx 超时覆盖读取与综合研判。
+本地模式下 Docker 的 `LLAMA_SERVER_URL` 默认为空，防止误访问容器自身的8080端口，仅本地模式保留已有回退行为。此套文件不附带 GPU、模型权重或模型服务。Nginx 超时覆盖读取与综合研判。
 
 需要外部凭据时复制 `deployment.connectors.env.example` 为 `deployment.connectors.env`，填写当前数据源实际使用的 `DATA_CONNECTOR_SECRET_<REF>` 或已有云模型密钥，并设权限 `0600`。该文件仅注入后端，默认不存在也可启动。修改环境配置后执行：
 
 ```bash
-docker compose --env-file deployment.env up -d
+docker compose --env-file deployment.env up -d --build backend
 ```
 
 实时来源还需在业务库配置 `DataSource` 的空间、项目、角色、只读工具和 endpoint，并配置项目职责授权。环境变量不会自动创建来源记录或代表第三方已接通。
