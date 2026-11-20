@@ -658,6 +658,39 @@
   gap: 16rpx;
 }
 
+.pipelineActions,
+.mappingGrid,
+.candidatePreview {
+  display: grid;
+  gap: 16rpx;
+}
+
+.mappingRow {
+  display: grid;
+  grid-template-columns: minmax(160rpx, .8fr) minmax(0, 1.2fr);
+  gap: 16rpx;
+  align-items: center;
+}
+
+.mappingHeader,
+.mappingNotice,
+.candidateMeta {
+  color: $color-text-secondary;
+  font-size: $font-size-sm;
+}
+
+.mappingNotice {
+  display: block;
+  padding: 20rpx 0 28rpx;
+}
+
+.candidateRow {
+  display: grid;
+  gap: 8rpx;
+  padding: 20rpx 0;
+  border-top: 1rpx solid $color-divider;
+}
+
 .rejectButton {
   color: $color-text-on-error-soft;
   background: $color-error-soft;

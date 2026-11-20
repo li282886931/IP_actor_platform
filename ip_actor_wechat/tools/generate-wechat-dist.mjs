@@ -21,6 +21,9 @@ const runtimeConfig = {
     versionId: 'starhub-version-id',
     taskId: 'starhub-task-id',
     artistId: 'starhub-artist-id',
+    evidenceId: 'starhub-evidence-id',
+    documentParseJobId: 'starhub-document-parse-job-id',
+    decisionDraft: 'starhub-decision-draft',
   },
 }
 
@@ -220,6 +223,7 @@ const query = (params) => {
 const createScreenPage = (screenId) => {
   const screen = screens[screenId]
   const initialTaskId = Number(wx.getStorageSync(STORAGE_KEYS.taskId) || 0)
+  const initialDecisionDraft = wx.getStorageSync(STORAGE_KEYS.decisionDraft) || {}
   return Page({
     data: {
       screen,
@@ -227,7 +231,14 @@ const createScreenPage = (screenId) => {
       loadState: 'idle',
       message: '',
       options: {},
-      keyword: '',
+      keyword: screenId === 'S47' ? String(initialDecisionDraft.recommendation || '') : '',
+      evidenceName: '',
+      evidenceUrl: '',
+      parseJobId: Number(wx.getStorageSync(STORAGE_KEYS.documentParseJobId) || 0),
+      fieldMappingRows: [],
+      unmappedColumns: [],
+      candidateProjects: [],
+      decisionDraft: initialDecisionDraft,
       placeholder: screenId === 'S82' ? DEFAULT_API_BASE : screenId === 'S13' ? '输入艺人、IP 或项目名称' : '输入关键词或补充信息',
       apiBase: apiBase(),
       financeDraft: wx.getStorageSync(STORAGE_KEYS.projectDraft) || {},
@@ -250,6 +261,19 @@ const createScreenPage = (screenId) => {
       const keyword = event.detail.value
       this.setData({ keyword })
       if (['S13', 'S14', 'S15', 'S16'].includes(screenId)) this.onCandidateSearchInput(keyword)
+    },
+    onEvidenceInput(event) {
+      const field = String(event.currentTarget.dataset.field || '')
+      if (!['evidenceName', 'evidenceUrl'].includes(field)) return
+      this.setData({ [field]: String(event.detail.value || '') })
+    },
+    onMappingInput(event) {
+      const index = Number(event.currentTarget.dataset.index)
+      if (!Number.isInteger(index) || !this.data.fieldMappingRows[index]) return
+      const fieldMappingRows = this.data.fieldMappingRows.map((row, rowIndex) => (
+        rowIndex === index ? Object.assign({}, row, { field: String(event.detail.value || '') }) : row
+      ))
+      this.setData({ fieldMappingRows })
     },
     onFinanceInput(event) {
       if (screenId !== 'S25') return
@@ -382,6 +406,23 @@ const createScreenPage = (screenId) => {
       }
       return request('/miniapp/screens/' + screenId + query(context)).then((data) => {
         let items = normalizeItems(data && data.items)
+        let parseReview = {}
+        if (screenId === 'S42' && data && Array.isArray(data.items) && data.items.length) {
+          const parseItem = data.items[0] || {}
+          parseReview = parseItem.context || {}
+          const parseJobId = Number(parseReview.parse_job_id || 0)
+          const result = parseReview.result || {}
+          if (parseJobId) wx.setStorageSync(STORAGE_KEYS.documentParseJobId, parseJobId)
+          this.setData({
+            parseJobId,
+            fieldMappingRows: Object.keys(result.field_mapping || {}).map((header) => ({
+              header,
+              field: String(result.field_mapping[header] || '')
+            })),
+            unmappedColumns: Array.isArray(result.unmapped_columns) ? result.unmapped_columns : [],
+            candidateProjects: Array.isArray(result.candidate_projects) ? result.candidate_projects : []
+          })
+        }
         if (screenId === 'S52') {
           const cachedProjectId = Number(wx.getStorageSync(STORAGE_KEYS.projectId) || 0)
           const defaultProjectId = Number(data && data.options && data.options.default_project_id || 0)
@@ -412,6 +453,7 @@ const createScreenPage = (screenId) => {
             cockpit: null,
             work_briefing: null,
             project_work: null,
+            latest_analysis: null,
             calibration_loop: null,
             metrics: [],
             breakevenRing: null,
@@ -423,6 +465,7 @@ const createScreenPage = (screenId) => {
             cockpit: data.options.decision_cockpit || data.options.finance_cockpit || null,
             work_briefing: data.options.work_briefing || null,
             project_work: data.options.project_work || null,
+            latest_analysis: data.options.latest_analysis || null,
             calibration_loop: data.options.calibration_loop || null,
             metrics: chartData.metrics,
             breakevenRing: chartData.breakevenRing,
@@ -524,6 +567,41 @@ const createScreenPage = (screenId) => {
           this.setData({ loadState: 'error', message: '测算失败，输入已保留，请重试。' })
         })
       }
+      if (screenId === 'S47') {
+        const projectId = Number(wx.getStorageSync(STORAGE_KEYS.projectId) || 0)
+        const versionId = Number(wx.getStorageSync(STORAGE_KEYS.versionId) || 0)
+        const decisionDraft = wx.getStorageSync(STORAGE_KEYS.decisionDraft) || {}
+        this.setData({ loadState: 'loading', message: '' })
+        return request('/decisions', 'POST', {
+          project_id: projectId,
+          version_id: versionId,
+          decision_type: 'advance',
+          conditions: String(decisionDraft.recommendation || this.data.keyword || '')
+        }).then(() => {
+          wx.removeStorageSync(STORAGE_KEYS.decisionDraft)
+          this.setData({ loadState: 'success' })
+          this.goNext()
+        }).catch((error) => {
+          console.error('[S47] decision confirmation failed', error)
+          this.setData({ loadState: 'error', message: '负责人确认未保存，请检查后重试。' })
+        })
+      }
+      if (screenId === 'S54') {
+        const projectId = Number(wx.getStorageSync(STORAGE_KEYS.projectId) || 0)
+        this.setData({ loadState: 'loading', message: '' })
+        return request('/agent/chat', 'POST', {
+          project_id: projectId,
+          message: String(this.data.keyword || '下一步应该优先处理什么？')
+        }).then((answer) => {
+          this.setData({
+            loadState: 'success',
+            message: String(answer.answer || '工作建议已生成')
+          })
+        }).catch((error) => {
+          console.error('[S54] agent chat failed', error)
+          this.setData({ loadState: 'error', message: '工作建议生成失败，请重试。' })
+        })
+      }
       if (screenId === 'S82') {
         const value = this.data.keyword && this.data.keyword.trim()
         if (value) wx.setStorageSync(STORAGE_KEYS.apiBase, value.replace(/\\/+$/, ''))
@@ -531,6 +609,123 @@ const createScreenPage = (screenId) => {
         return
       }
       this.goNext()
+    },
+    onS41Action(event) {
+      if (screenId !== 'S41') return
+      const action = String(event.currentTarget.dataset.action || '')
+      const projectId = Number(wx.getStorageSync(STORAGE_KEYS.projectId) || 0)
+      this.setData({ loadState: 'loading', message: '' })
+      if (action === 'upload') {
+        const fileUrl = String(this.data.evidenceUrl || '').trim()
+        if (!fileUrl || fileUrl.startsWith('local://')) {
+          this.setData({
+            loadState: 'success',
+            message: '请先填写真实文件地址，未上传文件不会登记为成功。'
+          })
+          return Promise.resolve()
+        }
+        return request('/evidences/upload', 'POST', {
+          project_id: projectId,
+          name: String(this.data.evidenceName || '').trim() || '项目资料',
+          file_url: fileUrl,
+          evidence_type: 'document',
+          source: '微信小程序'
+        }).then((evidence) => {
+          const evidenceId = Number(evidence.id || 0)
+          if (!evidenceId) throw new Error('EVIDENCE_ID_MISSING')
+          wx.setStorageSync(STORAGE_KEYS.evidenceId, evidenceId)
+          this.setData({ loadState: 'success', message: '资料已登记，可单独开始解析。' })
+        }).catch((error) => {
+          console.error('[S41] evidence upload registration failed', error)
+          this.setData({ loadState: 'error', message: '资料登记失败，请检查后重试。' })
+        })
+      }
+      if (action === 'parse') {
+        const evidenceId = Number(wx.getStorageSync(STORAGE_KEYS.evidenceId) || 0)
+        if (!evidenceId) {
+          this.setData({ loadState: 'success', message: '请先登记真实上传资料，再开始解析。' })
+          return Promise.resolve()
+        }
+        return request('/evidences/' + evidenceId + '/parse-jobs', 'POST', {
+          purpose: 'project_evidence'
+        }).then((parseJob) => {
+          const parseJobId = Number(parseJob.id || 0)
+          if (!parseJobId) throw new Error('PARSE_JOB_ID_MISSING')
+          return request('/document-parse-jobs/' + parseJobId + '/run', 'POST').then(() => parseJobId)
+        }).then((parseJobId) => {
+          wx.setStorageSync(STORAGE_KEYS.documentParseJobId, parseJobId)
+          this.setData({
+            parseJobId,
+            loadState: 'success',
+            message: '资料解析已完成，请进入解析复核确认映射和候选项目。'
+          })
+        }).catch((error) => {
+          console.error('[S41] document parsing failed', error)
+          this.setData({ loadState: 'error', message: '资料解析失败，请检查后重试。' })
+        })
+      }
+      if (action === 'analysis') {
+        return request('/projects/' + projectId + '/analysis-jobs', 'POST', {
+          purpose: 'agent_recommendation'
+        }).then(() => {
+          wx.redirectTo({ url: routeFor('S54') })
+        }).catch((error) => {
+          console.error('[S41] project analysis failed', error)
+          this.setData({ loadState: 'error', message: '分析生成失败，请检查后重试。' })
+        })
+      }
+      this.setData({ loadState: 'success', message: '请选择要执行的资料动作。' })
+      return Promise.resolve()
+    },
+    onS42Action(event) {
+      if (screenId !== 'S42') return
+      const action = String(event.currentTarget.dataset.action || '')
+      const parseJobId = Number(this.data.parseJobId || 0)
+      if (!parseJobId) {
+        this.setData({ loadState: 'success', message: '暂无可确认的解析任务。' })
+        return Promise.resolve()
+      }
+      const path = action === 'mapping'
+        ? '/document-parse-jobs/' + parseJobId + '/confirm-mapping'
+        : '/document-parse-jobs/' + parseJobId + '/confirm-projects'
+      const data = action === 'mapping'
+        ? {
+            field_mapping: Object.fromEntries(
+              this.data.fieldMappingRows.map((row) => [row.header, row.field])
+            )
+          }
+        : {
+            idempotency_key: 'miniapp-document-parse-' + parseJobId + '-confirm-projects'
+          }
+      this.setData({ loadState: 'loading', message: '' })
+      return request(path, 'POST', data).then(() => {
+        this.setData({
+          loadState: 'success',
+          message: action === 'mapping'
+            ? '字段映射已确认，候选项目已按后端结果更新。'
+            : '候选项目已确认；重复提交将复用同一批次结果。'
+        })
+      }).catch((error) => {
+        console.error('[S42] parse review failed', action, error)
+        this.setData({ loadState: 'error', message: '解析结果确认失败，请检查后重试。' })
+      })
+    },
+    onRecommendationToDecision() {
+      if (screenId !== 'S54') return
+      const latestAnalysis = this.data.options && this.data.options.latest_analysis || {}
+      const result = latestAnalysis.result || {}
+      const recommendation = String(result.recommendation || '')
+      if (!recommendation) {
+        this.setData({ loadState: 'success', message: '暂无可带入的分析建议，请先生成分析结论。' })
+        return
+      }
+      wx.setStorageSync(STORAGE_KEYS.decisionDraft, {
+        analysis_job_id: Number(latestAnalysis.id || 0),
+        project_id: Number(wx.getStorageSync(STORAGE_KEYS.projectId) || 0),
+        version_id: Number(wx.getStorageSync(STORAGE_KEYS.versionId) || 0),
+        recommendation
+      })
+      wx.redirectTo({ url: routeFor('S47') })
     },
     syncTaskItemState() {
       const selectedTaskIds = this.data.selectedTaskIds
@@ -980,6 +1175,42 @@ const wxss = `.page {
 .primary:active {
   opacity: .92;
   transform: scale(.99);
+}
+.secondary {
+  margin-top: 16rpx;
+  width: 100%;
+  height: 88rpx;
+  border: 1rpx solid rgba(212, 175, 55, .35);
+  border-radius: 999rpx;
+  color: #d4af37;
+  background: rgba(255, 255, 255, .04);
+  font-size: 28rpx;
+  font-weight: 600;
+}
+.pipeline-actions {
+  display: grid;
+  gap: 16rpx;
+}
+.mapping-row {
+  display: grid;
+  grid-template-columns: 180rpx 1fr;
+  gap: 16rpx;
+  align-items: center;
+}
+.mapping-input {
+  min-width: 0;
+}
+.mapping-notice {
+  padding: 24rpx 0;
+  color: #a3a3ab;
+  font-size: 24rpx;
+}
+.candidate-title {
+  margin-top: 8rpx;
+}
+.candidate-preview-row {
+  padding: 20rpx 0;
+  border-top: 1rpx solid rgba(255, 255, 255, .07);
 }
 .finance-grid {
   display: grid;

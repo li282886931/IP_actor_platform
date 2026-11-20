@@ -6,9 +6,26 @@
     <view class="subtitle">{{screen.subtitle}}</view>
     <view class="highlight">{{screen.highlight}}</view>
   </view>
+
+  <view wx:if="{{screen.id === 'S42' && parseJobId}}" class="panel">
+    <view class="panel-head">
+      <view class="panel-title">字段映射</view>
+      <view class="state">{{fieldMappingRows.length}} 列</view>
+    </view>
+    <view wx:for="{{fieldMappingRows}}" wx:key="header" class="mapping-row">
+      <view class="field-label">{{item.header}}</view>
+      <input class="input mapping-input" data-index="{{index}}" value="{{item.field}}" bindinput="onMappingInput" placeholder="留空表示不映射" />
+    </view>
+    <view class="mapping-notice">未映射列：{{unmappedColumns.join('、') || '无'}}</view>
+    <view class="panel-title candidate-title">候选行预览</view>
+    <view wx:for="{{candidateProjects}}" wx:key="row_number" class="candidate-preview-row">
+      <view class="item-title">{{item.name || item.artist_name || '候选项目'}}</view>
+      <view class="item-desc">{{item.city || '待定城市'}} · {{item.venue || '待定场馆'}}</view>
+    </view>
+  </view>
   <view wx:if="{{isForm}}" class="panel">
     <view class="panel-title">输入与联调</view>
-    <input wx:if="{{screen.id !== 'S25'}}" class="input" value="{{keyword}}" bindinput="onInput" placeholder="{{placeholder}}" />
+    <input wx:if="{{screen.id !== 'S25' && screen.id !== 'S41'}}" class="input" value="{{keyword}}" bindinput="onInput" placeholder="{{placeholder}}" />
   </view>
   <view class="panel">
     <view class="panel-head">
@@ -25,10 +42,8 @@
     </view>
   </view>
   <view class="message" wx:if="{{message}}">{{message}}</view>
-  <block wx:if="{{screen.id === 'S01'}}">
-    <button class="primary" open-type="getPhoneNumber" bindgetphonenumber="onGetPhoneNumber">{{screen.primaryAction}}</button>
-  </block>
-  <block wx:else>
-    <button class="primary" bindtap="onPrimaryTap">{{screen.primaryAction}}</button>
-  </block>
+  <view class="pipeline-actions">
+    <button class="primary" data-action="mapping" bindtap="onS42Action">确认字段映射</button>
+    <button class="secondary" data-action="projects" bindtap="onS42Action">确认候选项目</button>
+  </view>
 </view>

@@ -1,5 +1,6 @@
 from app.core.responses import json_ok
 from app.database import get_db
+from app.documents.parsers import build_candidate_projects_from_sheets
 from app.documents.parsers import parse_document_evidence
 from app.documents.parsers import parse_spreadsheet_evidence
 from app.integrations import connectors as connector_integration
@@ -26,6 +27,8 @@ from app.schemas import FactIn
 from app.schemas import FactVerifyIn
 from app.schemas import OSSUploadCompleteIn
 from app.schemas import OSSUploadInitiateIn
+from app.schemas.decisions import DocumentMappingConfirmIn
+from app.schemas.decisions import DocumentProjectsConfirmIn
 from app.services import connector_health
 from app.services import get_default_tenant_id
 from app.services import get_or_create_default_context
@@ -39,10 +42,12 @@ from app.services import serialize_evidence
 from app.services import serialize_fact
 from app.services import serialize_oss_upload
 from app.services import serialize_project
+from app.services.auth import resolve_request_context
 from datetime import datetime
 from datetime import timezone
 from fastapi import APIRouter
 from fastapi import Depends
+from fastapi import Header
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from typing import Optional
@@ -301,13 +306,13 @@ def complete_oss_upload(upload_id: int, payload: OSSUploadCompleteIn, db: Sessio
     if upload.provider == 'minio':
         try:
             storage_integration.create_minio_client().stat_object(upload.bucket, upload.object_key)
-        except Exception as exc:
-            raise HTTPException(status_code=502, detail=f'MinIO object verification failed: {exc}') from exc
+        except Exception:
+            raise HTTPException(status_code=502, detail='MinIO object verification failed') from None
     elif upload.provider == 'aliyun-oss':
         try:
             storage_integration.create_aliyun_oss_bucket().get_object_meta(upload.object_key)
-        except Exception as exc:
-            raise HTTPException(status_code=502, detail=f'Aliyun OSS object verification failed: {exc}') from exc
+        except Exception:
+            raise HTTPException(status_code=502, detail='Aliyun OSS object verification failed') from None
 
     file_url = payload.file_url or (
         f"minio://{upload.bucket}/{upload.object_key}"
@@ -410,20 +415,167 @@ def run_document_parse_job(job_id: int, db: Session = Depends(get_db)):
 
     job.status = 'running'
     job.started_at = datetime.now(timezone.utc)
-    if job.parse_scope == 'batch_projects':
-        result = parse_spreadsheet_evidence(evidence)
-    else:
-        result = parse_document_evidence(evidence, job.file_kind)
-        result["created_records"] = create_records_from_parse_result(db, job, result)
-    job.result = result
-    job.status = 'completed'
-    job.completed_at = datetime.now(timezone.utc)
+    temporary_path = None
+    try:
+        meta = evidence.meta or {}
+        provider = meta.get('provider')
+        bucket = meta.get('bucket')
+        object_key = meta.get('object_key')
+        if provider in {'aliyun-oss', 'minio'} and bucket and object_key:
+            temporary_path = storage_integration.download_object_to_tempfile(
+                provider,
+                bucket,
+                object_key,
+                max_bytes=20 * 1024 * 1024,
+            )
+        if job.parse_scope == 'batch_projects':
+            result = parse_spreadsheet_evidence(evidence, temporary_path)
+            if result.get('error'):
+                job.result = {**result, 'needs_manual_input': True}
+                job.status = 'failed'
+                job.completed_at = datetime.now(timezone.utc)
+                db.commit()
+                db.refresh(job)
+                return json_ok(serialize_document_parse_job(job))
+        else:
+            result = parse_document_evidence(evidence, job.file_kind, temporary_path)
+            if result.get('error'):
+                job.result = result
+                job.status = 'failed'
+                job.completed_at = datetime.now(timezone.utc)
+                db.commit()
+                db.refresh(job)
+                return json_ok(serialize_document_parse_job(job))
+            result["created_records"] = create_records_from_parse_result(db, job, result)
+        job.result = result
+        job.status = 'completed'
+        job.completed_at = datetime.now(timezone.utc)
+        db.commit()
+        db.refresh(job)
+        return json_ok(serialize_document_parse_job(job))
+    except ValueError as exc:
+        job.status = 'failed'
+        job.result = {'error': str(exc), 'candidate_projects': []}
+        job.completed_at = datetime.now(timezone.utc)
+        db.commit()
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        from app.documents.ocr import DocumentExtractionError
+
+        if not isinstance(exc, DocumentExtractionError):
+            message = '远端对象下载或资料解析失败，请检查对象存储配置和文件完整性'
+        else:
+            message = str(exc)
+        job.status = 'failed'
+        job.result = {
+            'error': message,
+            'needs_manual_input': True,
+            'candidate_facts': [],
+            'candidate_assumptions': [],
+            'candidate_risks': [],
+            'candidate_gates': [],
+        }
+        job.completed_at = datetime.now(timezone.utc)
+        db.commit()
+        db.refresh(job)
+        return json_ok(serialize_document_parse_job(job))
+    finally:
+        if temporary_path:
+            temporary_path.unlink(missing_ok=True)
+
+
+@router.get('/evidences/{evidence_id}/download-url')
+def get_evidence_download_url(
+    evidence_id: int,
+    expires: int = 900,
+    authorization: str = Header(default=''),
+    x_tenant_id: str = Header(default=''),
+    db: Session = Depends(get_db),
+):
+    context = resolve_request_context(
+        db,
+        authorization=authorization,
+        tenant_header=x_tenant_id or None,
+    )
+    evidence = db.query(Evidence).join(Project, Evidence.project_id == Project.id).filter(
+        Evidence.id == evidence_id,
+        Project.tenant_id == context.tenant.id,
+    ).first()
+    if not evidence:
+        raise HTTPException(status_code=404, detail='Evidence not found')
+    meta = evidence.meta or {}
+    provider = meta.get('provider')
+    bucket = meta.get('bucket')
+    object_key = meta.get('object_key')
+    if not provider or not bucket or not object_key:
+        raise HTTPException(status_code=409, detail='Evidence object storage metadata is incomplete')
+    try:
+        target = storage_integration.create_download_target(
+            provider,
+            bucket,
+            object_key,
+            expires=expires,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception:
+        raise HTTPException(status_code=502, detail='Object download URL generation failed') from None
+    return json_ok(target)
+
+
+@router.get('/document-parse-jobs/{job_id}')
+def get_document_parse_job(job_id: int, db: Session = Depends(get_db)):
+    tenant_id = get_default_tenant_id(db)
+    job = db.query(DocumentParseJob).filter(
+        DocumentParseJob.id == job_id,
+        DocumentParseJob.tenant_id == tenant_id,
+    ).first()
+    if not job:
+        raise HTTPException(status_code=404, detail='Document parse job not found')
+    return json_ok(serialize_document_parse_job(job))
+
+
+@router.post('/document-parse-jobs/{job_id}/confirm-mapping')
+def confirm_document_parse_job_mapping(
+    job_id: int,
+    payload: DocumentMappingConfirmIn,
+    db: Session = Depends(get_db),
+):
+    tenant, user = get_or_create_default_context(db)
+    job = db.query(DocumentParseJob).filter(
+        DocumentParseJob.id == job_id,
+        DocumentParseJob.tenant_id == tenant.id,
+    ).first()
+    if not job:
+        raise HTTPException(status_code=404, detail='Document parse job not found')
+    if job.status != 'completed' or job.parse_scope != 'batch_projects':
+        raise HTTPException(status_code=400, detail='Spreadsheet parse job is not completed')
+    try:
+        candidates, mapping = build_candidate_projects_from_sheets(
+            (job.result or {}).get('sheets') or [],
+            payload.mapping,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    job.result = {
+        **(job.result or {}),
+        'candidate_projects': candidates,
+        'confirmed_mapping': mapping,
+        'mapping_status': 'confirmed',
+        'mapping_confirmed_by': user.id,
+        'mapping_confirmed_at': datetime.now(timezone.utc).isoformat(),
+    }
     db.commit()
     db.refresh(job)
     return json_ok(serialize_document_parse_job(job))
 
+
 @router.post('/document-parse-jobs/{job_id}/confirm-projects')
-def confirm_document_parse_job_projects(job_id: int, db: Session = Depends(get_db)):
+def confirm_document_parse_job_projects(
+    job_id: int,
+    payload: Optional[DocumentProjectsConfirmIn] = None,
+    db: Session = Depends(get_db),
+):
     tenant, user = get_or_create_default_context(db)
     job = db.query(DocumentParseJob).filter(
         DocumentParseJob.id == job_id,
@@ -433,12 +585,41 @@ def confirm_document_parse_job_projects(job_id: int, db: Session = Depends(get_d
         raise HTTPException(status_code=404, detail='Document parse job not found')
     if job.status != 'completed':
         raise HTTPException(status_code=400, detail='Document parse job is not completed')
-    candidates = (job.result or {}).get('candidate_projects') or []
+    result = job.result or {}
+    if result.get('mapping_status') != 'confirmed':
+        raise HTTPException(status_code=400, detail='Spreadsheet mapping must be confirmed first')
+    if payload is None:
+        raise HTTPException(status_code=422, detail='Project confirmation payload is required')
+    confirmed_batches = result.get('confirmed_batches') or {}
+    existing_ids = confirmed_batches.get(payload.idempotency_key)
+    if existing_ids is not None:
+        projects = db.query(Project).filter(
+            Project.tenant_id == tenant.id,
+            Project.id.in_(existing_ids),
+        ).order_by(Project.id.asc()).all()
+        return json_ok({"projects": [serialize_project(project) for project in projects]})
+    candidates = result.get('candidate_projects') or []
     if not candidates:
         raise HTTPException(status_code=400, detail='No candidate projects to confirm')
+    selected_rows = payload.selected_rows or list(range(len(candidates)))
+    if len(selected_rows) != len(set(selected_rows)):
+        raise HTTPException(status_code=422, detail='selected_rows contains duplicates')
+    if any(index < 0 or index >= len(candidates) for index in selected_rows):
+        raise HTTPException(status_code=422, detail='selected_rows contains an invalid index')
+    allowed_overrides = {
+        'name', 'type', 'artist_name', 'city', 'venue', 'schedule',
+        'expected_attendance', 'avg_ticket_price', 'artist_fee', 'venue_cost',
+        'marketing_cost', 'production_cost',
+    }
 
     created_projects = []
-    for candidate in candidates:
+    for index in selected_rows:
+        candidate = {**candidates[index]}
+        overrides = payload.overrides.get(str(index), {})
+        unknown = set(overrides) - allowed_overrides
+        if unknown:
+            raise HTTPException(status_code=422, detail=f"Invalid override fields: {', '.join(sorted(unknown))}")
+        candidate.update(overrides)
         project_data = project_payload_from_candidate(candidate)
         project = Project(
             tenant_id=tenant.id,
@@ -472,7 +653,15 @@ def confirm_document_parse_job_projects(job_id: int, db: Session = Depends(get_d
         project.current_version_id = version.id
         created_projects.append(project)
 
-    job.result = {**(job.result or {}), "confirmed_project_ids": [project.id for project in created_projects]}
+    project_ids = [project.id for project in created_projects]
+    job.result = {
+        **result,
+        "confirmed_project_ids": project_ids,
+        "confirmed_batches": {
+            **confirmed_batches,
+            payload.idempotency_key: project_ids,
+        },
+    }
     db.commit()
     for project in created_projects:
         db.refresh(project)

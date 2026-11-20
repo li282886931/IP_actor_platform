@@ -16,6 +16,14 @@ const taroMocks = vi.hoisted(() => ({
   login: vi.fn(),
   getSystemInfoSync: vi.fn(() => ({ platform: 'ios' })),
   wechatLogin: vi.fn(),
+  createEvidence: vi.fn(),
+  createDocumentParseJob: vi.fn(),
+  runDocumentParseJob: vi.fn(),
+  getDocumentParseJob: vi.fn(),
+  confirmDocumentFieldMapping: vi.fn(),
+  confirmDocumentParseJobProjects: vi.fn(),
+  createProjectAnalysisJob: vi.fn(),
+  createDecision: vi.fn(),
   phoneNumberDetail: {} as { code?: string, errMsg?: string },
   storage: new Map<string, unknown>(),
   params: {} as Record<string, string>,
@@ -39,7 +47,20 @@ vi.mock('@tarojs/components', () => ({
       {children}
     </button>
   ),
-  Input: (props: React.InputHTMLAttributes<HTMLInputElement>) => <input {...props} />,
+  Input: ({
+    onInput,
+    ...props
+  }: Omit<React.InputHTMLAttributes<HTMLInputElement>, 'onInput'> & {
+    onInput?: (event: { detail: { value: string }, target: { value: string } }) => void
+  }) => (
+    <input
+      {...props}
+      onInput={(event) => onInput?.({
+        detail: { value: event.currentTarget.value },
+        target: { value: event.currentTarget.value },
+      })}
+    />
+  ),
   ScrollView: ({ children }: React.HTMLAttributes<HTMLDivElement>) => <div>{children}</div>,
   Text: ({ children, ...props }: React.HTMLAttributes<HTMLSpanElement>) => <span {...props}>{children}</span>,
   View: ({ children, ...props }: React.HTMLAttributes<HTMLDivElement>) => <div {...props}>{children}</div>,
@@ -74,6 +95,14 @@ vi.mock('@/services/api', async () => {
       getMiniappScreen: taroMocks.getMiniappScreen,
       calculateShow: taroMocks.calculateShow,
       wechatLogin: taroMocks.wechatLogin,
+      createEvidence: taroMocks.createEvidence,
+      createDocumentParseJob: taroMocks.createDocumentParseJob,
+      runDocumentParseJob: taroMocks.runDocumentParseJob,
+      getDocumentParseJob: taroMocks.getDocumentParseJob,
+      confirmDocumentFieldMapping: taroMocks.confirmDocumentFieldMapping,
+      confirmDocumentParseJobProjects: taroMocks.confirmDocumentParseJobProjects,
+      createProjectAnalysisJob: taroMocks.createProjectAnalysisJob,
+      createDecision: taroMocks.createDecision,
     },
   }
 })
@@ -129,6 +158,14 @@ describe('BlueprintScreen aggregated loading', () => {
     taroMocks.getSystemInfoSync.mockReset()
     taroMocks.getSystemInfoSync.mockReturnValue({ platform: 'ios' })
     taroMocks.wechatLogin.mockReset()
+    taroMocks.createEvidence.mockReset()
+    taroMocks.createDocumentParseJob.mockReset()
+    taroMocks.runDocumentParseJob.mockReset()
+    taroMocks.getDocumentParseJob.mockReset()
+    taroMocks.confirmDocumentFieldMapping.mockReset()
+    taroMocks.confirmDocumentParseJobProjects.mockReset()
+    taroMocks.createProjectAnalysisJob.mockReset()
+    taroMocks.createDecision.mockReset()
     taroMocks.phoneNumberDetail = {}
     taroMocks.storage.clear()
     taroMocks.params = {}
@@ -802,5 +839,129 @@ describe('BlueprintScreen aggregated loading', () => {
 
     expect(taroMocks.switchTab).toHaveBeenCalledWith({ url: '/pages/s10/index' })
     expect(taroMocks.redirectTo).not.toHaveBeenCalledWith({ url: '/pages/s53/index' })
+  })
+
+  it('keeps S41 upload, parsing and analysis as independent actions', async () => {
+    taroMocks.storage.set('starhub-project-id', 42)
+    taroMocks.getMiniappScreen.mockResolvedValue(response({
+      screen_id: 'S41',
+      summary: { title: '上传项目资料' },
+      items: [],
+    }))
+    taroMocks.createEvidence.mockResolvedValue({ id: 61 })
+    taroMocks.createDocumentParseJob.mockResolvedValue({ id: 73 })
+    taroMocks.runDocumentParseJob.mockResolvedValue({ id: 73, status: 'completed' })
+    taroMocks.createProjectAnalysisJob.mockResolvedValue({
+      id: 91,
+      result: { recommendation: 'conditional_advance' },
+    })
+
+    render(<BlueprintScreen screenId='S41' />)
+    fireEvent.input(await screen.findByPlaceholderText('上传后的真实文件地址'), {
+      target: { value: 'oss://bucket/project.xlsx' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '登记上传资料' }))
+
+    await waitFor(() => expect(taroMocks.createEvidence).toHaveBeenCalledTimes(1))
+    expect(taroMocks.createDocumentParseJob).not.toHaveBeenCalled()
+    expect(taroMocks.createProjectAnalysisJob).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: '开始解析资料' }))
+    await waitFor(() => expect(taroMocks.runDocumentParseJob).toHaveBeenCalledWith(73))
+    expect(taroMocks.createProjectAnalysisJob).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: '生成分析结论' }))
+    await waitFor(() => expect(taroMocks.createProjectAnalysisJob).toHaveBeenCalledWith(
+      42,
+      { purpose: 'agent_recommendation' },
+    ))
+    expect(taroMocks.redirectTo).toHaveBeenCalledWith({ url: '/pages/s54/index' })
+  })
+
+  it('does not register a placeholder evidence URL when S41 has no real file', async () => {
+    taroMocks.storage.set('starhub-project-id', 42)
+    taroMocks.getMiniappScreen.mockResolvedValue(response({
+      screen_id: 'S41',
+      summary: { title: '上传项目资料' },
+      items: [],
+    }))
+
+    render(<BlueprintScreen screenId='S41' />)
+    fireEvent.click(await screen.findByRole('button', { name: '登记上传资料' }))
+
+    expect(await screen.findByText('请先填写真实文件地址，未上传文件不会登记为成功。')).toBeInTheDocument()
+    expect(taroMocks.createEvidence).not.toHaveBeenCalled()
+  })
+
+  it('reviews S42 mapping and confirms projects with a stable idempotency key', async () => {
+    taroMocks.storage.set('starhub-project-id', 42)
+    taroMocks.getMiniappScreen.mockResolvedValue(response({
+      screen_id: 'S42',
+      summary: { title: '确认解析结果' },
+      items: [{
+        id: 'parse-job-73',
+        entity_type: 'document_parse_job',
+        title: '项目清单.xlsx',
+        status: 'completed',
+        context: {
+          parse_job_id: 73,
+          result: {
+            field_mapping: { 项目名称: 'name', 预算城市: 'city' },
+            unmapped_columns: ['备注'],
+            candidate_projects: [
+              { row_number: 2, name: '南京站', city: '南京' },
+              { row_number: 3, name: '杭州站', city: '杭州' },
+            ],
+          },
+        },
+      }],
+    }))
+    taroMocks.confirmDocumentFieldMapping.mockResolvedValue({ id: 73 })
+    taroMocks.confirmDocumentParseJobProjects.mockResolvedValue({ projects: [{ id: 101 }] })
+
+    render(<BlueprintScreen screenId='S42' />)
+
+    expect(await screen.findByText('字段映射')).toBeInTheDocument()
+    expect(screen.getByText('未映射列：备注')).toBeInTheDocument()
+    expect(screen.getByText('南京站')).toBeInTheDocument()
+    expect(screen.getByText('南京')).toBeInTheDocument()
+    fireEvent.input(screen.getByLabelText('预算城市'), { target: { value: 'venue' } })
+    fireEvent.click(screen.getByRole('button', { name: '确认字段映射' }))
+    await waitFor(() => expect(taroMocks.confirmDocumentFieldMapping).toHaveBeenCalledWith(73, {
+      field_mapping: { 项目名称: 'name', 预算城市: 'venue' },
+    }))
+
+    fireEvent.click(screen.getByRole('button', { name: '确认候选项目' }))
+    await waitFor(() => expect(taroMocks.confirmDocumentParseJobProjects).toHaveBeenCalledWith(73, {
+      idempotency_key: 'miniapp-document-parse-73-confirm-projects',
+    }))
+  })
+
+  it('carries an S54 recommendation into S47 without creating a decision', async () => {
+    taroMocks.storage.set('starhub-project-id', 42)
+    taroMocks.storage.set('starhub-version-id', 8)
+    taroMocks.getMiniappScreen.mockResolvedValue(response({
+      screen_id: 'S54',
+      summary: { title: '项目分析' },
+      items: [],
+      options: {
+        latest_analysis: {
+          id: 91,
+          result: { recommendation: '补齐场馆授权后有条件推进' },
+        },
+      },
+    }))
+
+    render(<BlueprintScreen screenId='S54' />)
+    fireEvent.click(await screen.findByRole('button', { name: '带入负责人确认' }))
+
+    expect(taroMocks.storage.get('starhub-decision-draft')).toEqual({
+      analysis_job_id: 91,
+      project_id: 42,
+      version_id: 8,
+      recommendation: '补齐场馆授权后有条件推进',
+    })
+    expect(taroMocks.createDecision).not.toHaveBeenCalled()
+    expect(taroMocks.redirectTo).toHaveBeenCalledWith({ url: '/pages/s47/index' })
   })
 })

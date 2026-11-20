@@ -26,6 +26,7 @@ from .identity import (
 from .intelligence import (
     AlertEvent,
     CaseOutcome,
+    ConnectorDefinition,
     ConversionAssumption,
     DataAsset,
     DataQualityIssue,
@@ -67,6 +68,7 @@ __all__ = [
     "Assumption",
     "CaseOutcome",
     "ConversionAssumption",
+    "ConnectorDefinition",
     "DataAsset",
     "DataQualityIssue",
     "DataRecord",

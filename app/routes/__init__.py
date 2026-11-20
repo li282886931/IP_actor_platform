@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from . import ai, auth, collaboration, decisioning, evidence, finance, health, intelligence, miniapp, projects, reports, shows, users, workspaces
+from . import ai, auth, collaboration, connectors, decisioning, evidence, finance, health, intelligence, miniapp, projects, reports, shows, users, workspaces
 from . import decision_platform, ai_images
 from .ai import ai_generate, ai_generate_stream
 from .auth import issue_auth_captcha, web_login, wechat_login
@@ -74,6 +74,7 @@ from .users import create_user, delete_user, list_tenants, list_user_groups, lis
 router = APIRouter()
 for child_router in (
     decision_platform.router,
+    connectors.router,
     collaboration.router,
     miniapp.router,
     auth.router,

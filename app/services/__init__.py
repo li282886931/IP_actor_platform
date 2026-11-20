@@ -19,6 +19,7 @@ from .finance import (
     project_input_snapshot,
 )
 from .intelligence import connector_health, seed_market_dossier_data
+from .connector_registry import seed_connector_definitions
 from .seeding import (
     build_show_poster_url,
     ensure_runtime_columns,
@@ -70,6 +71,7 @@ __all__ = [
     "project_input_snapshot",
     "resolve_request_context",
     "seed_initial_data",
+    "seed_connector_definitions",
     "seed_market_dossier_data",
     "seed_venue_reference_data",
     "serialize_assumption",

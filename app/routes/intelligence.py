@@ -414,47 +414,87 @@ def run_external_data_job(job_id: int, db: Session = Depends(get_db)):
             db.refresh(job)
             return json_ok(serialize_external_data_job(job))
         raw_payload = connector_payload.pop("raw_payload")
-        asset = DataAsset(
-            tenant_id=tenant_id,
-            project_id=job.project_id,
-            data_source_id=source.id,
-            asset_type=connector_payload["asset_type"],
-            source_uri=connector_payload["source_uri"],
-            content_hash=hashlib.sha256(
-                json.dumps(raw_payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
-            ).hexdigest(),
-            visibility='project',
-            status='parsed',
-            raw_payload_ref=f"connector://{source.connector_key}/jobs/{job.id}",
-            created_by=job.requested_by,
-        )
-        db.add(asset)
-        db.flush()
-        records = [
-            DataRecord(
+        content_hash = hashlib.sha256(
+            json.dumps(raw_payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
+        ).hexdigest()
+        asset = db.query(DataAsset).filter(
+            DataAsset.tenant_id == tenant_id,
+            DataAsset.project_id == job.project_id,
+            DataAsset.data_source_id == source.id,
+            DataAsset.content_hash == content_hash,
+        ).first()
+        if asset:
+            records = db.query(DataRecord).filter(
+                DataRecord.asset_id == asset.id,
+            ).order_by(DataRecord.id).all()
+        else:
+            asset = DataAsset(
                 tenant_id=tenant_id,
-                asset_id=asset.id,
-                entity_type=item["entity_type"],
-                entity_id=item["entity_id"],
-                metric_key=item["metric_key"],
-                value_json=item["value_json"],
-                confidence=item["confidence"],
-                record_status='observed',
-                lineage={
+                project_id=job.project_id,
+                data_source_id=source.id,
+                asset_type=connector_payload["asset_type"],
+                source_uri=connector_payload["source_uri"],
+                content_hash=content_hash,
+                visibility='project',
+                status='parsed',
+                raw_payload_ref=f"connector://{source.connector_key}/jobs/{job.id}",
+                created_by=job.requested_by,
+            )
+            db.add(asset)
+            db.flush()
+            records = [
+                DataRecord(
+                    tenant_id=tenant_id,
+                    asset_id=asset.id,
+                    entity_type=item["entity_type"],
+                    entity_id=item["entity_id"],
+                    metric_key=item["metric_key"],
+                    value_json=item["value_json"],
+                    confidence=item["confidence"],
+                    record_status='observed',
+                    lineage={
+                        "connector_key": source.connector_key,
+                        "operation": connector_payload["operation"],
+                        "source_id": source.id,
+                    },
+                )
+                for item in connector_payload["records"]
+            ]
+            db.add_all(records)
+            db.flush()
+        source_label = f"connector-source:{source.id}"
+        evidence = next((
+            item for item in db.query(Evidence).filter(
+                Evidence.project_id == job.project_id,
+                Evidence.source == source_label,
+            )
+            if (item.meta or {}).get("content_hash") == content_hash
+        ), None)
+        if not evidence:
+            evidence = Evidence(
+                project_id=job.project_id,
+                name=f"{source.name}采集结果"[:255],
+                file_url=f"connector://{source.connector_key}/assets/{asset.id}",
+                evidence_type="connector_result",
+                source=source_label,
+                status="needs_review",
+                uploaded_by=job.requested_by,
+                meta={
+                    "asset_id": asset.id,
+                    "content_hash": content_hash,
                     "connector_key": source.connector_key,
                     "operation": connector_payload["operation"],
-                    "source_id": source.id,
+                    "requires_human_verification": True,
                 },
             )
-            for item in connector_payload["records"]
-        ]
-        db.add_all(records)
-        db.flush()
+            db.add(evidence)
+            db.flush()
         job.result = {
             "data_source_id": source.id,
             "connector_key": source.connector_key,
             "network_called": True,
             "asset": serialize_data_asset(asset, records),
+            "evidence_id": evidence.id,
             "item_count": len(records),
             "requires_human_verification": True,
         }

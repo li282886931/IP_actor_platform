@@ -83,6 +83,16 @@ class DocumentParseJobIn(BaseModel):
     parameters: Optional[dict] = None
 
 
+class DocumentMappingConfirmIn(BaseModel):
+    mapping: dict[str, dict[str, Optional[str]]]
+
+
+class DocumentProjectsConfirmIn(BaseModel):
+    idempotency_key: str = Field(min_length=1, max_length=128)
+    selected_rows: list[int] = Field(default_factory=list)
+    overrides: dict[str, dict[str, Any]] = Field(default_factory=dict)
+
+
 class GateIn(BaseModel):
     project_id: int
     name: str

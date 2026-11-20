@@ -11,6 +11,9 @@ module.exports = {
     "projectId": "starhub-project-id",
     "versionId": "starhub-version-id",
     "taskId": "starhub-task-id",
-    "artistId": "starhub-artist-id"
+    "artistId": "starhub-artist-id",
+    "evidenceId": "starhub-evidence-id",
+    "documentParseJobId": "starhub-document-parse-job-id",
+    "decisionDraft": "starhub-decision-draft"
   }
 }

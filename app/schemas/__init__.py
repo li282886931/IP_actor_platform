@@ -1,5 +1,11 @@
 from .auth import UserCreateIn, UserUpdateIn, WebLoginIn, WechatLoginIn
 from .commerce import AIGenerateIn, ArtistOut, OrderIn, ShowOut
+from .connectors import (
+    ConnectorRegistrationIn,
+    ConnectorRegistrationUpdateIn,
+    CustomConnectorDefinitionIn,
+    CustomConnectorDefinitionUpdateIn,
+)
 from .decisions import (
     AgentChatIn,
     AssumptionIn,
@@ -55,6 +61,10 @@ __all__ = [
     "AssumptionIn",
     "CaseOutcomeIn",
     "ConversionAssumptionIn",
+    "ConnectorRegistrationIn",
+    "ConnectorRegistrationUpdateIn",
+    "CustomConnectorDefinitionIn",
+    "CustomConnectorDefinitionUpdateIn",
     "DataAssetIn",
     "DataRecordIn",
     "DataSourceIn",

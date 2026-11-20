@@ -39,8 +39,8 @@ services:
         PYTHON_IMAGE: ${PYTHON_IMAGE:-python:3.11-slim-bookworm}
         PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}
     env_file:
-      - path: ${CONNECTOR_ENV_FILE:-./deployment.connectors.env}
-        required: false
+      - path: ${CONNECTOR_ENV_FILE:-./deployment.connectors.env.example}
+        required: true
     environment:
       MYSQL_HOST: mysql
       MYSQL_PORT: "3306"

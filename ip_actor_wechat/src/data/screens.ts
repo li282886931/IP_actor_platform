@@ -333,7 +333,7 @@ export const screenDefinitions: Record<string, ScreenDefinition> = {
     title: '补充场馆容量依据',
     subtitle: '上传后只生成候选字段',
     group: '依据',
-    primaryAction: '上传并开始识别',
+    primaryAction: '登记上传资料',
     highlight: '仅当前项目',
   },
   S42: {
@@ -341,7 +341,7 @@ export const screenDefinitions: Record<string, ScreenDefinition> = {
     title: '确认系统识别的字段',
     subtitle: '候选事实需要人工核验',
     group: '依据',
-    primaryAction: '确认并提交核验',
+    primaryAction: '确认字段映射',
     highlight: '发现容量冲突',
   },
   S43: {

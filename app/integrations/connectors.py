@@ -4,7 +4,14 @@ import re
 import requests
 
 
-MANAGED_CONNECTOR_KEYS = frozenset({"amap", "qweather"})
+MANAGED_CONNECTOR_KEYS = frozenset({
+    "amap",
+    "qweather",
+    "agent_api",
+    "mcp_web",
+    "custom_rest_api",
+    "custom_mcp",
+})
 
 
 def is_managed_connector(connector_key: str) -> bool:

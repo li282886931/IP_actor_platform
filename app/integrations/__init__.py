@@ -5,6 +5,13 @@ from .connectors import (
     is_managed_connector,
     resolve_connector_credential,
 )
+from .connector_runtime import (
+    ADAPTER_REGISTRY,
+    SKILL_RUNNER_REGISTRY,
+    connector_adapter,
+    register_skill_runner,
+    test_registration,
+)
 from .llm import (
     ai_generation_cache_key,
     build_ai_generation_prompt,
@@ -27,10 +34,15 @@ from .wechat import exchange_wechat_login_code, fetch_wechat_phone_number
 
 __all__ = [
     "connector_credential_is_configured",
+    "connector_adapter",
     "fetch_amap_venue_search",
     "fetch_qweather_daily_forecast",
     "is_managed_connector",
     "resolve_connector_credential",
+    "register_skill_runner",
+    "test_registration",
+    "ADAPTER_REGISTRY",
+    "SKILL_RUNNER_REGISTRY",
     "ai_generation_cache_key",
     "build_ai_generation_prompt",
     "completed_generation_cache_payload",

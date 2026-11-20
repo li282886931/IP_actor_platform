@@ -1485,7 +1485,17 @@ def test_spreadsheet_parse_job_extracts_xlsx_candidates_and_confirms_multiple_pr
         assert parsed["result"]["field_mapping"]["艺人"] == "artist_name"
         assert parsed["result"]["requires_mapping_confirmation"] is True
 
-        confirm_response = client.post(f"/document-parse-jobs/{job['id']}/confirm-projects")
+        mapping_response = client.post(
+            f"/document-parse-jobs/{job['id']}/confirm-mapping",
+            json={"mapping": parsed["result"]["suggested_mapping"]},
+        )
+        assert mapping_response.status_code == 200
+        assert mapping_response.json()["data"]["result"]["mapping_status"] == "confirmed"
+
+        confirm_response = client.post(
+            f"/document-parse-jobs/{job['id']}/confirm-projects",
+            json={"idempotency_key": "tour-budget-import"},
+        )
         assert confirm_response.status_code == 200
         confirmed = confirm_response.json()["data"]
         assert len(confirmed["projects"]) == 2

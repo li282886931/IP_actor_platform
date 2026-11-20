@@ -8,7 +8,11 @@
   </view>
   <view wx:if="{{isForm}}" class="panel">
     <view class="panel-title">输入与联调</view>
-    <input wx:if="{{screen.id !== 'S25'}}" class="input" value="{{keyword}}" bindinput="onInput" placeholder="{{placeholder}}" />
+    <input wx:if="{{screen.id !== 'S25' && screen.id !== 'S41'}}" class="input" value="{{keyword}}" bindinput="onInput" placeholder="{{placeholder}}" />
+    <view class="field-label">资料名称</view>
+    <input class="input" data-field="evidenceName" value="{{evidenceName}}" bindinput="onEvidenceInput" placeholder="例如：场馆容量确认" />
+    <view class="field-label">资料地址</view>
+    <input class="input" data-field="evidenceUrl" value="{{evidenceUrl}}" bindinput="onEvidenceInput" placeholder="上传后的真实文件地址" />
   </view>
   <view class="panel">
     <view class="panel-head">
@@ -25,10 +29,9 @@
     </view>
   </view>
   <view class="message" wx:if="{{message}}">{{message}}</view>
-  <block wx:if="{{screen.id === 'S01'}}">
-    <button class="primary" open-type="getPhoneNumber" bindgetphonenumber="onGetPhoneNumber">{{screen.primaryAction}}</button>
-  </block>
-  <block wx:else>
-    <button class="primary" bindtap="onPrimaryTap">{{screen.primaryAction}}</button>
-  </block>
+  <view class="pipeline-actions">
+    <button class="primary" data-action="upload" bindtap="onS41Action">登记上传资料</button>
+    <button class="secondary" data-action="parse" bindtap="onS41Action">开始解析资料</button>
+    <button class="secondary" data-action="analysis" bindtap="onS41Action">生成分析结论</button>
+  </view>
 </view>

@@ -5,7 +5,7 @@ import Sidebar from './Sidebar'
 
 afterEach(cleanup)
 it.each([
-  ['Admin', ['创建角色账号']],
+  ['Admin', ['创建角色账号', '数据接入']],
   ['B', ['经营工作台', '项目运营', '执行待办', '艺人智策', 'AI 宣发', '决策风控', '复盘与增量', '日历与风险监测']],
   ['Brand', ['品牌工作台', '合作候选', '效果与证据', '受众洞察', 'AI 品宣', '品牌权益与效果', '日历与风险监测']],
   ['G', ['城市工作台', '城市项目', '审批与安全', '文旅成效', '城市宣发', '资产与文旅成效', '日历与风险监测']],
@@ -17,11 +17,13 @@ it.each([
   const navigation = within(screen.getByRole('navigation', { name: '主导航' }))
   labels.forEach(label => expect(navigation.getByRole('link', { name: label })).toBeInTheDocument())
   if (role === 'Admin') {
-    expect(navigation.getAllByRole('link')).toHaveLength(1)
-    expect(navigation.getByRole('link')).toHaveAttribute('href', '/users')
+    expect(navigation.getAllByRole('link')).toHaveLength(2)
+    expect(navigation.getByRole('link', { name: '创建角色账号' })).toHaveAttribute('href', '/users')
+    expect(navigation.getByRole('link', { name: '数据接入' })).toHaveAttribute('href', '/admin/data')
     const mobile = within(screen.getByRole('navigation', { name: '移动端主导航' }))
-    expect(mobile.getAllByRole('link')).toHaveLength(1)
+    expect(mobile.getAllByRole('link')).toHaveLength(2)
     expect(mobile.getByRole('link', { name: '创建账号' })).toHaveAttribute('href', '/users')
+    expect(mobile.getByRole('link', { name: '数据接入' })).toHaveAttribute('href', '/admin/data')
     return
   }
   if (role !== 'Admin') expect(navigation.queryByText('用户管理')).not.toBeInTheDocument()

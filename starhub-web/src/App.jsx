@@ -13,7 +13,6 @@ import ShowDetail from './pages/ShowDetail'
 import UserManagement from './pages/UserManagement'
 import InvestorWorkspace from './pages/InvestorWorkspace'
 import ArtistWorkspace from './pages/ArtistWorkspace'
-import AdminWorkspace from './pages/AdminWorkspace'
 import BusinessWorkspace from './pages/BusinessWorkspace'
 import BrandWorkspace from './pages/BrandWorkspace'
 import GovernmentWorkspace from './pages/GovernmentWorkspace'
@@ -21,6 +20,7 @@ import AudienceWorkspace from './pages/AudienceWorkspace'
 import CollaborationWorkspace from './pages/CollaborationWorkspace'
 import PersonalPreferences from './pages/PersonalPreferences'
 import DecisionPlatform from './pages/DecisionPlatform'
+import DataConnectorRegistry from './pages/DataConnectorRegistry'
 import { roleMeta, routeTitles, roleFromUser, canAccessRoute } from './roleConfig'
 
 const homeByRole = { B: BusinessWorkspace, Brand: BrandWorkspace, G: GovernmentWorkspace, C: AudienceWorkspace, Investor: InvestorWorkspace, Artist: ArtistWorkspace }
@@ -423,7 +423,7 @@ export default function App() {
             <Route path="/performer/community" element={guard(<DecisionPlatform role={activeRole} mode="community" />)} />
             <Route path="/audience/plan" element={guard(<DecisionPlatform role={activeRole} mode="plan" />)} />
             <Route path="/calendar" element={guard(<DecisionPlatform role={activeRole} mode="calendar" />)} />
-            <Route path="/admin/data" element={guard(<AdminWorkspace mode="data" />)} />
+            <Route path="/admin/data" element={guard(<DataConnectorRegistry />)} />
             <Route path="/operations/projects" element={guard(<Home role="B" currentUser={currentUser} />)} />
             <Route path="/operations/tasks" element={guard(<BusinessWorkspace mode="tasks" />)} />
             <Route path="/partnership/opportunities" element={guard(<BrandWorkspace mode="opportunities" />)} />

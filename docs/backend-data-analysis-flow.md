@@ -103,9 +103,14 @@ POST /oss/uploads/{upload_id}/complete
 - 自动创建一条 `Evidence`
 - `Evidence.status = uploaded`
 
-当前已实现：上传登记与 Evidence 落库。
+当前已实现：
 
-尚未实现：真实文件二进制存储、预签名 URL、下载签名。
+- 上传登记与 Evidence 落库。
+- 阿里 OSS 与 MinIO 的 PUT 预签名上传。
+- 上传完成时通过对应 SDK 验证远端对象存在。
+- 受控 GET 下载签名，要求登录会话、当前空间项目权限和 HTTPS URL。
+
+未配置真实 OSS/MinIO 时仍保持明确的本地占位状态，不伪装为远端存储成功。
 
 ## 3. 文件解析与证据分析流程
 
@@ -125,21 +130,39 @@ Evidence(uploaded)
 
 - `POST /evidences/{evidence_id}/parse-jobs`
 - `POST /document-parse-jobs/{job_id}/run`
+- `GET /document-parse-jobs/{job_id}`
+- `POST /document-parse-jobs/{job_id}/confirm-mapping`
 - `POST /document-parse-jobs/{job_id}/confirm-projects`
+- `GET /evidences/{evidence_id}/download-url`
 
 当前已实现接口：
 
 - `POST /evidences/{evidence_id}/parse-jobs`
 - `POST /document-parse-jobs/{job_id}/run`
+- `GET /document-parse-jobs/{job_id}`
+- `POST /document-parse-jobs/{job_id}/confirm-mapping`
 - `POST /document-parse-jobs/{job_id}/confirm-projects`
+- `GET /evidences/{evidence_id}/download-url`
 
 当前已实现真实解析：
 
 - `.docx`：优先使用 `python-docx` 提取正文和表格；依赖不可用时使用 OpenXML 兜底读取正文。
-- 文本型 `.pdf`：优先使用 `pdfplumber`，再回退 `pypdf`。
+- `.pdf`：使用 PyMuPDF 逐页提取文本；无文本页以 150 DPI 渲染后 OCR，支持文本/OCR 混合 PDF。
+- 图片：使用 Tesseract OCR，默认语言 `chi_sim+eng`。
 - `.xlsx/.csv`：使用 `openpyxl` 或 CSV 解析抽取 sheet、表头、行数据和候选项目。
+- 远端阿里 OSS/MinIO Evidence：仅按服务端保存的 provider、bucket、object_key 通过 SDK 下载到临时文件，不请求客户端提交的 `file_url`。
 - 单项目文档解析完成后写入候选 `Fact / Assumption / Risk / Gate`，状态分别保持 `pending / active / open / pending`。
-- 表格批量导入解析后生成 `candidate_projects`、`field_mapping` 和预览数据，仍需用户确认后才创建项目。
+- 表格批量导入解析后生成建议映射和预览；用户确认映射后才重新生成候选项目，并可选择行、覆盖单行字段后创建项目。
+- 批量确认以 `idempotency_key` 写入 `job.result.confirmed_batches`；重试返回原项目，不重复创建。
+- `.xls` 旧版二进制 Excel 明确拒绝，要求转换为 `.xlsx` 或 `.csv`。
+
+安全限制：
+
+- 单文件最大 20 MB。
+- PDF 最大 20 页。
+- 单张图片或 PDF 渲染页最大 2500 万像素。
+- 单次提取最长 120 秒。
+- OCR 或远端下载失败时任务标记 `failed` 和 `needs_manual_input`，不生成候选事实。
 
 解析器建议：
 
@@ -397,20 +420,20 @@ AI 输出不能直接落最终决策，应拆成：
 - 项目、版本、财务、盈亏平衡
 - Facts / Evidences / Assumptions / Risks / Gates
 - Tasks / Decisions / Reports
-- OSS 上传预留接口
+- 阿里 OSS/MinIO PUT 上传签名、对象存在验证和 GET 下载签名
 - ExternalDataJob 异步采集预留接口
 - DocumentParseJob 文档解析接口
-- DOCX / PDF / XLSX / CSV 解析器
+- DOCX / PDF / 图片 / XLSX / CSV 解析器
+- 扫描 PDF、文本/OCR 混合 PDF 与图片 OCR
+- 远端阿里 OSS/MinIO 对象解析
 - 解析结果自动写入候选事实、假设、风险和门禁
-- Excel 候选项目批量确认接口
+- Excel 字段映射人工确认、候选行选择/覆盖与批量确认幂等
 - ProjectAnalysisJob 项目分析任务
 - 本地 llama_server 宣发生成
 - 小程序 API 封装
 
 未实现但已预留：
 
-- 真实 OSS 预签名上传
-- OCR
 - 外部 Web/API/Skill/MCP 真实采集执行器
 - 分析结果直接驱动负责人最终决策流转
 
@@ -419,7 +442,7 @@ AI 输出不能直接落最终决策，应拆成：
 优先级建议：
 
 1. 小程序在证据上传完成后展示“开始解析资料”和“生成分析结论”操作入口。
-2. 为 Excel 字段映射确认补充独立页面，允许用户在确认前调整表头映射。
-3. 接入 OCR 处理扫描 PDF 和图片资料。
-4. 接入真实 OSS 预签名上传与下载签名。
+2. 在现有映射确认 API 上补充独立页面，允许用户调整表头映射、选择候选行和覆盖单行字段。
+3. 为 OCR 人工录入状态补充负责人待办与重试入口。
+4. 在部署环境配置并验证真实阿里 OSS/MinIO 凭据；未配置时继续显示占位状态。
 5. 接入真实外部 Web/API/Skill/MCP 数据采集执行器。

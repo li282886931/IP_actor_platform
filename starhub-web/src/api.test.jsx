@@ -2,6 +2,15 @@ import { afterEach, expect, it, vi } from 'vitest'
 import API, { agentChat, listAgentSources, generateAI, generateAIStream, getInvestorWorkspace, getArtistWorkspace, getAdminWorkspace, getBusinessWorkspace, getBrandWorkspace, getGovernmentWorkspace, getAudienceWorkspace, mockOrder, createUser, updateUser } from './api'
 import { createProject, createProjectVersion, calculateFinance, calculateShow } from './api'
 import { generateAIImage, getAIImage } from './api'
+import {
+  activateDataSourceRegistration,
+  createCustomConnectorDefinition,
+  disableDataSourceRegistration,
+  listConnectorDefinitions,
+  registerDataSource,
+  testDataSourceRegistration,
+  updateDataSourceRegistration,
+} from './api'
 
 it('authenticates image generation and URL refresh with a 300 second generation timeout', async () => {
   localStorage.setItem('starhub-token', 'image-session')
@@ -116,4 +125,32 @@ it('uses the current account and tenant for project and finance writes, includin
       })
     }
   }
+})
+
+it('uses authenticated connector registry endpoints and preserves filter params', async () => {
+  localStorage.setItem('starhub-token', 'connector-session')
+  localStorage.setItem('starhub-tenant', JSON.stringify({ id: 12 }))
+  const get = vi.spyOn(API, 'get').mockResolvedValue({})
+  const post = vi.spyOn(API, 'post').mockResolvedValue({})
+  const patch = vi.spyOn(API, 'patch').mockResolvedValue({})
+  const headers = { Authorization: 'Bearer connector-session', 'X-Tenant-Id': '12' }
+
+  await listConnectorDefinitions({ source_kind: 'api' })
+  await createCustomConnectorDefinition({ key: 'custom_read' })
+  await registerDataSource({ definition_key: 'amap' })
+  await updateDataSourceRegistration(9, { credential_ref: 'AMAP_PROD' })
+  await testDataSourceRegistration(9)
+  await activateDataSourceRegistration(9)
+  await disableDataSourceRegistration(9)
+
+  expect(get).toHaveBeenCalledWith('/connector-definitions', {
+    params: { source_kind: 'api' },
+    headers,
+  })
+  expect(post).toHaveBeenNthCalledWith(1, '/connector-definitions/custom', { key: 'custom_read' }, { headers })
+  expect(post).toHaveBeenNthCalledWith(2, '/data-sources/register', { definition_key: 'amap' }, { headers })
+  expect(patch).toHaveBeenCalledWith('/data-sources/9', { credential_ref: 'AMAP_PROD' }, { headers })
+  expect(post).toHaveBeenNthCalledWith(3, '/data-sources/9/test', {}, { headers })
+  expect(post).toHaveBeenNthCalledWith(4, '/data-sources/9/activate', {}, { headers })
+  expect(post).toHaveBeenNthCalledWith(5, '/data-sources/9/disable', {}, { headers })
 })

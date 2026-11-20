@@ -2,8 +2,10 @@ import configparser
 import io
 import os
 import re
+import tempfile
 import uuid
 from datetime import timedelta
+from pathlib import Path
 from urllib.parse import quote, urlsplit
 
 from fastapi import HTTPException
@@ -22,6 +24,7 @@ from app.config import (
 )
 
 ALIYUN_OSS_PROVIDER = 'aliyun-oss'
+MAX_DOCUMENT_BYTES = 20 * 1024 * 1024
 
 
 def current_oss_provider():
@@ -149,8 +152,8 @@ def create_upload_target(provider: str, object_key: str, content_type: str):
         headers = {"Content-Type": content_type}
         try:
             upload_url = create_aliyun_oss_bucket().sign_url("PUT", object_key, 900, headers=headers)
-        except Exception as exc:
-            raise HTTPException(status_code=502, detail=f'Aliyun OSS upload URL generation failed: {exc}') from exc
+        except Exception:
+            raise HTTPException(status_code=502, detail='Aliyun OSS upload URL generation failed') from None
         return {
             "provider": "aliyun-oss",
             "bucket": bucket,
@@ -178,8 +181,8 @@ def create_upload_target(provider: str, object_key: str, content_type: str):
         ensure_minio_bucket(client, bucket)
         expires = timedelta(seconds=900)
         upload_url = client.presigned_put_object(bucket, object_key, expires=expires)
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=f'MinIO upload URL generation failed: {exc}') from exc
+    except Exception:
+        raise HTTPException(status_code=502, detail='MinIO upload URL generation failed') from None
 
     return {
         "provider": "minio",
@@ -189,6 +192,81 @@ def create_upload_target(provider: str, object_key: str, content_type: str):
         "headers": {"Content-Type": content_type},
         "expires_in_seconds": 900,
     }
+
+
+def create_download_target(provider: str, bucket: str, object_key: str, expires=900):
+    if not 1 <= expires <= 3600:
+        raise ValueError('下载签名有效期必须在 1 到 3600 秒之间')
+    if provider == 'aliyun-oss':
+        url = create_aliyun_oss_bucket().sign_url('GET', object_key, expires)
+    elif provider == 'minio':
+        url = create_minio_client().presigned_get_object(
+            bucket,
+            object_key,
+            expires=timedelta(seconds=expires),
+        )
+    else:
+        raise ValueError('对象存储未配置，无法生成下载签名')
+    parsed = urlsplit(url)
+    if parsed.scheme != 'https' or not parsed.netloc:
+        raise ValueError('对象下载地址必须使用 HTTPS')
+    return {
+        'url': url,
+        'method': 'GET',
+        'headers': {},
+        'expires_in_seconds': expires,
+    }
+
+
+def download_object_to_tempfile(
+    provider: str,
+    bucket: str,
+    object_key: str,
+    max_bytes=MAX_DOCUMENT_BYTES,
+):
+    suffix = Path(object_key).suffix
+    temporary = tempfile.NamedTemporaryFile(prefix='document-', suffix=suffix, delete=False)
+    path = Path(temporary.name)
+    response = None
+    try:
+        if provider == 'minio':
+            client = create_minio_client()
+            stat = client.stat_object(bucket, object_key)
+            if stat.size > max_bytes:
+                raise ValueError('远端文件超过 20 MB 限制')
+            response = client.get_object(bucket, object_key)
+            chunks = response.stream(64 * 1024)
+        elif provider == 'aliyun-oss':
+            aliyun_bucket = create_aliyun_oss_bucket()
+            meta = aliyun_bucket.get_object_meta(object_key)
+            size = getattr(meta, 'content_length', 0)
+            if size and size > max_bytes:
+                raise ValueError('远端文件超过 20 MB 限制')
+            response = aliyun_bucket.get_object(object_key)
+            chunks = iter(lambda: response.read(64 * 1024), b'')
+        else:
+            raise ValueError('对象存储未配置，无法下载远端资料')
+
+        written = 0
+        for chunk in chunks:
+            written += len(chunk)
+            if written > max_bytes:
+                raise ValueError('远端文件超过 20 MB 限制')
+            temporary.write(chunk)
+        temporary.close()
+        return path
+    except Exception:
+        temporary.close()
+        path.unlink(missing_ok=True)
+        raise
+    finally:
+        if response is not None:
+            close = getattr(response, 'close', None)
+            if close:
+                close()
+            release_conn = getattr(response, 'release_conn', None)
+            if release_conn:
+                release_conn()
 
 
 def local_report_storage_dir():
@@ -204,8 +282,8 @@ def store_generated_report(provider: str, object_key: str, content: bytes, conte
             raise HTTPException(status_code=500, detail='ALIYUN_OSS_BUCKET is required')
         try:
             create_aliyun_oss_bucket().put_object(object_key, io.BytesIO(content), headers={"Content-Type": content_type})
-        except Exception as exc:
-            raise HTTPException(status_code=502, detail=f'Aliyun OSS report upload failed: {exc}') from exc
+        except Exception:
+            raise HTTPException(status_code=502, detail='Aliyun OSS report upload failed') from None
         return {
             "provider": "aliyun-oss",
             "bucket": bucket,
@@ -237,8 +315,8 @@ def store_generated_report(provider: str, object_key: str, content: bytes, conte
         client = create_minio_client()
         ensure_minio_bucket(client, bucket)
         client.put_object(bucket, object_key, io.BytesIO(content), length=len(content), content_type=content_type)
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=f'MinIO report upload failed: {exc}') from exc
+    except Exception:
+        raise HTTPException(status_code=502, detail='MinIO report upload failed') from None
     return {
         "provider": "minio",
         "bucket": bucket,

@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app import database
 from app.models import Artist, ProjectVersion, Show, Venue
 from app.services.auth import get_or_create_default_context
+from app.services.connector_registry import seed_connector_definitions
 from app.services.intelligence import seed_market_dossier_data
 
 
@@ -284,6 +285,22 @@ def ensure_runtime_columns():
                     f"ALTER TABLE projects ADD COLUMN {column_name} {column_type}"
                 )
 
+    if inspector.has_table('data_sources'):
+        source_columns = {
+            column['name'] for column in inspector.get_columns('data_sources')
+        }
+        source_column_definitions = {
+            'definition_id': 'INTEGER',
+            'last_test_at': 'DATETIME',
+            'last_test_result': 'JSON',
+            'activated_at': 'DATETIME',
+        }
+        for column_name, column_type in source_column_definitions.items():
+            if column_name not in source_columns:
+                statements.append(
+                    f"ALTER TABLE data_sources ADD COLUMN {column_name} {column_type}"
+                )
+
     if not statements:
         return
 
@@ -315,6 +332,7 @@ def init_db():
         ensure_runtime_columns()
         db = database.SessionLocal()
         try:
+            seed_connector_definitions(db)
             seed_initial_data(db)
             get_or_create_default_context(db)
         finally:

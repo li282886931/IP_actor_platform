@@ -113,6 +113,7 @@ def serialize_assumption(assumption: Assumption):
 
 
 def serialize_evidence(evidence: Evidence):
+    metadata = evidence.meta or {}
     return {
         "id": evidence.id,
         "project_id": evidence.project_id,
@@ -122,7 +123,12 @@ def serialize_evidence(evidence: Evidence):
         "evidence_type": evidence.evidence_type,
         "source": evidence.source,
         "status": evidence.status,
-        "metadata": evidence.meta or {},
+        "metadata": metadata,
+        "download_available": bool(
+            metadata.get("provider") in {"aliyun-oss", "minio"}
+            and metadata.get("bucket")
+            and metadata.get("object_key")
+        ),
         "uploaded_by": evidence.uploaded_by,
     }
 
@@ -230,16 +236,29 @@ def serialize_external_data_job(job: ExternalDataJob):
 
 
 def serialize_data_source(source: DataSource):
+    test_result = {
+        key: value
+        for key, value in (source.last_test_result or {}).items()
+        if key in {"ok", "code", "message", "capabilities"}
+    }
     return {
         "id": source.id,
         "tenant_id": source.tenant_id,
         "name": source.name,
         "source_kind": source.source_kind,
         "connector_key": source.connector_key,
+        "definition_id": source.definition_id,
         "status": source.status,
         "credential_ref": source.credential_ref or '',
         "schedule_config": source.schedule_config or {},
         "scope_config": source.scope_config or {},
+        "last_test_at": (
+            source.last_test_at.isoformat() if source.last_test_at else None
+        ),
+        "last_test_result": test_result,
+        "activated_at": (
+            source.activated_at.isoformat() if source.activated_at else None
+        ),
     }
 
 

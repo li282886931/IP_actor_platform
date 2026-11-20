@@ -9,7 +9,7 @@ export const roleMeta = {
   Artist: { label: '艺人', title: '艺人工作台', desc: '管理个人资料、关联演出与内容宣发' },
 }
 export const navigationByRole = {
-  Admin: [item('/users', '创建角色账号', '创建账号')],
+  Admin: [item('/users', '创建角色账号', '创建账号'), item('/admin/data', '数据接入', '数据接入')],
   B: [item('/', '经营工作台', '首页'), item('/operations/projects', '项目运营', '项目'), item('/operations/tasks', '执行待办', '待办'), item('/artist', '艺人智策', '艺人'), item('/generate', 'AI 宣发', '宣发')],
   Brand: [item('/', '品牌工作台', '首页'), item('/partnership/opportunities', '合作候选', '候选'), item('/partnership/evidence', '效果与证据', '证据'), item('/artist', '受众洞察', '受众'), item('/generate', 'AI 品宣', '品宣')],
   G: [item('/', '城市工作台', '首页'), item('/city/projects', '城市项目', '项目'), item('/city/review', '审批与安全', '核验'), item('/city/impact', '文旅成效', '成效'), item('/generate', '城市宣发', '宣发')],

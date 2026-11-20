@@ -26,16 +26,24 @@ def origin(url):
 def validate_public_host(url):
     origin(url)
     parsed = urlsplit(url)
-    addresses = socket.getaddrinfo(parsed.hostname, parsed.port or (443 if parsed.scheme == "https" else 80))
+    try:
+        addresses = socket.getaddrinfo(
+            parsed.hostname,
+            parsed.port or (443 if parsed.scheme == "https" else 80),
+        )
+    except OSError as error:
+        raise ValueError("Webpage address could not be resolved") from error
     if not addresses or any(not ipaddress.ip_address(row[4][0]).is_global for row in addresses):
         raise ValueError("Non-public webpage address")
 
 
 def validate_endpoint(url):
+    if urlsplit(url).scheme != "https":
+        raise ValueError("Endpoint must use HTTPS")
     allowed = {origin(value.strip()) for value in os.environ.get("ANALYSIS_ALLOWED_ORIGINS", "").split(",") if value.strip()}
     if origin(url) not in allowed or urlsplit(url).query or urlsplit(url).fragment:
         raise ValueError("Endpoint is not configured in the allowlist")
-    # Local MCP/API services require an explicit operator-controlled allowlist above.
+    validate_public_host(url)
 
 
 def request_json(method, url, **kwargs):

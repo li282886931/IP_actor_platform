@@ -92,6 +92,15 @@ def test_compose_contract_renders_and_keeps_database_private(tmp_path):
     assert services["backend"]["environment"]["LLAMA_SERVER_MAX_TOKENS"] == "800"
     assert services["backend"]["environment"]["MINIO_ENDPOINT"] == ""
     assert services["backend"]["environment"]["MINIO_BUCKET"] == "ip-actor-platform"
+    assert services["backend"]["environment"]["DATA_CONNECTOR_SECRET_AMAP_PROD"] == ""
+    assert services["backend"]["environment"]["DATA_CONNECTOR_SECRET_QWEATHER_PROD"] == ""
+    assert services["backend"]["environment"]["DATA_CONNECTOR_SECRET_MCP_PROD"] == ""
+    assert services["backend"]["environment"]["DATA_CONNECTOR_SECRET_AGENT_API_PROD"] == ""
+    for name in ("web", "mysql", "redis"):
+        assert not any(
+            key.startswith("DATA_CONNECTOR_SECRET_")
+            for key in services[name].get("environment", {})
+        )
     assert services["backend"]["environment"]["ALIYUN_OSS_ENDPOINT"] == ""
     assert services["mysql"]["volumes"][0]["source"] == "mysql_data"
     assert services["redis"]["volumes"][0]["source"] == "redis_data"

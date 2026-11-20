@@ -91,13 +91,19 @@ WECHAT_MINIAPP_SECRET=实际小程序Secret
 
 本地模式下 Docker 的 `LLAMA_SERVER_URL` 默认为空，防止误访问容器自身的8080端口，仅本地模式保留已有回退行为。此套文件不附带 GPU、模型权重或模型服务。Nginx 超时覆盖读取与综合研判。
 
-需要外部凭据时复制 `deployment.connectors.env.example` 为 `deployment.connectors.env`，填写当前数据源实际使用的 `DATA_CONNECTOR_SECRET_<REF>` 或已有云模型密钥，并设权限 `0600`。该文件仅注入后端，默认不存在也可启动。修改环境配置后执行：
+需要外部凭据时复制 `deployment.connectors.env.example` 为 `deployment.connectors.env`，填写当前数据源实际使用的 `DATA_CONNECTOR_SECRET_<REF>` 或已有云模型密钥，并设权限 `0600`，同时在 `deployment.env` 设置 `CONNECTOR_ENV_FILE=./deployment.connectors.env`。默认空示例文件仅注入后端且可直接启动。修改环境配置后执行：
 
 ```bash
 docker compose --env-file deployment.env up -d --build backend
 ```
 
-实时来源还需在业务库配置 `DataSource` 的空间、项目、角色、只读工具和 endpoint，并配置项目职责授权。环境变量不会自动创建来源记录或代表第三方已接通。
+真实密钥不得写入数据库、前端配置或接口请求。`DataSource.credential_ref`
+只保存环境变量引用名，例如 `AMAP_PROD` 对应
+`DATA_CONNECTOR_SECRET_AMAP_PROD`；接口只返回引用名与
+`configured`/`missing` 状态，不回显密钥。配置后必须重新创建 backend
+容器，再在当前空间注册连接器、执行连接测试并由管理员启用。
+
+实时来源还需配置空间、项目、角色、只读工具和 endpoint，并配置项目职责授权。环境变量不会自动创建来源记录或代表第三方已接通。`contract_required`、`adapter_required` 和 `runner_required` 目录项不会因为填写任意密钥而变为可测试或可启用。
 
 ## 报告和阿里 OSS 的当前边界
 

@@ -13,4 +13,7 @@ export const STORAGE_KEYS = {
   projectId: 'starhub-project-id',
   versionId: 'starhub-version-id',
   taskId: 'starhub-task-id',
+  evidenceId: 'starhub-evidence-id',
+  documentParseJobId: 'starhub-document-parse-job-id',
+  decisionDraft: 'starhub-decision-draft',
 } as const
