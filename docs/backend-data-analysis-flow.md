@@ -148,7 +148,7 @@ Evidence(uploaded)
 
 - `.docx`：优先使用 `python-docx` 提取正文和表格；依赖不可用时使用 OpenXML 兜底读取正文。
 - `.pdf`：使用 PyMuPDF 逐页提取文本；无文本页以 150 DPI 渲染后 OCR，支持文本/OCR 混合 PDF。
-- 图片：使用 Tesseract OCR，默认语言 `chi_sim+eng`。
+- 图片：使用离线 RapidOCR + PP-OCRv4 ONNX 模型，默认 CPU 推理，无需外部鉴权。
 - `.xlsx/.csv`：使用 `openpyxl` 或 CSV 解析抽取 sheet、表头、行数据和候选项目。
 - 远端阿里 OSS/MinIO Evidence：仅按服务端保存的 provider、bucket、object_key 通过 SDK 下载到临时文件，不请求客户端提交的 `file_url`。
 - 单项目文档解析完成后写入候选 `Fact / Assumption / Risk / Gate`，状态分别保持 `pending / active / open / pending`。

@@ -160,3 +160,15 @@ def test_secret_generation_is_private_unique_and_never_overwrites(tmp_path):
     with pytest.raises(FileExistsError):
         module.generate_environment(ROOT / "deployment.env.example", target)
     assert target.read_text() == original
+
+
+def test_backend_uses_bundled_rapidocr_ppocrv4_without_tesseract():
+    requirements = (ROOT / "requirements.txt").read_text()
+    dockerfile = (ROOT / "Dockerfile.backend").read_text()
+
+    assert "rapidocr-onnxruntime==1.4.4" in requirements
+    assert "pytesseract" not in requirements.lower()
+    assert "tesseract-ocr" not in dockerfile.lower()
+    assert "ch_PP-OCRv4_det_infer.onnx" in dockerfile
+    assert "ch_PP-OCRv4_rec_infer.onnx" in dockerfile
+    assert "rapidocr_onnxruntime" in dockerfile

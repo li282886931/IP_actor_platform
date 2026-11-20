@@ -1,5 +1,7 @@
 import os
+import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
@@ -291,7 +293,7 @@ def test_mixed_pdf_uses_text_and_ocr_with_page_metadata(monkeypatch, tmp_path):
 
     def fake_ocr(image_bytes, language, timeout):
         assert image_bytes == b"png-page"
-        assert language == "chi_sim+eng"
+        assert language is None
         ocr_timeouts.append(timeout)
         return "第二页扫描文字"
 
@@ -304,7 +306,79 @@ def test_mixed_pdf_uses_text_and_ocr_with_page_metadata(monkeypatch, tmp_path):
     assert result["ocr_pages"] == [2]
     assert result["extracted_text"] == "第一页已有正文\n第二页扫描文字"
     assert [page["status"] for page in result["pages"]] == ["text", "ocr"]
+    assert result["pages"][1]["engine"] == "rapidocr"
+    assert result["pages"][1]["model"] == "PP-OCRv4"
     assert ocr_timeouts and 0 < ocr_timeouts[0] <= 120
+
+
+def test_rapidocr_engine_is_lazily_reused_with_cpu_configuration(monkeypatch):
+    from app.documents import ocr
+
+    created = []
+
+    class FakeRapidOCR:
+        def __init__(self, **kwargs):
+            created.append(kwargs)
+
+    monkeypatch.setenv("OCR_CPU_THREADS", "3")
+    monkeypatch.setenv("OCR_TEXT_SCORE", "0.6")
+    monkeypatch.setattr(ocr, "_OCR_ENGINE", None, raising=False)
+    monkeypatch.setattr(ocr, "_OCR_ENGINE_CONFIG", None, raising=False)
+    monkeypatch.setitem(
+        sys.modules,
+        "rapidocr_onnxruntime",
+        SimpleNamespace(RapidOCR=FakeRapidOCR),
+    )
+
+    first = ocr.get_ocr_engine()
+    second = ocr.get_ocr_engine()
+
+    assert first is second
+    assert created == [{
+        "intra_op_num_threads": 3,
+        "inter_op_num_threads": 1,
+        "text_score": 0.6,
+    }]
+
+
+def test_rapidocr_result_is_sorted_and_low_confidence_text_is_filtered():
+    from app.documents import ocr
+
+    result = ocr.normalize_rapidocr_result(([
+        [[[20, 40], [80, 40], [80, 60], [20, 60]], "第二行", 0.91],
+        [[[100, 10], [160, 10], [160, 30], [100, 30]], "右侧", 0.88],
+        [[[10, 10], [80, 10], [80, 30], [10, 30]], "第一行", 0.99],
+        [[[10, 70], [90, 70], [90, 90], [10, 90]], "低分噪声", 0.2],
+    ], [0.1, 0.2, 0.3]), text_score=0.5)
+
+    assert result["text"] == "第一行\n右侧\n第二行"
+    assert [line["score"] for line in result["lines"]] == [0.99, 0.88, 0.91]
+    assert result["engine"] == "rapidocr"
+    assert result["model"] == "PP-OCRv4"
+
+
+@pytest.mark.parametrize("stage", ["initialize", "inference"])
+def test_rapidocr_failures_are_sanitized(monkeypatch, stage):
+    from app.documents import ocr
+
+    if stage == "initialize":
+        monkeypatch.setattr(
+            ocr,
+            "get_ocr_engine",
+            lambda: (_ for _ in ()).throw(RuntimeError("SECRET_MODEL_PATH")),
+        )
+    else:
+        monkeypatch.setattr(
+            ocr,
+            "get_ocr_engine",
+            lambda: lambda _: (_ for _ in ()).throw(RuntimeError("SECRET_INPUT_PATH")),
+        )
+
+    with pytest.raises(ocr.DocumentExtractionError) as failure:
+        ocr._ocr_png_bytes(b"png", timeout=5)
+
+    assert "RapidOCR" in str(failure.value)
+    assert "SECRET" not in str(failure.value)
 
 
 def test_ocr_safety_limits(monkeypatch, tmp_path):
@@ -386,7 +460,7 @@ def test_ocr_failure_marks_job_for_manual_input_without_facts(monkeypatch, tmp_p
         ocr,
         "extract_text_with_ocr",
         lambda *args, **kwargs: (_ for _ in ()).throw(
-            ocr.DocumentExtractionError("Tesseract OCR 未安装，需人工录入")
+            ocr.DocumentExtractionError("RapidOCR PP-OCRv4 模型初始化失败，需人工录入")
         ),
     )
     try:
