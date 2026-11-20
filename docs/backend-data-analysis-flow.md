@@ -78,7 +78,7 @@ POST /oss/uploads/initiate
 - `headers`
 - `expires_in_seconds`
 
-当前实现是 `local-placeholder`，不绑定具体云厂商。后续接真实 OSS 时，只替换上传 URL 签名逻辑，小程序契约不变。
+当前支持阿里 OSS 与 MinIO 的真实 PUT 预签名上传；未配置对象存储时返回 `local-placeholder`，且客户端必须明确提示“存储待配置”，不得把占位地址当作上传成功。小程序契约不绑定具体云厂商。
 
 ### 2.2 完成上传
 
@@ -421,7 +421,8 @@ AI 输出不能直接落最终决策，应拆成：
 - Facts / Evidences / Assumptions / Risks / Gates
 - Tasks / Decisions / Reports
 - 阿里 OSS/MinIO PUT 上传签名、对象存在验证和 GET 下载签名
-- ExternalDataJob 异步采集预留接口
+- ExternalDataJob 异步采集与真实执行分发
+- 高德、和风天气、通用只读 API、只读 MCP 及白名单 Skill 执行框架
 - DocumentParseJob 文档解析接口
 - DOCX / PDF / 图片 / XLSX / CSV 解析器
 - 扫描 PDF、文本/OCR 混合 PDF 与图片 OCR
@@ -431,18 +432,18 @@ AI 输出不能直接落最终决策，应拆成：
 - ProjectAnalysisJob 项目分析任务
 - 本地 llama_server 宣发生成
 - 小程序 API 封装
+- 小程序真实文件选择、HTTPS PUT 预签名上传与完成回调
+- 小程序 S41/S42/S54/S47 的上传、解析、映射、分析与负责人确认流转
 
 未实现但已预留：
 
-- 外部 Web/API/Skill/MCP 真实采集执行器
-- 分析结果直接驱动负责人最终决策流转
+- 闭源票务、社交、音乐、支付、审批等平台的真实商务授权与供应商适配器
+- 尚未在服务器 `SKILL_RUNNER_REGISTRY` 注册的 Skill 执行器
 
 ## 10. 推荐下一步
 
 优先级建议：
 
-1. 小程序在证据上传完成后展示“开始解析资料”和“生成分析结论”操作入口。
-2. 在现有映射确认 API 上补充独立页面，允许用户调整表头映射、选择候选行和覆盖单行字段。
-3. 为 OCR 人工录入状态补充负责人待办与重试入口。
-4. 在部署环境配置并验证真实阿里 OSS/MinIO 凭据；未配置时继续显示占位状态。
-5. 接入真实外部 Web/API/Skill/MCP 数据采集执行器。
+1. 为 OCR 人工录入状态补充负责人待办与重试入口。
+2. 在部署环境配置并验证真实阿里 OSS/MinIO 凭据；未配置时继续显示占位状态。
+3. 为目录中 `contract_required`、`adapter_required`、`runner_required` 的连接器逐项取得合法授权并实现专用适配器。

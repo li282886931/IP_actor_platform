@@ -34,6 +34,11 @@ import SearchSelect, {
 import { DEFAULT_API_BASE, STORAGE_KEYS } from '@/config/runtime'
 import { screenDefinitions } from '@/data/screens'
 import { api, getApiBase, setApiBase } from '@/services/api'
+import {
+  OSSUploadError,
+  uploadEvidenceFile,
+  type SelectedMessageFile,
+} from '@/services/ossUpload'
 import type {
   DisplayItem,
   MiniappCandidateGroup,
@@ -122,6 +127,10 @@ export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
   const [selectedTaskIds, setSelectedTaskIds] = useState<number[]>(initialTaskId ? [initialTaskId] : [])
   const [expandedTaskIds, setExpandedTaskIds] = useState<number[]>(initialTaskId ? [initialTaskId] : [])
   const [fieldMapping, setFieldMapping] = useState<Record<string, string>>({})
+  const [selectedEvidenceFile, setSelectedEvidenceFile] = useState<SelectedMessageFile | null>(null)
+  const [uploadedEvidenceId, setUploadedEvidenceId] = useState(
+    Number(Taro.getStorageSync<number>(STORAGE_KEYS.evidenceId) || 0),
+  )
   const storedDecisionDraft = asRecord(Taro.getStorageSync<DecisionDraft>(STORAGE_KEYS.decisionDraft))
   const [form, setForm] = useState<Record<string, string>>({
     keyword: '',
@@ -327,38 +336,62 @@ export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
 
   const updateForm = (key: string, value: string) => setForm((current) => ({ ...current, [key]: value }))
 
+  const selectEvidenceFile = async () => {
+    try {
+      const result = await Taro.chooseMessageFile({ count: 1, type: 'file' })
+      const file = result.tempFiles[0]
+      if (!file) return
+      setSelectedEvidenceFile({
+        path: file.path,
+        name: file.name || file.path.split('/').pop() || '项目资料',
+        size: file.size,
+        type: file.type,
+      })
+      setMessage('已选择文件，上传完成后才可解析和分析。')
+    } catch (error) {
+      console.error('[S41] choose message file failed', error)
+    }
+  }
+
+  const registeredEvidenceId = uploadedEvidenceId || Number(items[0]?.context?.evidence_id || 0)
+
   const runS41Action = async (action: 'upload' | 'parse' | 'analysis') => {
     setLoadState('loading')
     setMessage('')
     try {
       if (action === 'upload') {
         const fileUrl = form.evidenceUrl.trim()
-        if (!fileUrl || fileUrl.startsWith('local://')) {
+        let evidence: Record<string, unknown>
+        if (selectedEvidenceFile) {
+          evidence = await uploadEvidenceFile({
+            projectId,
+            file: selectedEvidenceFile,
+            evidenceName: form.evidenceName.trim(),
+          })
+        } else if (!fileUrl.startsWith('https://')) {
           setLoadState('success')
-          setMessage('请先填写真实文件地址，未上传文件不会登记为成功。')
+          setMessage('仅支持已上传文件的 HTTPS 地址，禁止 local://。')
           return
+        } else {
+          evidence = asRecord(await api.createEvidence({
+            project_id: projectId,
+            name: form.evidenceName.trim() || '项目资料',
+            file_url: fileUrl,
+            evidence_type: 'document',
+            source: '微信小程序',
+          }))
         }
-        const evidence = asRecord(await api.createEvidence({
-          project_id: projectId,
-          name: form.evidenceName.trim() || '项目资料',
-          file_url: fileUrl,
-          evidence_type: 'document',
-          source: '微信小程序',
-        }))
         const evidenceId = Number(evidence.id || 0)
         if (!evidenceId) throw new Error('EVIDENCE_ID_MISSING')
         Taro.setStorageSync(STORAGE_KEYS.evidenceId, evidenceId)
+        setUploadedEvidenceId(evidenceId)
         setLoadState('success')
-        setMessage('资料已登记，可单独开始解析。')
+        setMessage('资料上传完成，可以开始解析和分析。')
         return
       }
 
       if (action === 'parse') {
-        const evidenceId = Number(
-          Taro.getStorageSync<number>(STORAGE_KEYS.evidenceId)
-          || items[0]?.context?.evidence_id
-          || 0,
-        )
+        const evidenceId = registeredEvidenceId
         if (!evidenceId) {
           setLoadState('success')
           setMessage('请先登记真实上传资料，再开始解析。')
@@ -376,13 +409,22 @@ export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
         return
       }
 
+      if (!registeredEvidenceId) {
+        setLoadState('success')
+        setMessage('请先完成资料上传，再生成分析结论。')
+        return
+      }
       await api.createProjectAnalysisJob(projectId, { purpose: 'agent_recommendation' })
       setLoadState('success')
       await replaceWithScreen('S54')
     } catch (error) {
       console.error(`[S41] ${action} failed`, error)
       setLoadState('error')
-      setMessage('操作未完成，输入已保留。请检查服务连接后重试。')
+      setMessage(error instanceof OSSUploadError && error.code === 'STORAGE_NOT_CONFIGURED'
+        ? '对象存储待配置，未生成可用的 HTTPS 上传签名。'
+        : selectedEvidenceFile && action === 'upload'
+          ? '操作未完成，已保留所选文件。请检查服务连接后重试。'
+          : '操作未完成，输入已保留。请检查服务连接后重试。')
     }
   }
 
@@ -793,11 +835,25 @@ export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
       return <ProjectReview draft={draft} />
     }
 
+    if (screenId === 'S41') {
+      return (
+        <View className={styles.formGrid}>
+          <FormField label='资料名称' value={form.evidenceName} placeholder='例如：场馆容量确认' onChange={(value) => updateForm('evidenceName', value)} />
+          <Button className={styles.fileSelectButton} onClick={() => void selectEvidenceFile()}>
+            选择文件
+          </Button>
+          <Text className={styles.selectedFileName}>
+            {selectedEvidenceFile?.name || '尚未选择文件'}
+          </Text>
+          <FormField label='资料地址' value={form.evidenceUrl} placeholder='已上传文件的 HTTPS 地址（可选）' onChange={(value) => updateForm('evidenceUrl', value)} />
+        </View>
+      )
+    }
+
     const fields: Record<string, Array<[string, string, string]>> = {
       S09: [['keyword', '搜索条件', '艺人、城市、档期或规模']],
       S36: [['assumptionTitle', '新增假设', '例如：中性上座率 80%']],
       S37: [['factTitle', '新增事实', '填写待核验的项目事实']],
-      S41: [['evidenceName', '资料名称', '例如：场馆容量确认'], ['evidenceUrl', '资料地址', '上传后的真实文件地址']],
       S45: [['gateName', '门禁名称', '政策、场地、授权或资金']],
       S47: [['condition', '前置条件', '填写负责人决定的必要条件']],
       S51: [['condition', '分享说明', '仅指定版本和授权成员可见']],
@@ -1166,7 +1222,7 @@ export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
       )}
 
       <View className={styles.actions}>
-        {loadState === 'error' ? (
+        {loadState === 'error' && screenId !== 'S41' ? (
           <Button className={styles.primaryButton} onClick={() => void fetchRemote()}>
             重新加载
           </Button>
@@ -1198,14 +1254,14 @@ export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
             </Button>
             <Button
               className={styles.secondaryButton}
-              disabled={loadState === 'loading'}
+              disabled={loadState === 'loading' || !registeredEvidenceId}
               onClick={() => void runS41Action('parse')}
             >
               开始解析资料
             </Button>
             <Button
               className={styles.secondaryButton}
-              disabled={loadState === 'loading'}
+              disabled={loadState === 'loading' || !registeredEvidenceId}
               onClick={() => void runS41Action('analysis')}
             >
               生成分析结论

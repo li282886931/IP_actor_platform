@@ -133,6 +133,20 @@ def test_mapping_confirmation_selection_override_and_idempotency(monkeypatch, tm
         assert mapped_job["result"]["mapping_status"] == "confirmed"
         assert mapped_job["result"]["candidate_projects"][0]["city"] == "北京"
 
+        flat_mapping = client.post(
+            f"/document-parse-jobs/{job['id']}/confirm-mapping",
+            json={
+                "field_mapping": {
+                    "项目名称": "name",
+                    "预算城市": "city",
+                    "艺人": "artist_name",
+                    "场馆": "venue",
+                }
+            },
+        )
+        assert flat_mapping.status_code == 200
+        assert flat_mapping.json()["data"]["result"]["candidate_projects"][1]["city"] == "上海"
+
         payload = {
             "idempotency_key": "batch-001",
             "selected_rows": [1],

@@ -76,7 +76,15 @@ def test_bootstrap_retires_only_insecure_seed_accounts_and_preserves_existing_ro
 @pytest.mark.skipif(shutil.which("docker") is None, reason="Docker CLI is needed to render Compose")
 def test_compose_contract_renders_and_keeps_database_private(tmp_path):
     env_file = tmp_path / "deployment.env"
-    env_file.write_text("\n".join(f"{k}={v}" for k, v in deployment_env().items()))
+    connector_file = tmp_path / "deployment.connectors.env"
+    connector_file.write_text(
+        "DATA_CONNECTOR_SECRET_AMAP_PROD=\n"
+        "DATA_CONNECTOR_SECRET_QWEATHER_PROD=\n"
+        "DATA_CONNECTOR_SECRET_MCP_PROD=\n"
+        "DATA_CONNECTOR_SECRET_AGENT_API_PROD=\n"
+    )
+    env = {**deployment_env(), "CONNECTOR_ENV_FILE": str(connector_file)}
+    env_file.write_text("\n".join(f"{k}={v}" for k, v in env.items()))
     result = subprocess.run(
         ["docker", "compose", "--env-file", str(env_file), "-f", str(ROOT / "docker-compose.yml"),
          "config", "--format", "json"], capture_output=True, text=True)

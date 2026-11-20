@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class DecisionIn(BaseModel):
@@ -84,7 +84,9 @@ class DocumentParseJobIn(BaseModel):
 
 
 class DocumentMappingConfirmIn(BaseModel):
-    mapping: dict[str, dict[str, Optional[str]]]
+    mapping: dict[str, Any] = Field(
+        validation_alias=AliasChoices('mapping', 'field_mapping'),
+    )
 
 
 class DocumentProjectsConfirmIn(BaseModel):

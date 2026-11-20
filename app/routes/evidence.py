@@ -550,10 +550,21 @@ def confirm_document_parse_job_mapping(
         raise HTTPException(status_code=404, detail='Document parse job not found')
     if job.status != 'completed' or job.parse_scope != 'batch_projects':
         raise HTTPException(status_code=400, detail='Spreadsheet parse job is not completed')
+    sheets = (job.result or {}).get('sheets') or []
+    submitted_mapping = payload.mapping
+    if submitted_mapping and all(
+        value is None or isinstance(value, str)
+        for value in submitted_mapping.values()
+    ):
+        submitted_mapping = {
+            str(sheet.get('name') or ''): submitted_mapping
+            for sheet in sheets
+            if sheet.get('name')
+        }
     try:
         candidates, mapping = build_candidate_projects_from_sheets(
-            (job.result or {}).get('sheets') or [],
-            payload.mapping,
+            sheets,
+            submitted_mapping,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

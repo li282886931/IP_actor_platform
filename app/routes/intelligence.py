@@ -1,11 +1,13 @@
 from app.core.responses import json_ok
 from app.database import get_db
 from app.integrations import connectors as connector_integration
+from app.integrations import connector_runtime
 from app.models import AlertEvent
 from app.models import Assumption
 from app.models import DataAsset
 from app.models import DataRecord
 from app.models import DataSource
+from app.models import ConnectorDefinition
 from app.models import Evidence
 from app.models import ExternalDataJob
 from app.models import Fact
@@ -350,14 +352,59 @@ def run_external_data_job(job_id: int, db: Session = Depends(get_db)):
         return json_ok(serialize_external_data_job(job))
     data_source_id = (job.parameters or {}).get('data_source_id')
     source = None
+    if not job.project_id:
+        job.status = 'blocked'
+        job.error_message = 'Project is required'
+        job.result = {
+            "reason": job.error_message,
+            "network_called": False,
+        }
+        db.commit()
+        db.refresh(job)
+        return json_ok(serialize_external_data_job(job))
+    if not data_source_id:
+        job.status = 'blocked'
+        job.error_message = 'Data source is required'
+        job.result = {
+            "reason": job.error_message,
+            "network_called": False,
+        }
+        db.commit()
+        db.refresh(job)
+        return json_ok(serialize_external_data_job(job))
     if data_source_id:
         source = db.query(DataSource).filter(
             DataSource.id == data_source_id,
             DataSource.tenant_id == tenant_id,
         ).first()
         if not source:
-            raise HTTPException(status_code=404, detail='Data source not found')
+            job.status = 'blocked'
+            job.error_message = 'Data source is required'
+            job.result = {
+                "data_source_id": data_source_id,
+                "reason": job.error_message,
+                "network_called": False,
+            }
+            db.commit()
+            db.refresh(job)
+            return json_ok(serialize_external_data_job(job))
+        definition = db.query(ConnectorDefinition).filter(
+            ConnectorDefinition.id == source.definition_id,
+        ).first() if source.definition_id else None
         can_fetch, reason = connector_health(source)
+        is_runtime_connector = (
+            source.connector_key in {
+                'agent_api', 'custom_rest_api', 'mcp_web', 'custom_mcp',
+            }
+            or source.source_kind == 'skill'
+        )
+        if is_runtime_connector:
+            reason = connector_runtime.execution_block_reason(
+                source,
+                definition,
+                job.parameters or {},
+            )
+            can_fetch = not reason
         if not can_fetch:
             job.status = 'blocked'
             job.error_message = reason
@@ -371,6 +418,8 @@ def run_external_data_job(job_id: int, db: Session = Depends(get_db)):
             db.refresh(job)
             return json_ok(serialize_external_data_job(job))
         if (
+            not is_runtime_connector
+            and
             connector_integration.is_managed_connector(source.connector_key)
             and not connector_integration.connector_credential_is_configured(source.connector_key, source.credential_ref)
         ):
@@ -385,24 +434,78 @@ def run_external_data_job(job_id: int, db: Session = Depends(get_db)):
             db.commit()
             db.refresh(job)
             return json_ok(serialize_external_data_job(job))
+        if (
+            source.connector_key not in {'amap', 'qweather'}
+            and not is_runtime_connector
+        ):
+            job.status = 'blocked'
+            job.error_message = 'Connector is not executable'
+            job.result = {
+                "data_source_id": source.id,
+                "connector_key": source.connector_key,
+                "reason": job.error_message,
+                "network_called": False,
+            }
+            db.commit()
+            db.refresh(job)
+            return json_ok(serialize_external_data_job(job))
     job.status = 'running'
     job.started_at = datetime.now(timezone.utc)
-    if source and source.connector_key in {'amap', 'qweather'}:
+    if source:
         try:
-            credential = connector_integration.resolve_connector_credential(source.connector_key, source.credential_ref)
-            if source.connector_key == 'amap':
-                connector_payload = connector_integration.fetch_amap_venue_search(
-                    credential,
-                    job.parameters or {},
-                    connector_integration.requests.get,
+            if source.connector_key in {'amap', 'qweather'}:
+                credential = connector_integration.resolve_connector_credential(
+                    source.connector_key,
+                    source.credential_ref,
                 )
+                if source.connector_key == 'amap':
+                    connector_payload = connector_integration.fetch_amap_venue_search(
+                        credential,
+                        job.parameters or {},
+                        connector_integration.requests.get,
+                    )
+                else:
+                    connector_payload = connector_integration.fetch_qweather_daily_forecast(
+                        credential,
+                        job.parameters or {},
+                        connector_integration.requests.get,
+                    )
             else:
-                connector_payload = connector_integration.fetch_qweather_daily_forecast(
-                    credential,
+                project = db.query(Project).filter(
+                    Project.id == job.project_id,
+                    Project.tenant_id == tenant_id,
+                ).first() if job.project_id else None
+                raw_result = connector_runtime.execute_registration(
+                    source,
+                    definition,
+                    project,
                     job.parameters or {},
-                    connector_integration.requests.get,
                 )
-        except (connector_integration.requests.RequestException, ValueError):
+                value = raw_result if isinstance(raw_result, dict) else {
+                    "value": raw_result,
+                }
+                connector_payload = {
+                    "asset_type": "connector_result",
+                    "source_uri": (
+                        (job.parameters or {}).get("url")
+                        if source.connector_key in {'mcp_web', 'custom_mcp'}
+                        else (source.scope_config or {}).get("endpoint", "")
+                    ),
+                    "operation": (
+                        (source.scope_config or {}).get("tool", "read")
+                        if source.connector_key in {'mcp_web', 'custom_mcp'}
+                        else "read"
+                    ),
+                    "raw_payload": value,
+                    "records": [{
+                        "entity_type": "project" if project else "tenant",
+                        "entity_id": str(project.id if project else tenant_id),
+                        "metric_key": "connector_result",
+                        "value_json": value,
+                        "confidence": 70,
+                    }],
+                }
+        except Exception:
             job.status = 'failed'
             job.error_message = 'Connector request failed'
             job.result = {
@@ -503,21 +606,6 @@ def run_external_data_job(job_id: int, db: Session = Depends(get_db)):
         db.commit()
         db.refresh(job)
         return json_ok(serialize_external_data_job(job))
-    job.result = {
-        "summary": f"已预留通过 {job.provider} 获取 {job.source_type} 数据的异步采集流程。",
-        "query": job.query,
-        "source_type": job.source_type,
-        "provider": job.provider,
-        "purpose": job.purpose,
-        "items": [],
-        "requires_human_verification": True,
-        "note": "当前为后端预留实现；接入真实 Skill、MCP 或第三方 API 后写入可追溯来源、采集时间和置信度。",
-    }
-    job.status = 'completed'
-    job.completed_at = datetime.now(timezone.utc)
-    db.commit()
-    db.refresh(job)
-    return json_ok(serialize_external_data_job(job))
 
 @router.post('/projects/{project_id}/analysis-jobs')
 def create_project_analysis_job(project_id: int, payload: ProjectAnalysisJobIn, db: Session = Depends(get_db),

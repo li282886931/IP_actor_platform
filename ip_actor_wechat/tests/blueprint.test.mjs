@@ -805,6 +805,15 @@ test('generated runtime keeps parsing, mapping, analysis and decision requests i
     ['starhub-version-id', 8],
   ])
   const requests = []
+  const calls = []
+  let uploadTarget = {
+    id: 7,
+    provider: 'aliyun-oss',
+    upload_url: 'https://bucket.example.com/project.xlsx?signature=real',
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
+  }
+  let initiateFailureDetail = ''
   const redirects = []
   let page
   globalThis.wx = {
@@ -813,8 +822,19 @@ test('generated runtime keeps parsing, mapping, analysis and decision requests i
     removeStorageSync: (key) => storage.delete(key),
     request: (options) => {
       requests.push(options)
-      const data = options.url.endsWith('/evidences/upload')
-        ? { id: 61 }
+      if (options.url.endsWith('/oss/uploads/initiate') && initiateFailureDetail) {
+        options.success({ statusCode: 500, data: { detail: initiateFailureDetail } })
+        return
+      }
+      if (options.method === 'PUT') {
+        calls.push('put')
+        options.success({ statusCode: 200, data: '' })
+        return
+      }
+      const data = options.url.endsWith('/oss/uploads/initiate')
+        ? uploadTarget
+        : options.url.endsWith('/oss/uploads/7/complete')
+          ? { evidence: { id: 61 } }
         : options.url.endsWith('/evidences/61/parse-jobs')
           ? { id: 73 }
           : options.url.endsWith('/projects/42/analysis-jobs')
@@ -824,6 +844,16 @@ test('generated runtime keeps parsing, mapping, analysis and decision requests i
               : {}
       options.success({ statusCode: 200, data: { code: 0, data } })
     },
+    chooseMessageFile: (options) => {
+      calls.push('choose')
+      options.success({ tempFiles: [{ path: 'wxfile://project.xlsx', name: 'project.xlsx', size: 8 }] })
+    },
+    getFileSystemManager: () => ({
+      readFile: (options) => {
+        calls.push('read')
+        options.success({ data: new ArrayBuffer(8) })
+      },
+    }),
     redirectTo: ({ url }) => redirects.push(url),
     switchTab: ({ url }) => redirects.push(url),
   }
@@ -843,15 +873,58 @@ test('generated runtime keeps parsing, mapping, analysis and decision requests i
   try {
     const runtime = require(runtimePath)
     runtime.createScreenPage('S41')
-    page.onEvidenceInput({
-      currentTarget: { dataset: { field: 'evidenceUrl' } },
-      detail: { value: 'oss://bucket/project.xlsx' },
-    })
+    assert.equal(page.data.evidenceId, 0)
+    await page.onS41Action({ currentTarget: { dataset: { action: 'choose' } } })
     await page.onS41Action({ currentTarget: { dataset: { action: 'upload' } } })
-    assert.deepEqual(requests.map((item) => item.url.split('8000')[1]), ['/evidences/upload'])
+    assert.deepEqual(calls, ['choose', 'read', 'put'])
+    assert.deepEqual(requests.map((item) => item.url.startsWith('https://')
+      ? 'PUT_SIGNED_URL'
+      : item.url.split('8000')[1]), [
+      '/oss/uploads/initiate',
+      'PUT_SIGNED_URL',
+      '/oss/uploads/7/complete',
+    ])
+    assert.equal(page.data.evidenceId, 61)
 
+    storage.delete('starhub-evidence-id')
+    uploadTarget = {
+      id: 8,
+      provider: 'local-placeholder',
+      upload_url: '/oss/local-placeholder/project.xlsx',
+      method: 'PUT',
+      headers: {},
+    }
+    runtime.createScreenPage('S41')
+    await page.onS41Action({ currentTarget: { dataset: { action: 'choose' } } })
+    const requestsBeforeRejectedUpload = requests.length
+    await page.onS41Action({ currentTarget: { dataset: { action: 'upload' } } })
+    assert.equal(requests.length, requestsBeforeRejectedUpload + 1)
+    assert.equal(page.data.selectedFile.name, 'project.xlsx')
+    assert.equal(page.data.evidenceId, 0)
+    assert.equal(page.data.loadState, 'error')
+    assert.match(page.data.message, /对象存储待配置/)
+
+    initiateFailureDetail = 'ALIYUN_OSS_ACCESS_KEY_ID is required'
+    runtime.createScreenPage('S41')
+    await page.onS41Action({ currentTarget: { dataset: { action: 'choose' } } })
+    await page.onS41Action({ currentTarget: { dataset: { action: 'upload' } } })
+    assert.equal(page.data.selectedFile.name, 'project.xlsx')
+    assert.equal(page.data.evidenceId, 0)
+    assert.match(page.data.message, /对象存储待配置/)
+    initiateFailureDetail = ''
+
+    uploadTarget = {
+      id: 7,
+      provider: 'aliyun-oss',
+      upload_url: 'https://bucket.example.com/project.xlsx?signature=real',
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
+    }
+    storage.set('starhub-evidence-id', 61)
+
+    const parseRequestStart = requests.length
     await page.onS41Action({ currentTarget: { dataset: { action: 'parse' } } })
-    assert.deepEqual(requests.slice(1).map((item) => item.url.split('8000')[1]), [
+    assert.deepEqual(requests.slice(parseRequestStart).map((item) => item.url.split('8000')[1]), [
       '/evidences/61/parse-jobs',
       '/document-parse-jobs/73/run',
     ])

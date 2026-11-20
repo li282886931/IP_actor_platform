@@ -17,6 +17,8 @@ const taroMocks = vi.hoisted(() => ({
   getSystemInfoSync: vi.fn(() => ({ platform: 'ios' })),
   wechatLogin: vi.fn(),
   createEvidence: vi.fn(),
+  chooseMessageFile: vi.fn(),
+  uploadEvidenceFile: vi.fn(),
   createDocumentParseJob: vi.fn(),
   runDocumentParseJob: vi.fn(),
   getDocumentParseJob: vi.fn(),
@@ -80,6 +82,7 @@ vi.mock('@tarojs/taro', () => ({
     redirectTo: taroMocks.redirectTo,
     switchTab: taroMocks.switchTab,
     stopPullDownRefresh: taroMocks.stopPullDownRefresh,
+    chooseMessageFile: taroMocks.chooseMessageFile,
   },
   usePullDownRefresh: vi.fn(),
   useRouter: () => ({ params: taroMocks.params }),
@@ -106,6 +109,17 @@ vi.mock('@/services/api', async () => {
     },
   }
 })
+
+vi.mock('@/services/ossUpload', () => ({
+  OSSUploadError: class OSSUploadError extends Error {
+    code: string
+    constructor(code: string) {
+      super(code)
+      this.code = code
+    }
+  },
+  uploadEvidenceFile: taroMocks.uploadEvidenceFile,
+}))
 
 import { ApiError } from '@/services/api'
 import BlueprintScreen from './index'
@@ -159,6 +173,8 @@ describe('BlueprintScreen aggregated loading', () => {
     taroMocks.getSystemInfoSync.mockReturnValue({ platform: 'ios' })
     taroMocks.wechatLogin.mockReset()
     taroMocks.createEvidence.mockReset()
+    taroMocks.chooseMessageFile.mockReset()
+    taroMocks.uploadEvidenceFile.mockReset()
     taroMocks.createDocumentParseJob.mockReset()
     taroMocks.runDocumentParseJob.mockReset()
     taroMocks.getDocumentParseJob.mockReset()
@@ -841,14 +857,17 @@ describe('BlueprintScreen aggregated loading', () => {
     expect(taroMocks.redirectTo).not.toHaveBeenCalledWith({ url: '/pages/s53/index' })
   })
 
-  it('keeps S41 upload, parsing and analysis as independent actions', async () => {
+  it('selects and uploads one S41 file before enabling parsing and analysis', async () => {
     taroMocks.storage.set('starhub-project-id', 42)
     taroMocks.getMiniappScreen.mockResolvedValue(response({
       screen_id: 'S41',
       summary: { title: '上传项目资料' },
       items: [],
     }))
-    taroMocks.createEvidence.mockResolvedValue({ id: 61 })
+    taroMocks.chooseMessageFile.mockResolvedValue({
+      tempFiles: [{ path: 'wxfile://project.xlsx', name: 'project.xlsx', size: 1024 }],
+    })
+    taroMocks.uploadEvidenceFile.mockResolvedValue({ id: 61 })
     taroMocks.createDocumentParseJob.mockResolvedValue({ id: 73 })
     taroMocks.runDocumentParseJob.mockResolvedValue({ id: 73, status: 'completed' })
     taroMocks.createProjectAnalysisJob.mockResolvedValue({
@@ -857,14 +876,24 @@ describe('BlueprintScreen aggregated loading', () => {
     })
 
     render(<BlueprintScreen screenId='S41' />)
-    fireEvent.input(await screen.findByPlaceholderText('上传后的真实文件地址'), {
-      target: { value: 'oss://bucket/project.xlsx' },
-    })
+    const parseButton = await screen.findByRole('button', { name: '开始解析资料' })
+    const analysisButton = screen.getByRole('button', { name: '生成分析结论' })
+    expect(parseButton).toBeDisabled()
+    expect(analysisButton).toBeDisabled()
+
+    fireEvent.click(screen.getByRole('button', { name: '选择文件' }))
+    expect(await screen.findByText('project.xlsx')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '登记上传资料' }))
 
-    await waitFor(() => expect(taroMocks.createEvidence).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(taroMocks.uploadEvidenceFile).toHaveBeenCalledWith({
+      projectId: 42,
+      file: { path: 'wxfile://project.xlsx', name: 'project.xlsx', size: 1024 },
+      evidenceName: '',
+    }))
     expect(taroMocks.createDocumentParseJob).not.toHaveBeenCalled()
     expect(taroMocks.createProjectAnalysisJob).not.toHaveBeenCalled()
+    expect(parseButton).toBeEnabled()
+    expect(analysisButton).toBeEnabled()
 
     fireEvent.click(screen.getByRole('button', { name: '开始解析资料' }))
     await waitFor(() => expect(taroMocks.runDocumentParseJob).toHaveBeenCalledWith(73))
@@ -878,7 +907,7 @@ describe('BlueprintScreen aggregated loading', () => {
     expect(taroMocks.redirectTo).toHaveBeenCalledWith({ url: '/pages/s54/index' })
   })
 
-  it('does not register a placeholder evidence URL when S41 has no real file', async () => {
+  it('keeps the selected S41 file after an upload failure', async () => {
     taroMocks.storage.set('starhub-project-id', 42)
     taroMocks.getMiniappScreen.mockResolvedValue(response({
       screen_id: 'S41',
@@ -886,11 +915,46 @@ describe('BlueprintScreen aggregated loading', () => {
       items: [],
     }))
 
-    render(<BlueprintScreen screenId='S41' />)
-    fireEvent.click(await screen.findByRole('button', { name: '登记上传资料' }))
+    taroMocks.chooseMessageFile.mockResolvedValue({
+      tempFiles: [{ path: 'wxfile://contract.pdf', name: 'contract.pdf', size: 2048 }],
+    })
+    taroMocks.uploadEvidenceFile.mockRejectedValue(new Error('PUT failed'))
 
-    expect(await screen.findByText('请先填写真实文件地址，未上传文件不会登记为成功。')).toBeInTheDocument()
+    render(<BlueprintScreen screenId='S41' />)
+    fireEvent.click(await screen.findByRole('button', { name: '选择文件' }))
+    await waitFor(() => expect(taroMocks.chooseMessageFile).toHaveBeenCalledWith({ count: 1, type: 'file' }))
+    await screen.findByText('contract.pdf')
+    fireEvent.click(screen.getByRole('button', { name: '登记上传资料' }))
+
+    await waitFor(() => expect(taroMocks.uploadEvidenceFile).toHaveBeenCalledTimes(1))
+    expect(await screen.findByText('操作未完成，已保留所选文件。请检查服务连接后重试。')).toBeInTheDocument()
+    expect(screen.getByText('contract.pdf')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '开始解析资料' })).toBeDisabled()
+    expect(taroMocks.storage.has('starhub-evidence-id')).toBe(false)
+  })
+
+  it('registers only an HTTPS URL when no local file is selected', async () => {
+    taroMocks.storage.set('starhub-project-id', 42)
+    taroMocks.getMiniappScreen.mockResolvedValue(response({
+      screen_id: 'S41',
+      summary: { title: '上传项目资料' },
+      items: [],
+    }))
+    taroMocks.createEvidence.mockResolvedValue({ id: 62 })
+
+    render(<BlueprintScreen screenId='S41' />)
+    const input = await screen.findByPlaceholderText('已上传文件的 HTTPS 地址（可选）')
+    fireEvent.input(input, { target: { value: 'local://pending-upload' } })
+    fireEvent.click(screen.getByRole('button', { name: '登记上传资料' }))
+    expect(await screen.findByText('仅支持已上传文件的 HTTPS 地址，禁止 local://。')).toBeInTheDocument()
     expect(taroMocks.createEvidence).not.toHaveBeenCalled()
+
+    fireEvent.input(input, { target: { value: 'https://cdn.example.com/project.xlsx' } })
+    fireEvent.click(screen.getByRole('button', { name: '登记上传资料' }))
+    await waitFor(() => expect(taroMocks.createEvidence).toHaveBeenCalledWith(expect.objectContaining({
+      file_url: 'https://cdn.example.com/project.xlsx',
+    })))
+    expect(screen.getByRole('button', { name: '开始解析资料' })).toBeEnabled()
   })
 
   it('reviews S42 mapping and confirms projects with a stable idempotency key', async () => {

@@ -56,8 +56,10 @@ const financeCalculationWxml = `
 const evidencePipelineWxml = `
     <view class="field-label">资料名称</view>
     <input class="input" data-field="evidenceName" value="{{evidenceName}}" bindinput="onEvidenceInput" placeholder="例如：场馆容量确认" />
+    <button class="secondary" data-action="choose" bindtap="onS41Action">选择文件</button>
+    <view class="item-desc">{{selectedFile.name || '尚未选择文件'}}</view>
     <view class="field-label">资料地址</view>
-    <input class="input" data-field="evidenceUrl" value="{{evidenceUrl}}" bindinput="onEvidenceInput" placeholder="上传后的真实文件地址" />`
+    <input class="input" data-field="evidenceUrl" value="{{evidenceUrl}}" bindinput="onEvidenceInput" placeholder="已上传文件的 HTTPS 地址（可选）" />`
 
 const parseReviewWxml = `
   <view wx:if="{{screen.id === 'S42' && parseJobId}}" class="panel">
@@ -122,8 +124,8 @@ const taskActionsWxml = `<view class="task-actions">
 
 const evidenceActionsWxml = `<view class="pipeline-actions">
     <button class="primary" data-action="upload" bindtap="onS41Action">登记上传资料</button>
-    <button class="secondary" data-action="parse" bindtap="onS41Action">开始解析资料</button>
-    <button class="secondary" data-action="analysis" bindtap="onS41Action">生成分析结论</button>
+    <button class="secondary" data-action="parse" disabled="{{loadState === 'loading' || !evidenceId}}" bindtap="onS41Action">开始解析资料</button>
+    <button class="secondary" data-action="analysis" disabled="{{loadState === 'loading' || !evidenceId}}" bindtap="onS41Action">生成分析结论</button>
   </view>`
 
 const parseReviewActionsWxml = `<view class="pipeline-actions">

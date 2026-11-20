@@ -19,6 +19,66 @@ def register_skill_runner(key, runner):
     SKILL_RUNNER_REGISTRY[key] = runner
 
 
+def _skill_runner_key(source, definition):
+    return (
+        (definition.adapter_key or "").strip()
+        if definition is not None
+        else ""
+    ) or source.connector_key
+
+
+def execution_block_reason(source, definition, parameters):
+    if source.status == "disabled":
+        return "Data source is disabled"
+    if source.status != "active":
+        return "Data source is not active"
+    if source.source_kind == "skill":
+        if SKILL_RUNNER_REGISTRY.get(_skill_runner_key(source, definition)) is None:
+            return "Skill runner is not registered"
+        return ""
+    if source.connector_key not in {
+        "agent_api", "custom_rest_api", "mcp_web", "custom_mcp",
+    }:
+        return "Connector is not executable"
+    auth_type = definition.auth_type if definition is not None else "bearer"
+    if auth_type != "none" and not resolve_connector_credential(
+        source.connector_key,
+        source.credential_ref,
+    ):
+        return "Connector credential is not configured"
+    try:
+        live_reads.validate_endpoint((source.scope_config or {}).get("endpoint", ""))
+    except (TypeError, ValueError):
+        return "Connector endpoint is invalid"
+    if source.connector_key in {"mcp_web", "custom_mcp"}:
+        page_url = (parameters or {}).get("url", "")
+        if not page_url:
+            return "MCP URL is required"
+        try:
+            live_reads.validate_public_host(page_url)
+        except (TypeError, ValueError):
+            return "MCP URL is invalid"
+    return ""
+
+
+def execute_registration(source, definition, project, parameters):
+    if source.source_kind == "skill":
+        runner = SKILL_RUNNER_REGISTRY[_skill_runner_key(source, definition)]
+        result = runner(
+            source=source,
+            definition=definition,
+            project=project,
+            parameters=parameters or {},
+            connection_test=False,
+        )
+        return live_reads.redact(result)
+    return live_reads.read_source(
+        source,
+        project,
+        page_url=(parameters or {}).get("url"),
+    )[0]
+
+
 def _result(ok, code, message, capabilities=None):
     return {
         "ok": ok,

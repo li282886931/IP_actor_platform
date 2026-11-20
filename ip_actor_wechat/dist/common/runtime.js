@@ -290,6 +290,47 @@ const query = (params) => {
   return entries.length ? '?' + entries.map((key) => encodeURIComponent(key) + '=' + encodeURIComponent(String(params[key]))).join('&') : ''
 }
 
+const contentTypeForFile = (file) => {
+  if (file.type && file.type.includes('/')) return file.type
+  const extension = String(file.name || '').split('.').pop().toLowerCase()
+  return {
+    csv: 'text/csv',
+    doc: 'application/msword',
+    docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    pdf: 'application/pdf',
+    ppt: 'application/vnd.ms-powerpoint',
+    pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    txt: 'text/plain',
+    xls: 'application/vnd.ms-excel',
+    xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  }[extension] || 'application/octet-stream'
+}
+
+const readLocalFile = (filePath) => new Promise((resolve, reject) => {
+  wx.getFileSystemManager().readFile({ filePath, success: ({ data }) => resolve(data), fail: reject })
+})
+
+const putSignedFile = (url, headers, data) => new Promise((resolve, reject) => {
+  wx.request({
+    url,
+    method: 'PUT',
+    header: headers,
+    data,
+    success: (response) => {
+      if (response.statusCode >= 200 && response.statusCode < 300) resolve()
+      else reject(new Error('OSS_PUT_FAILED'))
+    },
+    fail: reject
+  })
+})
+
+const isStorageConfigError = (error) => (
+  error && (
+    error.message === 'STORAGE_NOT_CONFIGURED'
+    || /ALIYUN_OSS|OSS.+required|upload URL generation/i.test(String(error.message || ''))
+  )
+)
+
 const createScreenPage = (screenId) => {
   const screen = screens[screenId]
   const initialTaskId = Number(wx.getStorageSync(STORAGE_KEYS.taskId) || 0)
@@ -304,6 +345,8 @@ const createScreenPage = (screenId) => {
       keyword: screenId === 'S47' ? String(initialDecisionDraft.recommendation || '') : '',
       evidenceName: '',
       evidenceUrl: '',
+      selectedFile: {},
+      evidenceId: Number(wx.getStorageSync(STORAGE_KEYS.evidenceId) || 0),
       parseJobId: Number(wx.getStorageSync(STORAGE_KEYS.documentParseJobId) || 0),
       fieldMappingRows: [],
       unmappedColumns: [],
@@ -684,34 +727,83 @@ const createScreenPage = (screenId) => {
       if (screenId !== 'S41') return
       const action = String(event.currentTarget.dataset.action || '')
       const projectId = Number(wx.getStorageSync(STORAGE_KEYS.projectId) || 0)
+      if (action === 'choose') {
+        return new Promise((resolve) => {
+          wx.chooseMessageFile({
+            count: 1,
+            type: 'file',
+            success: ({ tempFiles }) => {
+              const selectedFile = tempFiles && tempFiles[0] || {}
+              this.setData({
+                selectedFile,
+                message: selectedFile.path ? '已选择文件，上传完成后才可解析和分析。' : ''
+              })
+              resolve()
+            },
+            fail: resolve
+          })
+        })
+      }
       this.setData({ loadState: 'loading', message: '' })
       if (action === 'upload') {
         const fileUrl = String(this.data.evidenceUrl || '').trim()
-        if (!fileUrl || fileUrl.startsWith('local://')) {
+        const selectedFile = this.data.selectedFile || {}
+        if (!selectedFile.path && !fileUrl.startsWith('https://')) {
           this.setData({
             loadState: 'success',
-            message: '请先填写真实文件地址，未上传文件不会登记为成功。'
+            message: '仅支持已上传文件的 HTTPS 地址，禁止 local://。'
           })
           return Promise.resolve()
         }
-        return request('/evidences/upload', 'POST', {
-          project_id: projectId,
-          name: String(this.data.evidenceName || '').trim() || '项目资料',
-          file_url: fileUrl,
-          evidence_type: 'document',
-          source: '微信小程序'
-        }).then((evidence) => {
+        const upload = selectedFile.path
+          ? request('/oss/uploads/initiate', 'POST', {
+              project_id: projectId,
+              file_name: selectedFile.name || '项目资料',
+              content_type: contentTypeForFile(selectedFile),
+              evidence_type: 'document',
+              source: '微信小程序',
+              metadata: { name: String(this.data.evidenceName || '').trim() }
+            }).then((reservation) => {
+              if (
+                reservation.provider === 'local-placeholder'
+                || !String(reservation.upload_url || '').startsWith('https://')
+                || String(reservation.method || '').toUpperCase() !== 'PUT'
+              ) throw new Error('STORAGE_NOT_CONFIGURED')
+              return readLocalFile(selectedFile.path)
+                .then((data) => putSignedFile(reservation.upload_url, reservation.headers || {}, data))
+                .then(() => request('/oss/uploads/' + reservation.id + '/complete', 'POST', {
+                  size: selectedFile.size
+                }))
+                .then((completed) => completed.evidence || {})
+            })
+          : request('/evidences/upload', 'POST', {
+              project_id: projectId,
+              name: String(this.data.evidenceName || '').trim() || '项目资料',
+              file_url: fileUrl,
+              evidence_type: 'document',
+              source: '微信小程序'
+            })
+        return upload.then((evidence) => {
           const evidenceId = Number(evidence.id || 0)
           if (!evidenceId) throw new Error('EVIDENCE_ID_MISSING')
           wx.setStorageSync(STORAGE_KEYS.evidenceId, evidenceId)
-          this.setData({ loadState: 'success', message: '资料已登记，可单独开始解析。' })
+          this.setData({
+            evidenceId,
+            loadState: 'success',
+            message: '资料上传完成，可以开始解析和分析。'
+          })
         }).catch((error) => {
           console.error('[S41] evidence upload registration failed', error)
-          this.setData({ loadState: 'error', message: '资料登记失败，请检查后重试。' })
+          this.setData({
+            loadState: 'error',
+            message: isStorageConfigError(error)
+              ? '对象存储待配置，未生成可用的 HTTPS 上传签名。'
+              : '资料上传失败，已保留所选文件和地址，请检查后重试。'
+          })
         })
       }
       if (action === 'parse') {
-        const evidenceId = Number(wx.getStorageSync(STORAGE_KEYS.evidenceId) || 0)
+        const evidenceId = Number(this.data.evidenceId || wx.getStorageSync(STORAGE_KEYS.evidenceId) || 0)
         if (!evidenceId) {
           this.setData({ loadState: 'success', message: '请先登记真实上传资料，再开始解析。' })
           return Promise.resolve()
@@ -735,6 +827,11 @@ const createScreenPage = (screenId) => {
         })
       }
       if (action === 'analysis') {
+        const evidenceId = Number(this.data.evidenceId || wx.getStorageSync(STORAGE_KEYS.evidenceId) || 0)
+        if (!evidenceId) {
+          this.setData({ loadState: 'success', message: '请先完成资料上传，再生成分析结论。' })
+          return Promise.resolve()
+        }
         return request('/projects/' + projectId + '/analysis-jobs', 'POST', {
           purpose: 'agent_recommendation'
         }).then(() => {

@@ -586,7 +586,7 @@ def test_feasibility_report_uploads_generated_docx_to_minio(monkeypatch):
         db.close()
 
 
-def test_external_data_async_job_can_be_run_and_queried(monkeypatch):
+def test_external_data_job_without_source_is_blocked_and_can_be_queried(monkeypatch):
     client, session_factory = make_test_client(monkeypatch)
 
     try:
@@ -616,15 +616,14 @@ def test_external_data_async_job_can_be_run_and_queried(monkeypatch):
 
         run_response = client.post(f"/external-data/jobs/{job['id']}/run")
         assert run_response.status_code == 200
-        completed = run_response.json()["data"]
-        assert completed["status"] == "completed"
-        assert completed["result"]["source_type"] == "web"
-        assert completed["result"]["provider"] == "mcp"
-        assert completed["result"]["requires_human_verification"] is True
+        blocked = run_response.json()["data"]
+        assert blocked["status"] == "blocked"
+        assert blocked["result"]["reason"] == "Data source is required"
+        assert blocked["result"]["network_called"] is False
 
         get_response = client.get(f"/external-data/jobs/{job['id']}")
         assert get_response.status_code == 200
-        assert get_response.json()["data"]["status"] == "completed"
+        assert get_response.json()["data"]["status"] == "blocked"
 
         list_response = client.get(f"/external-data/jobs?project_id={project['id']}")
         assert list_response.status_code == 200
@@ -982,10 +981,14 @@ def test_qweather_connector_normalizes_daily_forecast_response_without_exposing_
     }]
 
 
-def test_active_unmanaged_connector_keeps_existing_placeholder_execution(monkeypatch):
+def test_active_unmanaged_connector_is_blocked_without_placeholder_execution(monkeypatch):
     client, _ = make_test_client(monkeypatch)
 
     try:
+        project = client.post(
+            "/projects",
+            json={"name": "主办方接口预留项目"},
+        ).json()["data"]
         source = client.post(
             "/data-sources",
             json={
@@ -999,6 +1002,7 @@ def test_active_unmanaged_connector_keeps_existing_placeholder_execution(monkeyp
         job = client.post(
             "/external-data/jobs",
             json={
+                "project_id": project["id"],
                 "source_type": "api",
                 "provider": "organizer_files",
                 "query": "同步主办方资料",
@@ -1008,8 +1012,9 @@ def test_active_unmanaged_connector_keeps_existing_placeholder_execution(monkeyp
 
         response = client.post(f"/external-data/jobs/{job['id']}/run")
         assert response.status_code == 200
-        assert response.json()["data"]["status"] == "completed"
-        assert response.json()["data"]["result"]["requires_human_verification"] is True
+        assert response.json()["data"]["status"] == "blocked"
+        assert response.json()["data"]["result"]["network_called"] is False
+        assert response.json()["data"]["result"]["reason"] == "Connector is not executable"
     finally:
         app_module.app.dependency_overrides.clear()
 
