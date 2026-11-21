@@ -5,15 +5,22 @@ DATABASE_URL_ENV = 'DATABASE_URL'
 DATABASE_URL_EXAMPLE = 'mysql+pymysql://root:123456789@127.0.0.1:3306/ip_actor_platform?charset=utf8mb4'
 DATABASE_URL = DATABASE_URL_EXAMPLE
 
-LLAMA_SERVER_URL = 'http://127.0.0.1:8080/v1/chat/completions'
-LLAMA_SERVER_MODEL = 'local-model'
-LLAMA_SERVER_TIMEOUT_SECONDS = 300
+LLAMA_SERVER_URL = os.environ.get('LLAMA_SERVER_URL', 'http://127.0.0.1:8080/v1/chat/completions')
+LLAMA_SERVER_MODEL = os.environ.get('LLAMA_SERVER_MODEL', 'local-model')
+LLAMA_SERVER_TIMEOUT_SECONDS = int(os.environ.get('LLAMA_SERVER_TIMEOUT_SECONDS', '300'))
 LLAMA_SERVER_MAX_TOKENS = int(os.environ.get('LLAMA_SERVER_MAX_TOKENS', '800'))
+LLM_PROVIDER = os.environ.get('LLM_PROVIDER', 'siliconflow')
+SILICONFLOW_BASE_URL = os.environ.get('SILICONFLOW_BASE_URL', 'https://api.siliconflow.cn/v1')
+SILICONFLOW_MODEL = os.environ.get('SILICONFLOW_MODEL', 'Qwen/Qwen3.5-35B-A3B')
+SILICONFLOW_MAX_TOKENS = int(os.environ.get('SILICONFLOW_MAX_TOKENS', '8192'))
+SILICONFLOW_THINKING_BUDGET = int(os.environ.get('SILICONFLOW_THINKING_BUDGET', '2048'))
+SILICONFLOW_API_KEY = os.environ.get('SILICONFLOW_API_KEY', 'sk-dhvvjqngxuazjycechdbcrfmttvqhmhoisvmraodpnyvnrxs')
 
 OSS_PROVIDER = 'local-placeholder'
 MINIO_ENDPOINT = '127.0.0.1:9000'
 MINIO_BUCKET = 'ip-actor-platform'
 MINIO_SECURE = False
+ALIYUN_OSS_PUBLIC_BASE_URL = ''
 
 # Aliyun OSS（兼容线上服务器 /root/.ossutilconfig 配置）
 ALIYUN_OSS_CONFIG_PATH = os.environ.get('ALIYUN_OSS_CONFIG_PATH', '/root/.ossutilconfig')

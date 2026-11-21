@@ -9,7 +9,7 @@ export const roleMeta = {
   Artist: { label: '艺人', title: '艺人工作台', desc: '管理个人资料、关联演出与内容宣发' },
 }
 export const navigationByRole = {
-  Admin: [item('/users', '创建角色账号', '创建账号')],
+  Admin: [item('/users', '创建角色账号', '创建账号'), item('/admin/data', '数据接入', '数据接入')],
   B: [item('/', '经营工作台', '首页'), item('/operations/projects', '项目运营', '项目'), item('/operations/tasks', '执行待办', '待办'), item('/artist', '艺人智策', '艺人'), item('/generate', 'AI 宣发', '宣发')],
   Brand: [item('/', '品牌工作台', '首页'), item('/partnership/opportunities', '合作候选', '候选'), item('/partnership/evidence', '效果与证据', '证据'), item('/artist', '受众洞察', '受众'), item('/generate', 'AI 品宣', '品宣')],
   G: [item('/', '城市工作台', '首页'), item('/city/projects', '城市项目', '项目'), item('/city/review', '审批与安全', '核验'), item('/city/impact', '文旅成效', '成效'), item('/generate', '城市宣发', '宣发')],
@@ -18,9 +18,19 @@ export const navigationByRole = {
   Artist: [item('/', '艺人工作台', '首页'), item('/performer/profile', '我的资料', '资料'), item('/performer/opportunities', '演出机会', '演出机会'), item('/generate', 'AI 宣发', '宣发')],
 }
 const collaborationLabels = { Admin: '授权与异常协作', B: '项目执行协作', Brand: '品牌合作协作', G: '材料核验协作', Investor: '投资评估协作', Artist: '艺人履约协作', C: '收藏与预约' }
+const decisionNavigation = {
+  B: [item('/operations/decision', '决策风控', '风控'), item('/operations/review', '复盘与增量', '复盘')],
+  Brand: [item('/partnership/valuation', '品牌权益与效果', '权益')],
+  Investor: [item('/investment/returns', '回报与止损', '回报')],
+  G: [item('/city/assets', '资产与文旅成效', '资产')],
+  Artist: [item('/performer/community', '动态与成长', '动态')],
+  C: [item('/audience/plan', '年度观演计划', '计划')],
+}
 Object.entries(navigationByRole).forEach(([role, entries]) => {
   if (role === 'Admin') return
   entries.splice(1, 0, item('/collaboration', collaborationLabels[role], '协作'))
+  entries.push(...decisionNavigation[role])
+  if (role !== 'C' && role !== 'Artist') entries.push(item('/calendar', '日历与风险监测', '日历'))
   entries.push(item('/preferences', '个人关注', '关注'))
 })
 export const routeTitles = { ...Object.fromEntries(Object.values(navigationByRole).flat().filter(i => i.to !== '/').map(i => [i.to, i.label])), '/collaboration': '角色协作', '/preferences': '个人关注' }

@@ -53,6 +53,32 @@ const financeCalculationWxml = `
       <view class="field-label">目标利润</view><input class="input" data-field="target_profit" value="{{financeDraft.target_profit}}" bindinput="onFinanceInput" placeholder="目标利润 / 元" />
     </view>`
 
+const evidencePipelineWxml = `
+    <view class="field-label">资料名称</view>
+    <input class="input" data-field="evidenceName" value="{{evidenceName}}" bindinput="onEvidenceInput" placeholder="例如：场馆容量确认" />
+    <button class="secondary" data-action="choose" bindtap="onS41Action">选择文件</button>
+    <view class="item-desc">{{selectedFile.name || '尚未选择文件'}}</view>
+    <view class="field-label">资料地址</view>
+    <input class="input" data-field="evidenceUrl" value="{{evidenceUrl}}" bindinput="onEvidenceInput" placeholder="已上传文件的 HTTPS 地址（可选）" />`
+
+const parseReviewWxml = `
+  <view wx:if="{{screen.id === 'S42' && parseJobId}}" class="panel">
+    <view class="panel-head">
+      <view class="panel-title">字段映射</view>
+      <view class="state">{{fieldMappingRows.length}} 列</view>
+    </view>
+    <view wx:for="{{fieldMappingRows}}" wx:key="header" class="mapping-row">
+      <view class="field-label">{{item.header}}</view>
+      <input class="input mapping-input" data-index="{{index}}" value="{{item.field}}" bindinput="onMappingInput" placeholder="留空表示不映射" />
+    </view>
+    <view class="mapping-notice">未映射列：{{unmappedColumns.join('、') || '无'}}</view>
+    <view class="panel-title candidate-title">候选行预览</view>
+    <view wx:for="{{candidateProjects}}" wx:key="row_number" class="candidate-preview-row">
+      <view class="item-title">{{item.name || item.artist_name || '候选项目'}}</view>
+      <view class="item-desc">{{item.city || '待定城市'}} · {{item.venue || '待定场馆'}}</view>
+    </view>
+  </view>`
+
 const businessItemsWxml = `<view wx:for="{{items}}" wx:key="id" class="item" data-entity-type="{{item.detailRef.entity_type}}" data-entity-id="{{item.detailRef.entity_id}}" bindtap="onBusinessItemTap">
       <view class="item-main">
         <view class="item-title">{{item.title}}</view>
@@ -96,6 +122,22 @@ const taskActionsWxml = `<view class="task-actions">
     <button class="reject" data-action="reject" disabled="{{loadState === 'loading' || !selectedTaskIds.length}}" bindtap="onBatchTaskAction">拒绝接单</button>
   </view>`
 
+const evidenceActionsWxml = `<view class="pipeline-actions">
+    <button class="primary" data-action="upload" bindtap="onS41Action">登记上传资料</button>
+    <button class="secondary" data-action="parse" disabled="{{loadState === 'loading' || !evidenceId}}" bindtap="onS41Action">开始解析资料</button>
+    <button class="secondary" data-action="analysis" disabled="{{loadState === 'loading' || !evidenceId}}" bindtap="onS41Action">生成分析结论</button>
+  </view>`
+
+const parseReviewActionsWxml = `<view class="pipeline-actions">
+    <button class="primary" data-action="mapping" bindtap="onS42Action">确认字段映射</button>
+    <button class="secondary" data-action="projects" bindtap="onS42Action">确认候选项目</button>
+  </view>`
+
+const agentActionsWxml = `<view class="pipeline-actions">
+    <button class="primary" bindtap="onPrimaryTap">{{screen.primaryAction}}</button>
+    <button class="secondary" bindtap="onRecommendationToDecision">带入负责人确认</button>
+  </view>`
+
 const valueEvidenceWxml = `
   <view wx:if="{{options.value_evidence.length}}" class="panel">
     <view class="panel-title">价值证据</view>
@@ -129,6 +171,17 @@ const calibrationWxml = `
     <view class="panel-title">预测与实际差异</view>
     <view class="item"><view class="item-main"><view class="item-title">预测利润</view></view><view class="badge">{{options.calibration_loop.forecast_profit}}</view></view>
     <view class="item"><view class="item-main"><view class="item-title">实际利润</view></view><view class="badge">{{options.calibration_loop.actual_profit}}</view></view>
+  </view>`
+
+const decisionV5Wxml = `
+  <view wx:if="{{options.decision_v5}}" class="panel">
+    <view class="panel-title">决策风控报告 #{{options.decision_v5.report_id}}</view>
+    <view class="item-desc">规则版本 #{{options.decision_v5.rule_version_id}} · 同步工作台核验结果</view>
+    <view wx:for="{{options.decision_v5.items}}" wx:key="label" class="item">
+      <view class="item-main"><view class="item-title">{{item.label}}</view></view>
+      <view class="badge">{{item.value}}</view>
+    </view>
+    <view wx:for="{{options.decision_v5.messages}}" wx:key="*this" class="item-desc">{{item}}</view>
   </view>`
 
 const metricGridWxml = `
@@ -208,6 +261,7 @@ const ticketingRingWxml = `
 export const buildScreenWxml = (screenId, { includeBack = false } = {}) => {
   const projectSearch = ['S13', 'S14', 'S15', 'S16'].includes(screenId) ? projectSearchWxml : ''
   const financeCalculation = screenId === 'S25' ? financeCalculationWxml : ''
+  const evidencePipeline = screenId === 'S41' ? evidencePipelineWxml : ''
   const taskScreen = screenId === 'S56'
   const planScreen = screenId === 'S53'
   const specialPanels = []
@@ -225,7 +279,18 @@ export const buildScreenWxml = (screenId, { includeBack = false } = {}) => {
   if (screenId === 'S53') specialPanels.push(projectWorkWxml)
   if (screenId === 'S64') specialPanels.push(ticketingRingWxml)
   if (screenId === 'S66') specialPanels.push(calibrationWxml)
+  if (['S34', 'S35', 'S45', 'S46', 'S50', 'S65', 'S66'].includes(screenId)) specialPanels.push(decisionV5Wxml)
+  if (screenId === 'S42') specialPanels.push(parseReviewWxml)
   const pptSection = specialPanels.length ? `\n${specialPanels.join('\n')}` : ''
+  const pageActions = screenId === 'S41'
+    ? evidenceActionsWxml
+    : screenId === 'S42'
+      ? parseReviewActionsWxml
+      : screenId === 'S54'
+        ? agentActionsWxml
+        : taskScreen
+          ? taskActionsWxml
+          : defaultActionsWxml
   return `<view class="page">${includeBack ? '\n  <button class="home-button" bindtap="onBackTap">‹</button>' : ''}
   <view class="hero">
     <view class="eyebrow">{{screen.group}} · {{screen.id}}</view>
@@ -235,7 +300,7 @@ export const buildScreenWxml = (screenId, { includeBack = false } = {}) => {
   </view>${pptSection}
   <view wx:if="{{isForm}}" class="panel">
     <view class="panel-title">输入与联调</view>
-    <input wx:if="{{screen.id !== 'S25'}}" class="input" value="{{keyword}}" bindinput="onInput" placeholder="{{placeholder}}" />${projectSearch}${financeCalculation}
+    <input wx:if="{{screen.id !== 'S25' && screen.id !== 'S41'}}" class="input" value="{{keyword}}" bindinput="onInput" placeholder="{{placeholder}}" />${projectSearch}${financeCalculation}${evidencePipeline}
   </view>
   <view class="panel">
     <view class="panel-head">
@@ -245,7 +310,7 @@ export const buildScreenWxml = (screenId, { includeBack = false } = {}) => {
     ${taskScreen ? taskItemsWxml : planScreen ? planItemsWxml : businessItemsWxml}
   </view>
   <view class="message" wx:if="{{message}}">{{message}}</view>
-  ${taskScreen ? taskActionsWxml : defaultActionsWxml}
+  ${pageActions}
 </view>
 `
 }

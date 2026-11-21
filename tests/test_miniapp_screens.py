@@ -2871,8 +2871,11 @@ def test_account_collaboration_and_privacy_screens_read_scoped_saved_state(monke
 def test_developer_connection_screen_exposes_status_without_secret_values(monkeypatch):
     monkeypatch.setenv("WECHAT_MINIAPP_APPID", "wx-public-id")
     monkeypatch.setenv("WECHAT_MINIAPP_SECRET", "wechat-secret-value")
-    monkeypatch.setenv("MINIO_ACCESS_KEY", "minio-access-value")
-    monkeypatch.setenv("MINIO_SECRET_KEY", "minio-secret-value")
+    monkeypatch.setenv("OSS_PROVIDER", "aliyun-oss")
+    monkeypatch.setenv("ALIYUN_OSS_ENDPOINT", "https://oss-cn-hangzhou.aliyuncs.com")
+    monkeypatch.setenv("ALIYUN_OSS_BUCKET", "ip-actor-aliyun-test")
+    monkeypatch.setenv("ALIYUN_OSS_ACCESS_KEY_ID", "aliyun-access-value")
+    monkeypatch.setenv("ALIYUN_OSS_ACCESS_KEY_SECRET", "aliyun-secret-value")
     client, session_factory = make_screen_client(monkeypatch)
     db = session_factory()
     try:
@@ -2893,10 +2896,11 @@ def test_developer_connection_screen_exposes_status_without_secret_values(monkey
     data = response.json()["data"]
     assert data["options"]["connections"]["wechat"]["configured"] is True
     assert data["options"]["connections"]["object_storage"]["configured"] is True
+    assert data["options"]["connections"]["object_storage"]["provider"] == "aliyun-oss"
     serialized = str(data)
     assert "wechat-secret-value" not in serialized
-    assert "minio-access-value" not in serialized
-    assert "minio-secret-value" not in serialized
+    assert "aliyun-access-value" not in serialized
+    assert "aliyun-secret-value" not in serialized
 
 
 def test_project_empty_state_only_applies_when_current_tenant_has_no_projects(monkeypatch):

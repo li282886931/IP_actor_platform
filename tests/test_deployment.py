@@ -24,8 +24,6 @@ def deployment_env():
         "MYSQL_ROOT_PASSWORD": "test-root-password-only",
         "MYSQL_PASSWORD": "test-db-password-only",
         "REDIS_PASSWORD": "test-redis-password-only",
-        "MINIO_ROOT_USER": "test-minio",
-        "MINIO_ROOT_PASSWORD": "test-minio-password-only",
         "SECRET_KEY": "test-signing-key-" * 4,
         "INITIAL_ROOT_PASSWORD": "test-account-password-only",
     }
@@ -78,20 +76,65 @@ def test_bootstrap_retires_only_insecure_seed_accounts_and_preserves_existing_ro
 @pytest.mark.skipif(shutil.which("docker") is None, reason="Docker CLI is needed to render Compose")
 def test_compose_contract_renders_and_keeps_database_private(tmp_path):
     env_file = tmp_path / "deployment.env"
-    env_file.write_text("\n".join(f"{k}={v}" for k, v in deployment_env().items()))
+    connector_file = tmp_path / "deployment.connectors.env"
+    connector_file.write_text(
+        "DATA_CONNECTOR_SECRET_AMAP_PROD=\n"
+        "DATA_CONNECTOR_SECRET_QWEATHER_PROD=\n"
+        "DATA_CONNECTOR_SECRET_MCP_PROD=\n"
+        "DATA_CONNECTOR_SECRET_AGENT_API_PROD=\n"
+    )
+    env = {**deployment_env(), "CONNECTOR_ENV_FILE": str(connector_file)}
+    env_file.write_text("\n".join(f"{k}={v}" for k, v in env.items()))
     result = subprocess.run(
         ["docker", "compose", "--env-file", str(env_file), "-f", str(ROOT / "docker-compose.yml"),
          "config", "--format", "json"], capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
     config = json.loads(result.stdout)
     services = config["services"]
-    assert set(services) == {"web", "backend", "mysql", "redis", "minio"}
+    assert set(services) == {"web", "backend", "mysql", "redis"}
     for name in ("backend", "mysql", "redis"):
         assert not services[name].get("ports")
     assert services["backend"]["depends_on"]["mysql"]["condition"] == "service_healthy"
     assert services["backend"]["environment"]["LLAMA_SERVER_URL"] == ""
+    assert services["backend"]["environment"]["LLAMA_SERVER_TIMEOUT_SECONDS"] == "300"
+    assert services["backend"]["environment"]["LLAMA_SERVER_MAX_TOKENS"] == "800"
+    assert services["backend"]["environment"]["MINIO_ENDPOINT"] == ""
+    assert services["backend"]["environment"]["MINIO_BUCKET"] == "ip-actor-platform"
+    assert services["backend"]["environment"]["DATA_CONNECTOR_SECRET_AMAP_PROD"] == ""
+    assert services["backend"]["environment"]["DATA_CONNECTOR_SECRET_QWEATHER_PROD"] == ""
+    assert services["backend"]["environment"]["DATA_CONNECTOR_SECRET_MCP_PROD"] == ""
+    assert services["backend"]["environment"]["DATA_CONNECTOR_SECRET_AGENT_API_PROD"] == ""
+    for name in ("web", "mysql", "redis"):
+        assert not any(
+            key.startswith("DATA_CONNECTOR_SECRET_")
+            for key in services[name].get("environment", {})
+        )
+    assert services["backend"]["environment"]["ALIYUN_OSS_ENDPOINT"] == ""
+    assert services["mysql"]["volumes"][0]["source"] == "mysql_data"
+    assert services["redis"]["volumes"][0]["source"] == "redis_data"
+    assert services["backend"]["volumes"][0]["source"] == "reports_data"
     assert services["web"]["build"]["args"]["VITE_API_BASE_URL"] == "/api"
-    assert len(config["volumes"]) == 4
+    assert len(config["volumes"]) == 3
+
+
+@pytest.mark.skipif(shutil.which("docker") is None, reason="Docker CLI is needed to render Compose")
+def test_compose_can_bind_data_to_external_directories(tmp_path):
+    env = {
+        **deployment_env(),
+        "MYSQL_DATA_SOURCE": "/data/ip_actor_platform/mysql",
+        "REDIS_DATA_SOURCE": "/data/ip_actor_platform/redis",
+        "REPORTS_DATA_SOURCE": "/data/ip_actor_platform/reports",
+    }
+    env_file = tmp_path / "deployment.env"
+    env_file.write_text("\n".join(f"{key}={value}" for key, value in env.items()))
+    result = subprocess.run(
+        ["docker", "compose", "--env-file", str(env_file), "-f", str(ROOT / "docker-compose.yml"),
+         "config", "--format", "json"], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    services = json.loads(result.stdout)["services"]
+    assert services["mysql"]["volumes"][0]["source"] == "/data/ip_actor_platform/mysql"
+    assert services["redis"]["volumes"][0]["source"] == "/data/ip_actor_platform/redis"
+    assert services["backend"]["volumes"][0]["source"] == "/data/ip_actor_platform/reports"
 
 
 @pytest.mark.skipif(shutil.which("docker") is None, reason="Docker CLI is needed to render Compose")
@@ -112,8 +155,20 @@ def test_secret_generation_is_private_unique_and_never_overwrites(tmp_path):
     values = dict(line.split("=", 1) for line in original.splitlines() if line and not line.startswith("#"))
     module.runtime_environment(values)
     names = ("MYSQL_ROOT_PASSWORD", "MYSQL_PASSWORD", "REDIS_PASSWORD",
-             "MINIO_ROOT_PASSWORD", "SECRET_KEY", "INITIAL_ROOT_PASSWORD")
+             "SECRET_KEY", "INITIAL_ROOT_PASSWORD")
     assert len({values[name] for name in names}) == len(names)
     with pytest.raises(FileExistsError):
         module.generate_environment(ROOT / "deployment.env.example", target)
     assert target.read_text() == original
+
+
+def test_backend_uses_bundled_rapidocr_ppocrv4_without_tesseract():
+    requirements = (ROOT / "requirements.txt").read_text()
+    dockerfile = (ROOT / "Dockerfile.backend").read_text()
+
+    assert "rapidocr-onnxruntime==1.4.4" in requirements
+    assert "pytesseract" not in requirements.lower()
+    assert "tesseract-ocr" not in dockerfile.lower()
+    assert "ch_PP-OCRv4_det_infer.onnx" in dockerfile
+    assert "ch_PP-OCRv4_rec_infer.onnx" in dockerfile
+    assert "rapidocr_onnxruntime" in dockerfile

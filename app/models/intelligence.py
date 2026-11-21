@@ -1,7 +1,55 @@
+import re
+
 from sqlalchemy import JSON, Column, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, validates
 
 from app.database import Base
+
+
+def _public_connector_config(value):
+    if isinstance(value, dict):
+        return {
+            key: _public_connector_config(item)
+            for key, item in value.items()
+            if not re.search(
+                r"token|secret|password|authorization|api.?key|cookie|credential",
+                str(key),
+                re.I,
+            )
+        }
+    if isinstance(value, list):
+        return [_public_connector_config(item) for item in value]
+    return value
+
+
+class ConnectorDefinition(Base):
+    __tablename__ = 'connector_definitions'
+    __table_args__ = (
+        UniqueConstraint('tenant_id', 'key', name='uq_connector_definitions_tenant_key'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    key = Column(String(128), nullable=False, index=True)
+    name = Column(String(255), nullable=False)
+    source_kind = Column(String(32), nullable=False)
+    domain = Column(String(64), nullable=False)
+    description = Column(Text, default='')
+    builtin = Column(Integer, default=0, nullable=False)
+    tenant_id = Column(Integer, ForeignKey('tenants.id'), nullable=True)
+    auth_type = Column(String(32), default='none', nullable=False)
+    config_schema = Column(JSON, default=dict)
+    capabilities = Column(JSON, default=list)
+    adapter_key = Column(String(128), default='')
+    availability = Column(String(32), default='adapter_required', nullable=False)
+    human_verification_required = Column(Integer, default=1, nullable=False)
+    version = Column(Integer, default=1, nullable=False)
+    enabled = Column(Integer, default=1, nullable=False)
+    created_at = Column(DateTime, server_default=func.current_timestamp())
+    updated_at = Column(
+        DateTime,
+        server_default=func.current_timestamp(),
+        onupdate=func.current_timestamp(),
+    )
 
 
 class ExternalDataJob(Base):
@@ -35,13 +83,21 @@ class DataSource(Base):
     name = Column(String(255), nullable=False)
     source_kind = Column(String(64), nullable=False)
     connector_key = Column(String(64), nullable=False)
+    definition_id = Column(Integer, ForeignKey('connector_definitions.id'), nullable=True)
     status = Column(String(64), default='configured')
     credential_ref = Column(String(512), default='')
     schedule_config = Column(JSON, default=dict)
     scope_config = Column(JSON, default=dict)
+    last_test_at = Column(DateTime, nullable=True)
+    last_test_result = Column(JSON, default=dict)
+    activated_at = Column(DateTime, nullable=True)
     created_by = Column(Integer, ForeignKey('users.id'), nullable=True)
     created_at = Column(DateTime, server_default=func.current_timestamp())
     updated_at = Column(DateTime, server_default=func.current_timestamp(), onupdate=func.current_timestamp())
+
+    @validates('scope_config', 'schedule_config')
+    def sanitize_public_config(self, key, value):
+        return _public_connector_config(value or {})
 
 
 class DataAsset(Base):

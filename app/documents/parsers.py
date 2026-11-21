@@ -46,26 +46,34 @@ def resolve_local_file_path(evidence):
     return None
 
 
-def parse_document_evidence(evidence, file_kind: str):
-    path = resolve_local_file_path(evidence)
+def parse_document_evidence(evidence, file_kind: str, path=None):
+    path = Path(path) if path else resolve_local_file_path(evidence)
     if not path:
         return _unavailable_document_result(evidence, '文件不在本地可读路径，保留证据并等待人工录入或下载签名接入。')
 
     try:
         if file_kind == 'docx':
             extracted_text = _extract_docx_text(path)
-        elif file_kind == 'pdf':
-            extracted_text = _extract_pdf_text(path)
+        elif file_kind in {'pdf', 'image'}:
+            from app.documents.ocr import extract_text_with_ocr
+
+            extraction = extract_text_with_ocr(path, file_kind)
+            result = build_single_project_candidates(evidence, extraction['extracted_text'])
+            return {**result, **extraction, 'file_kind': file_kind}
         else:
             extracted_text = path.read_text(encoding='utf-8', errors='ignore')
     except Exception as exc:
+        from app.documents.ocr import DocumentExtractionError
+
+        if isinstance(exc, DocumentExtractionError):
+            raise
         return _unavailable_document_result(evidence, f'资料解析失败：{exc}')
 
     return build_single_project_candidates(evidence, extracted_text)
 
 
-def parse_spreadsheet_evidence(evidence):
-    path = resolve_local_file_path(evidence)
+def parse_spreadsheet_evidence(evidence, path=None):
+    path = Path(path) if path else resolve_local_file_path(evidence)
     if not path:
         candidates = (evidence.meta or {}).get('candidate_projects') or []
         return {
@@ -78,6 +86,8 @@ def parse_spreadsheet_evidence(evidence):
             'requires_human_verification': True,
             'note': '未找到本地可读文件，已回退读取 metadata.candidate_projects。',
         }
+    if path.suffix.lower() == '.xls':
+        raise ValueError('不支持旧版二进制 Excel（.xls），请另存为 .xlsx 或 .csv')
 
     try:
         sheets = _extract_spreadsheet_sheets(path)
@@ -93,13 +103,20 @@ def parse_spreadsheet_evidence(evidence):
             'error': f'表格解析失败：{exc}',
         }
 
-    candidates, field_mapping = build_candidate_projects_from_sheets(sheets)
+    candidates, mappings_by_sheet = build_candidate_projects_from_sheets(sheets)
+    field_mapping = {
+        header: field
+        for mapping in mappings_by_sheet.values()
+        for header, field in mapping.items()
+    }
     return {
         'file_kind': 'spreadsheet',
         'parse_scope': 'batch_projects',
         'candidate_projects': candidates,
         'sheets': sheets,
         'field_mapping': field_mapping,
+        'suggested_mapping': mappings_by_sheet,
+        'mapping_status': 'pending',
         'requires_mapping_confirmation': True,
         'requires_human_verification': True,
         'note': '候选项目已由表格表头映射生成，确认后才会创建正式项目。',
@@ -162,19 +179,35 @@ def build_single_project_candidates(evidence, extracted_text: str):
     }
 
 
-def build_candidate_projects_from_sheets(sheets):
+def build_candidate_projects_from_sheets(sheets, confirmed_mapping=None):
     all_candidates = []
-    merged_mapping = {}
+    mappings_by_sheet = {}
+    allowed_fields = set(FIELD_ALIASES)
     for sheet in sheets:
         rows = sheet.get('rows') or []
         if not rows:
             continue
         headers = [str(value).strip() if value is not None else '' for value in rows[0]]
-        mapping = {header: _field_for_header(header) for header in headers if _field_for_header(header)}
+        if confirmed_mapping is None:
+            mapping = {header: _field_for_header(header) for header in headers if _field_for_header(header)}
+        else:
+            requested = confirmed_mapping.get(sheet['name'])
+            if requested is None:
+                raise ValueError(f"缺少工作表 {sheet['name']} 的确认映射")
+            unknown_headers = set(requested) - set(headers)
+            if unknown_headers:
+                raise ValueError(f"未知表头：{', '.join(sorted(unknown_headers))}")
+            mapping = {header: field for header, field in requested.items() if field is not None}
+            unknown_fields = {field for field in mapping.values() if field not in allowed_fields}
+            if unknown_fields:
+                raise ValueError(f"未知项目字段：{', '.join(sorted(unknown_fields))}")
+            targets = list(mapping.values())
+            if len(targets) != len(set(targets)):
+                raise ValueError(f"工作表 {sheet['name']} 存在重复目标字段")
         if not mapping:
             continue
-        merged_mapping.update(mapping)
-        for row in rows[1:]:
+        mappings_by_sheet[sheet['name']] = mapping
+        for row_number, row in enumerate(rows[1:], start=2):
             candidate = {}
             for index, header in enumerate(headers):
                 field = mapping.get(header)
@@ -187,8 +220,9 @@ def build_candidate_projects_from_sheets(sheets):
                 candidate.setdefault('name', _candidate_name(candidate))
                 candidate.setdefault('type', 'concert')
                 candidate['source_sheet'] = sheet['name']
+                candidate['source_row'] = row_number
                 all_candidates.append(candidate)
-    return all_candidates, merged_mapping
+    return all_candidates, mappings_by_sheet
 
 
 def _extract_docx_text(path: Path):
@@ -236,6 +270,8 @@ def _extract_pdf_text(path: Path):
 
 def _extract_spreadsheet_sheets(path: Path):
     suffix = path.suffix.lower()
+    if suffix == '.xls':
+        raise ValueError('不支持旧版二进制 Excel（.xls），请另存为 .xlsx 或 .csv')
     if suffix == '.csv':
         with path.open(encoding='utf-8-sig', newline='') as file:
             return [{'name': path.stem, 'rows': [row for row in csv.reader(file)]}]
@@ -357,27 +393,11 @@ def _unavailable_document_result(evidence, message: str):
         'file_kind': 'document',
         'parse_scope': 'single_project',
         'extracted_text': '',
-        'candidate_facts': [{
-            'title': f'{evidence.name} 解析候选事实',
-            'content': message,
-            'source': evidence.source or evidence.evidence_type,
-        }],
-        'candidate_assumptions': [{
-            'title': '资料完整性假设',
-            'content': '当前文件解析结果可能不完整，需人工录入或补充资料。',
-            'confidence': 40,
-        }],
-        'candidate_risks': [{
-            'title': '资料解析未核验风险',
-            'level': 'medium',
-            'mitigation': '由负责人确认解析字段、合同条款和关键数值后再进入最终判断。',
-        }],
-        'candidate_gates': [{
-            'name': '资料人工核验',
-            'status': 'pending',
-            'required_evidence': evidence.name,
-            'owner_group': 'B',
-        }],
+        'candidate_facts': [],
+        'candidate_assumptions': [],
+        'candidate_risks': [],
+        'candidate_gates': [],
         'requires_human_verification': True,
+        'needs_manual_input': True,
         'error': message,
     }

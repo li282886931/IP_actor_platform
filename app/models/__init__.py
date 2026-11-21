@@ -1,4 +1,5 @@
 from .commerce import AIGeneration, Artist, Order, Show
+from .decision_platform import CityProfile, DecisionReport, DecisionRuleVersion, OperatingRecord
 from .collaboration import (
     CollaborationHistory, CollaborationItem, CollaborationReceipt, PersonalRecord,
     ProjectGrant, ShowProjectBinding,
@@ -25,6 +26,7 @@ from .identity import (
 from .intelligence import (
     AlertEvent,
     CaseOutcome,
+    ConnectorDefinition,
     ConversionAssumption,
     DataAsset,
     DataQualityIssue,
@@ -56,6 +58,7 @@ from .projects import (
 )
 
 __all__ = [
+    "CityProfile", "DecisionReport", "DecisionRuleVersion", "OperatingRecord",
     "CollaborationHistory", "CollaborationItem", "CollaborationReceipt", "PersonalRecord",
     "ProjectGrant", "ShowProjectBinding",
     "AIGeneration",
@@ -65,6 +68,7 @@ __all__ = [
     "Assumption",
     "CaseOutcome",
     "ConversionAssumption",
+    "ConnectorDefinition",
     "DataAsset",
     "DataQualityIssue",
     "DataRecord",

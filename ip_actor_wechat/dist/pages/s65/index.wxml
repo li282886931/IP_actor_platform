@@ -6,9 +6,19 @@
     <view class="subtitle">{{screen.subtitle}}</view>
     <view class="highlight">{{screen.highlight}}</view>
   </view>
+
+  <view wx:if="{{options.decision_v5}}" class="panel">
+    <view class="panel-title">决策风控报告 #{{options.decision_v5.report_id}}</view>
+    <view class="item-desc">规则版本 #{{options.decision_v5.rule_version_id}} · 同步工作台核验结果</view>
+    <view wx:for="{{options.decision_v5.items}}" wx:key="label" class="item">
+      <view class="item-main"><view class="item-title">{{item.label}}</view></view>
+      <view class="badge">{{item.value}}</view>
+    </view>
+    <view wx:for="{{options.decision_v5.messages}}" wx:key="*this" class="item-desc">{{item}}</view>
+  </view>
   <view wx:if="{{isForm}}" class="panel">
     <view class="panel-title">输入与联调</view>
-    <input wx:if="{{screen.id !== 'S25'}}" class="input" value="{{keyword}}" bindinput="onInput" placeholder="{{placeholder}}" />
+    <input wx:if="{{screen.id !== 'S25' && screen.id !== 'S41'}}" class="input" value="{{keyword}}" bindinput="onInput" placeholder="{{placeholder}}" />
   </view>
   <view class="panel">
     <view class="panel-head">

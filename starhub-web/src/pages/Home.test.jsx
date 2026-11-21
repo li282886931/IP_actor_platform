@@ -211,6 +211,18 @@ describe('Home', () => {
     expect(screen.getByLabelText('项目名称')).toHaveFocus()
   })
 
+  it('focuses project creation after the target route mounts', async () => {
+    listProjects.mockResolvedValue({ data: { data: [] } })
+    listTasks.mockResolvedValue({ data: { data: [] } })
+    render(
+      <MemoryRouter initialEntries={[{ pathname: '/operations/projects', state: { focusProjectCreate: true } }]}
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <Home role="B" />
+      </MemoryRouter>,
+    )
+    await waitFor(() => expect(screen.getByLabelText('项目名称')).toHaveFocus())
+  })
+
   it('opens the project more-menu and shares the project report', async () => {
     const user = userEvent.setup()
     shareReport.mockResolvedValue({

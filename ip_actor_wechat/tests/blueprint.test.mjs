@@ -8,6 +8,14 @@ import { fileURLToPath } from 'node:url'
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const appConfigPath = resolve(root, 'src/app.config.ts')
 
+test('native v5 judgement and review screens render shared report values', async () => {
+  const { buildScreenWxml } = await import('../tools/wechat-screen-templates.mjs')
+  for (const id of ['S34', 'S35', 'S45', 'S46', 'S50', 'S65', 'S66']) {
+    assert.match(buildScreenWxml(id), /options\.decision_v5\.items/)
+    assert.match(buildScreenWxml(id), /options\.decision_v5\.messages/)
+  }
+})
+
 const screenIds = Array.from({ length: 84 }, (_, index) => `S${String(index + 1).padStart(2, '0')}`)
 const apiPaths = [
   '/miniapp/entities/',
@@ -32,6 +40,7 @@ const apiPaths = [
   '/oss/uploads/',
   '/parse-jobs',
   '/document-parse-jobs/',
+  '/confirm-mapping',
   '/confirm-projects',
   '/gates',
   '/risks',
@@ -130,6 +139,18 @@ test('uses concise task dispatch copy on S53', () => {
   for (const source of [screenSource, generatedScreens]) {
     assert.match(source, /确认派发任务/)
     assert.doesNotMatch(source, /确认并派发 3 项任务/)
+  }
+})
+
+test('keeps S41 and S42 pipeline action copy aligned in both runtimes', () => {
+  const screenSource = readFileSync(resolve(root, 'src/data/screens.ts'), 'utf8')
+  const manifest = readFileSync(resolve(root, 'tools/blueprint-manifest.mjs'), 'utf8')
+  const generatedScreens = readFileSync(resolve(root, 'dist/common/screens.js'), 'utf8')
+
+  for (const source of [screenSource, manifest, generatedScreens]) {
+    assert.match(source, /登记上传资料/)
+    assert.match(source, /确认字段映射/)
+    assert.doesNotMatch(source, /上传并开始识别|确认并提交核验/)
   }
 })
 
@@ -756,6 +777,199 @@ test('starts evidence parsing and project analysis from the blueprint runtime', 
   assert.match(source, /api\.createDocumentParseJob/)
   assert.match(source, /api\.runDocumentParseJob/)
   assert.match(source, /api\.createProjectAnalysisJob/)
+})
+
+test('keeps document pipeline actions and human decision confirmation explicit', async () => {
+  const source = readFileSync(resolve(root, 'src/components/BlueprintScreen/index.tsx'), 'utf8')
+  const apiSource = readFileSync(resolve(root, 'src/services/api.ts'), 'utf8')
+  const configSource = readFileSync(resolve(root, 'src/config/runtime.ts'), 'utf8')
+  const generator = readFileSync(resolve(root, 'tools/generate-wechat-dist.mjs'), 'utf8')
+  const templates = readFileSync(resolve(root, 'tools/wechat-screen-templates.mjs'), 'utf8')
+
+  for (const runtime of [source, generator]) {
+    assert.match(runtime, /miniapp-document-parse-.*-confirm-projects/)
+    assert.doesNotMatch(runtime, /local:\/\/pending-upload/)
+  }
+  assert.match(apiSource, /confirm-mapping/)
+  assert.match(configSource, /starhub-decision-draft/)
+  assert.match(generator, /starhub-decision-draft/)
+  assert.match(templates, /确认字段映射/)
+  assert.match(templates, /确认候选项目/)
+  assert.match(templates, /带入负责人确认/)
+})
+
+test('generated runtime keeps parsing, mapping, analysis and decision requests in order', async () => {
+  const runtimePath = resolve(root, 'dist/common/runtime.js')
+  const storage = new Map([
+    ['starhub-project-id', 42],
+    ['starhub-version-id', 8],
+  ])
+  const requests = []
+  const calls = []
+  let uploadTarget = {
+    id: 7,
+    provider: 'aliyun-oss',
+    upload_url: 'https://bucket.example.com/project.xlsx?signature=real',
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
+  }
+  let initiateFailureDetail = ''
+  const redirects = []
+  let page
+  globalThis.wx = {
+    getStorageSync: (key) => storage.get(key),
+    setStorageSync: (key, value) => storage.set(key, value),
+    removeStorageSync: (key) => storage.delete(key),
+    request: (options) => {
+      requests.push(options)
+      if (options.url.endsWith('/oss/uploads/initiate') && initiateFailureDetail) {
+        options.success({ statusCode: 500, data: { detail: initiateFailureDetail } })
+        return
+      }
+      if (options.method === 'PUT') {
+        calls.push('put')
+        options.success({ statusCode: 200, data: '' })
+        return
+      }
+      const data = options.url.endsWith('/oss/uploads/initiate')
+        ? uploadTarget
+        : options.url.endsWith('/oss/uploads/7/complete')
+          ? { evidence: { id: 61 } }
+        : options.url.endsWith('/evidences/61/parse-jobs')
+          ? { id: 73 }
+          : options.url.endsWith('/projects/42/analysis-jobs')
+            ? { id: 91, result: { recommendation: 'conditional_advance' } }
+            : options.url.endsWith('/decisions')
+              ? { id: 101 }
+              : {}
+      options.success({ statusCode: 200, data: { code: 0, data } })
+    },
+    chooseMessageFile: (options) => {
+      calls.push('choose')
+      options.success({ tempFiles: [{ path: 'wxfile://project.xlsx', name: 'project.xlsx', size: 8 }] })
+    },
+    getFileSystemManager: () => ({
+      readFile: (options) => {
+        calls.push('read')
+        options.success({ data: new ArrayBuffer(8) })
+      },
+    }),
+    redirectTo: ({ url }) => redirects.push(url),
+    switchTab: ({ url }) => redirects.push(url),
+  }
+  globalThis.Page = (definition) => {
+    page = {
+      ...definition,
+      data: { ...definition.data },
+      setData(next, callback) {
+        this.data = { ...this.data, ...next }
+        callback?.()
+      },
+    }
+  }
+
+  const require = createRequire(import.meta.url)
+  delete require.cache[runtimePath]
+  try {
+    const runtime = require(runtimePath)
+    runtime.createScreenPage('S41')
+    assert.equal(page.data.evidenceId, 0)
+    await page.onS41Action({ currentTarget: { dataset: { action: 'choose' } } })
+    await page.onS41Action({ currentTarget: { dataset: { action: 'upload' } } })
+    assert.deepEqual(calls, ['choose', 'read', 'put'])
+    assert.deepEqual(requests.map((item) => item.url.startsWith('https://')
+      ? 'PUT_SIGNED_URL'
+      : item.url.split('8000')[1]), [
+      '/oss/uploads/initiate',
+      'PUT_SIGNED_URL',
+      '/oss/uploads/7/complete',
+    ])
+    assert.equal(page.data.evidenceId, 61)
+
+    storage.delete('starhub-evidence-id')
+    uploadTarget = {
+      id: 8,
+      provider: 'local-placeholder',
+      upload_url: '/oss/local-placeholder/project.xlsx',
+      method: 'PUT',
+      headers: {},
+    }
+    runtime.createScreenPage('S41')
+    await page.onS41Action({ currentTarget: { dataset: { action: 'choose' } } })
+    const requestsBeforeRejectedUpload = requests.length
+    await page.onS41Action({ currentTarget: { dataset: { action: 'upload' } } })
+    assert.equal(requests.length, requestsBeforeRejectedUpload + 1)
+    assert.equal(page.data.selectedFile.name, 'project.xlsx')
+    assert.equal(page.data.evidenceId, 0)
+    assert.equal(page.data.loadState, 'error')
+    assert.match(page.data.message, /对象存储待配置/)
+
+    initiateFailureDetail = 'ALIYUN_OSS_ACCESS_KEY_ID is required'
+    runtime.createScreenPage('S41')
+    await page.onS41Action({ currentTarget: { dataset: { action: 'choose' } } })
+    await page.onS41Action({ currentTarget: { dataset: { action: 'upload' } } })
+    assert.equal(page.data.selectedFile.name, 'project.xlsx')
+    assert.equal(page.data.evidenceId, 0)
+    assert.match(page.data.message, /对象存储待配置/)
+    initiateFailureDetail = ''
+
+    uploadTarget = {
+      id: 7,
+      provider: 'aliyun-oss',
+      upload_url: 'https://bucket.example.com/project.xlsx?signature=real',
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
+    }
+    storage.set('starhub-evidence-id', 61)
+
+    const parseRequestStart = requests.length
+    await page.onS41Action({ currentTarget: { dataset: { action: 'parse' } } })
+    assert.deepEqual(requests.slice(parseRequestStart).map((item) => item.url.split('8000')[1]), [
+      '/evidences/61/parse-jobs',
+      '/document-parse-jobs/73/run',
+    ])
+
+    await page.onS41Action({ currentTarget: { dataset: { action: 'analysis' } } })
+    assert.equal(requests.at(-1).url.endsWith('/projects/42/analysis-jobs'), true)
+    assert.equal(redirects.at(-1), '/pages/s54/index')
+
+    runtime.createScreenPage('S42')
+    page.setData({
+      parseJobId: 73,
+      fieldMappingRows: [{ header: '预算城市', field: 'city' }],
+      candidateProjects: [{ row_number: 2, name: '南京站' }],
+    })
+    await page.onS42Action({ currentTarget: { dataset: { action: 'mapping' } } })
+    assert.equal(requests.at(-1).url.endsWith('/document-parse-jobs/73/confirm-mapping'), true)
+    assert.deepEqual(requests.at(-1).data, { field_mapping: { 预算城市: 'city' } })
+    await page.onS42Action({ currentTarget: { dataset: { action: 'projects' } } })
+    assert.deepEqual(requests.at(-1).data, {
+      idempotency_key: 'miniapp-document-parse-73-confirm-projects',
+    })
+
+    runtime.createScreenPage('S54')
+    page.setData({
+      options: {
+        latest_analysis: {
+          id: 91,
+          result: { recommendation: '补齐场馆授权后有条件推进' },
+        },
+      },
+    })
+    page.onRecommendationToDecision()
+    assert.equal(requests.some((item) => item.url.endsWith('/decisions')), false)
+    assert.equal(storage.get('starhub-decision-draft').recommendation, '补齐场馆授权后有条件推进')
+
+    runtime.createScreenPage('S47')
+    await page.onPrimaryTap()
+    assert.equal(requests.at(-1).url.endsWith('/decisions'), true)
+    assert.equal(requests.at(-1).data.conditions, '补齐场馆授权后有条件推进')
+    assert.equal(storage.has('starhub-decision-draft'), false)
+  } finally {
+    delete globalThis.wx
+    delete globalThis.Page
+    delete require.cache[runtimePath]
+  }
 })
 
 test('uses WeChat phone authorization for mini program login', () => {

@@ -8,7 +8,7 @@
   </view>
   <view wx:if="{{isForm}}" class="panel">
     <view class="panel-title">输入与联调</view>
-    <input wx:if="{{screen.id !== 'S25'}}" class="input" value="{{keyword}}" bindinput="onInput" placeholder="{{placeholder}}" />
+    <input wx:if="{{screen.id !== 'S25' && screen.id !== 'S41'}}" class="input" value="{{keyword}}" bindinput="onInput" placeholder="{{placeholder}}" />
   </view>
   <view class="panel">
     <view class="panel-head">
@@ -25,10 +25,8 @@
     </view>
   </view>
   <view class="message" wx:if="{{message}}">{{message}}</view>
-  <block wx:if="{{screen.id === 'S01'}}">
-    <button class="primary" open-type="getPhoneNumber" bindgetphonenumber="onGetPhoneNumber">{{screen.primaryAction}}</button>
-  </block>
-  <block wx:else>
+  <view class="pipeline-actions">
     <button class="primary" bindtap="onPrimaryTap">{{screen.primaryAction}}</button>
-  </block>
+    <button class="secondary" bindtap="onRecommendationToDecision">带入负责人确认</button>
+  </view>
 </view>

@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react'
-import { Button, ScrollView, Text, View } from '@tarojs/components'
+import { Button, Input, ScrollView, Text, View } from '@tarojs/components'
 import Taro, { usePullDownRefresh, useRouter } from '@tarojs/taro'
 import classNames from 'classnames'
 
@@ -34,6 +34,11 @@ import SearchSelect, {
 import { DEFAULT_API_BASE, STORAGE_KEYS } from '@/config/runtime'
 import { screenDefinitions } from '@/data/screens'
 import { api, getApiBase, setApiBase } from '@/services/api'
+import {
+  OSSUploadError,
+  uploadEvidenceFile,
+  type SelectedMessageFile,
+} from '@/services/ossUpload'
 import type {
   DisplayItem,
   MiniappCandidateGroup,
@@ -102,6 +107,14 @@ const textValue = (record: Record<string, unknown>, keys: string[], fallback = '
 }
 
 const inputValue = (value: string | number | undefined) => value === undefined ? '' : String(value)
+const defaultDecisionCondition = '落实资金缺口；关闭艺人授权与场地安全门禁'
+
+interface DecisionDraft {
+  analysis_job_id: number
+  project_id: number
+  version_id: number
+  recommendation: string
+}
 
 export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
   const screen = screenDefinitions[screenId]
@@ -113,11 +126,17 @@ export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
   const [activeTaskId, setActiveTaskId] = useState(initialTaskId)
   const [selectedTaskIds, setSelectedTaskIds] = useState<number[]>(initialTaskId ? [initialTaskId] : [])
   const [expandedTaskIds, setExpandedTaskIds] = useState<number[]>(initialTaskId ? [initialTaskId] : [])
+  const [fieldMapping, setFieldMapping] = useState<Record<string, string>>({})
+  const [selectedEvidenceFile, setSelectedEvidenceFile] = useState<SelectedMessageFile | null>(null)
+  const [uploadedEvidenceId, setUploadedEvidenceId] = useState(
+    Number(Taro.getStorageSync<number>(STORAGE_KEYS.evidenceId) || 0),
+  )
+  const storedDecisionDraft = asRecord(Taro.getStorageSync<DecisionDraft>(STORAGE_KEYS.decisionDraft))
   const [form, setForm] = useState<Record<string, string>>({
     keyword: '',
     question: '',
     result: '',
-    condition: '落实资金缺口；关闭艺人授权与场地安全门禁',
+    condition: textValue(storedDecisionDraft, ['recommendation'], defaultDecisionCondition),
     decision: 'advance',
     apiBase: getApiBase(),
     evidenceName: '',
@@ -157,6 +176,15 @@ export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
         const cachedProjectId = Number(Taro.getStorageSync<number>(STORAGE_KEYS.projectId) || 0)
         const defaultProjectId = Number(data.options.default_project_id || 0)
         if (!cachedProjectId && defaultProjectId) Taro.setStorageSync(STORAGE_KEYS.projectId, defaultProjectId)
+      }
+      if (screenId === 'S42' && data.items.length) {
+        const result = asRecord(data.items[0].context?.result)
+        const mapping = asRecord(result.field_mapping)
+        setFieldMapping(Object.fromEntries(
+          Object.entries(mapping).map(([header, field]) => [header, String(field || '')]),
+        ))
+        const parseJobId = Number(data.items[0].context?.parse_job_id || 0)
+        if (parseJobId) Taro.setStorageSync(STORAGE_KEYS.documentParseJobId, parseJobId)
       }
       if (['S55', 'S56', 'S57', 'S58'].includes(screenId) && data.items.length) {
         const selectedTaskId = Number(
@@ -307,6 +335,170 @@ export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
   }, [])
 
   const updateForm = (key: string, value: string) => setForm((current) => ({ ...current, [key]: value }))
+
+  const selectEvidenceFile = async () => {
+    try {
+      const result = await Taro.chooseMessageFile({ count: 1, type: 'file' })
+      const file = result.tempFiles[0]
+      if (!file) return
+      setSelectedEvidenceFile({
+        path: file.path,
+        name: file.name || file.path.split('/').pop() || '项目资料',
+        size: file.size,
+        type: file.type,
+      })
+      setMessage('已选择文件，上传完成后才可解析和分析。')
+    } catch (error) {
+      console.error('[S41] choose message file failed', error)
+    }
+  }
+
+  const registeredEvidenceId = uploadedEvidenceId || Number(items[0]?.context?.evidence_id || 0)
+
+  const runS41Action = async (action: 'upload' | 'parse' | 'analysis') => {
+    setLoadState('loading')
+    setMessage('')
+    try {
+      if (action === 'upload') {
+        const fileUrl = form.evidenceUrl.trim()
+        let evidence: Record<string, unknown>
+        if (selectedEvidenceFile) {
+          evidence = await uploadEvidenceFile({
+            projectId,
+            file: selectedEvidenceFile,
+            evidenceName: form.evidenceName.trim(),
+          })
+        } else if (!fileUrl.startsWith('https://')) {
+          setLoadState('success')
+          setMessage('仅支持已上传文件的 HTTPS 地址，禁止 local://。')
+          return
+        } else {
+          evidence = asRecord(await api.createEvidence({
+            project_id: projectId,
+            name: form.evidenceName.trim() || '项目资料',
+            file_url: fileUrl,
+            evidence_type: 'document',
+            source: '微信小程序',
+          }))
+        }
+        const evidenceId = Number(evidence.id || 0)
+        if (!evidenceId) throw new Error('EVIDENCE_ID_MISSING')
+        Taro.setStorageSync(STORAGE_KEYS.evidenceId, evidenceId)
+        setUploadedEvidenceId(evidenceId)
+        setLoadState('success')
+        setMessage('资料上传完成，可以开始解析和分析。')
+        return
+      }
+
+      if (action === 'parse') {
+        const evidenceId = registeredEvidenceId
+        if (!evidenceId) {
+          setLoadState('success')
+          setMessage('请先登记真实上传资料，再开始解析。')
+          return
+        }
+        const parseJob = asRecord(await api.createDocumentParseJob(evidenceId, {
+          purpose: 'project_evidence',
+        }))
+        const parseJobId = Number(parseJob.id || 0)
+        if (!parseJobId) throw new Error('PARSE_JOB_ID_MISSING')
+        await api.runDocumentParseJob(parseJobId)
+        Taro.setStorageSync(STORAGE_KEYS.documentParseJobId, parseJobId)
+        setLoadState('success')
+        setMessage('资料解析已完成，请进入解析复核确认映射和候选项目。')
+        return
+      }
+
+      if (!registeredEvidenceId) {
+        setLoadState('success')
+        setMessage('请先完成资料上传，再生成分析结论。')
+        return
+      }
+      await api.createProjectAnalysisJob(projectId, { purpose: 'agent_recommendation' })
+      setLoadState('success')
+      await replaceWithScreen('S54')
+    } catch (error) {
+      console.error(`[S41] ${action} failed`, error)
+      setLoadState('error')
+      setMessage(error instanceof OSSUploadError && error.code === 'STORAGE_NOT_CONFIGURED'
+        ? '对象存储待配置，未生成可用的 HTTPS 上传签名。'
+        : selectedEvidenceFile && action === 'upload'
+          ? '操作未完成，已保留所选文件。请检查服务连接后重试。'
+          : '操作未完成，输入已保留。请检查服务连接后重试。')
+    }
+  }
+
+  const latestParseJob = asRecord(items[0]?.context)
+  const parseJobId = Number(
+    latestParseJob.parse_job_id
+    || Taro.getStorageSync<number>(STORAGE_KEYS.documentParseJobId)
+    || 0,
+  )
+  const parseResult = asRecord(latestParseJob.result)
+  const unmappedColumns = Array.isArray(parseResult.unmapped_columns)
+    ? parseResult.unmapped_columns.map(String)
+    : []
+  const candidateProjects = Array.isArray(parseResult.candidate_projects)
+    ? parseResult.candidate_projects.map(asRecord)
+    : []
+
+  const confirmS42Mapping = async () => {
+    if (!parseJobId) {
+      setLoadState('success')
+      setMessage('暂无可确认的解析任务。')
+      return
+    }
+    setLoadState('loading')
+    setMessage('')
+    try {
+      await api.confirmDocumentFieldMapping(parseJobId, { field_mapping: fieldMapping })
+      setLoadState('success')
+      setMessage('字段映射已确认，候选项目已按后端结果更新。')
+    } catch (error) {
+      console.error('[S42] mapping confirmation failed', error)
+      setLoadState('error')
+      setMessage('字段映射确认失败，请检查后重试。')
+    }
+  }
+
+  const confirmS42Projects = async () => {
+    if (!parseJobId) {
+      setLoadState('success')
+      setMessage('暂无可确认的候选项目。')
+      return
+    }
+    setLoadState('loading')
+    setMessage('')
+    try {
+      await api.confirmDocumentParseJobProjects(parseJobId, {
+        idempotency_key: `miniapp-document-parse-${parseJobId}-confirm-projects`,
+      })
+      setLoadState('success')
+      setMessage('候选项目已确认；重复提交将复用同一批次结果。')
+    } catch (error) {
+      console.error('[S42] project confirmation failed', error)
+      setLoadState('error')
+      setMessage('候选项目确认失败，请检查映射状态后重试。')
+    }
+  }
+
+  const carryRecommendationToDecision = async () => {
+    const latestAnalysis = asRecord(screenData?.options.latest_analysis)
+    const result = asRecord(latestAnalysis.result)
+    const recommendation = textValue(result, ['recommendation'])
+    if (!recommendation) {
+      setLoadState('success')
+      setMessage('暂无可带入的分析建议，请先生成分析结论。')
+      return
+    }
+    Taro.setStorageSync(STORAGE_KEYS.decisionDraft, {
+      analysis_job_id: Number(latestAnalysis.id || 0),
+      project_id: projectId,
+      version_id: versionId,
+      recommendation,
+    } satisfies DecisionDraft)
+    await replaceWithScreen('S47')
+  }
 
   const toggleTaskSelection = (taskId: number) => {
     setSelectedTaskIds((current) => (
@@ -511,23 +703,11 @@ export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
         await api.createAssumption({ project_id: projectId, title: form.assumptionTitle || '上座率假设', content: '中性预计 80%', confidence: 80 })
       } else if (screenId === 'S37') {
         await api.createFact({ project_id: projectId, title: form.factTitle || '项目输入待核验', content: '由小程序提交', source: '项目表单' })
-      } else if (screenId === 'S41') {
-        const evidence = await api.createEvidence({
-          project_id: projectId,
-          name: form.evidenceName || '项目资料',
-          file_url: form.evidenceUrl || 'local://pending-upload',
-          evidence_type: 'document',
-          source: '微信小程序',
-        })
-        const evidenceRecord = asRecord(evidence)
-        const parseJob = await api.createDocumentParseJob(Number(evidenceRecord.id), { purpose: 'project_evidence' })
-        const parseRecord = asRecord(parseJob)
-        await api.runDocumentParseJob(Number(parseRecord.id))
-        setMessage('资料解析已完成，候选事实、风险和门禁等待负责人核验。')
       } else if (screenId === 'S45') {
         await api.createGate({ project_id: projectId, name: form.gateName || '人工确认门禁', status: 'pending', owner_group: 'B' })
       } else if (screenId === 'S47') {
         await api.createDecision({ project_id: projectId, version_id: versionId, decision_type: form.decision, conditions: form.condition })
+        Taro.removeStorageSync(STORAGE_KEYS.decisionDraft)
       } else if (screenId === 'S51') {
         const share = await api.shareReport(projectId, { version_id: versionId, expires_in_days: 7 })
         setMessage(textValue(asRecord(share), ['share_url'], '受限分享已创建'))
@@ -539,10 +719,8 @@ export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
           due_date: '2026-09-25',
         })))
       } else if (screenId === 'S54') {
-        const analysis = await api.createProjectAnalysisJob(projectId, { purpose: 'agent_recommendation' })
-        const analysisResult = asRecord(asRecord(analysis).result)
         const answer = await api.agentChat({ project_id: projectId, message: form.question || '下一步应该优先处理什么？' })
-        setMessage(`${textValue(asRecord(answer), ['answer'], '工作建议已生成')}｜推荐动作：${textValue(analysisResult, ['recommendation'], '待负责人核验')}`)
+        setMessage(textValue(asRecord(answer), ['answer'], '工作建议已生成'))
       } else if (screenId === 'S57') {
         if (!activeTaskId) throw new Error('TASK_NOT_SELECTED')
         await api.submitTask(activeTaskId, { result: form.result || '已提交任务结果', evidence_ids: [] })
@@ -560,7 +738,7 @@ export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
       const target = screenId === 'S74' && !storedProjectId
         ? 'S10'
         : nextScreen[screenId] || `S${String(Math.min(Number(screenId.slice(1)) + 1, 84)).padStart(2, '0')}`
-      if (!['S36', 'S37', 'S41', 'S45', 'S51', 'S54', 'S57', 'S65', 'S72', 'S82'].includes(screenId)) {
+      if (!['S36', 'S37', 'S45', 'S51', 'S54', 'S57', 'S65', 'S72', 'S82'].includes(screenId)) {
         await replaceWithScreen(target)
       } else {
         await fetchRemote()
@@ -657,11 +835,25 @@ export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
       return <ProjectReview draft={draft} />
     }
 
+    if (screenId === 'S41') {
+      return (
+        <View className={styles.formGrid}>
+          <FormField label='资料名称' value={form.evidenceName} placeholder='例如：场馆容量确认' onChange={(value) => updateForm('evidenceName', value)} />
+          <Button className={styles.fileSelectButton} onClick={() => void selectEvidenceFile()}>
+            选择文件
+          </Button>
+          <Text className={styles.selectedFileName}>
+            {selectedEvidenceFile?.name || '尚未选择文件'}
+          </Text>
+          <FormField label='资料地址' value={form.evidenceUrl} placeholder='已上传文件的 HTTPS 地址（可选）' onChange={(value) => updateForm('evidenceUrl', value)} />
+        </View>
+      )
+    }
+
     const fields: Record<string, Array<[string, string, string]>> = {
       S09: [['keyword', '搜索条件', '艺人、城市、档期或规模']],
       S36: [['assumptionTitle', '新增假设', '例如：中性上座率 80%']],
       S37: [['factTitle', '新增事实', '填写待核验的项目事实']],
-      S41: [['evidenceName', '资料名称', '例如：场馆容量确认'], ['evidenceUrl', '资料地址', '上传后的文件地址']],
       S45: [['gateName', '门禁名称', '政策、场地、授权或资金']],
       S47: [['condition', '前置条件', '填写负责人决定的必要条件']],
       S51: [['condition', '分享说明', '仅指定版本和授权成员可见']],
@@ -831,6 +1023,9 @@ export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
       .map(([key, label]) => ({ label, value: cockpit.scenarios?.[key]?.profit ?? null }))
   }, [cockpit?.scenarios, screenId])
   const actualsSummary = options.actuals_summary as { actual_profit?: number | null } | undefined
+  const decisionV5 = options.decision_v5 as {
+    report_id: number; rule_version_id: number; items: { label: string; value: string }[]; messages: string[]
+  } | undefined
   const calibrationLoop = options.calibration_loop as {
     forecast_profit?: number | null
     actual_profit?: number | null
@@ -907,6 +1102,12 @@ export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
       )}
       {screenId === 'S52' && <WorkBriefing briefing={briefing} />}
       {screenId === 'S53' && <ProjectWorkPanel projectWork={projectWork} />}
+      {decisionV5 && <View className={styles.section}>
+        <Text className={styles.sectionTitle}>{`决策风控报告 #${decisionV5.report_id}`}</Text>
+        <Text>{`规则版本 #${decisionV5.rule_version_id} · 同步工作台核验结果`}</Text>
+        <KeyValueGrid items={decisionV5.items} />
+        {decisionV5.messages.map((message, index) => <View key={index}><Text>{message}</Text></View>)}
+      </View>}
       {['S64', 'S65', 'S66'].includes(screenId) && (
         <>
           <LifecycleTimeline currentStage={screenId === 'S64' ? '售票' : screenId === 'S65' ? '结算' : '校准'} />
@@ -931,6 +1132,53 @@ export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
       )}
 
       {renderForm()}
+
+      {screenId === 'S42' && parseJobId > 0 && (
+        <View className={styles.section}>
+          <View className={styles.sectionHeading}>
+            <Text className={styles.sectionTitle}>字段映射</Text>
+            <Text className={styles.sectionCount}>{Object.keys(fieldMapping).length} 列</Text>
+          </View>
+          <View className={styles.mappingGrid}>
+            {Object.entries(fieldMapping).map(([header, field]) => (
+              <View className={styles.mappingRow} key={header}>
+                <Text className={styles.mappingHeader}>{header}</Text>
+                <Input
+                  className={styles.input}
+                  aria-label={header}
+                  value={field}
+                  placeholder='留空表示不映射'
+                  onInput={(event) => setFieldMapping((current) => ({
+                    ...current,
+                    [header]: String(
+                      event.detail?.value
+                      ?? (event.target as unknown as { value?: string })?.value
+                      ?? '',
+                    ),
+                  }))}
+                />
+              </View>
+            ))}
+          </View>
+          <Text className={styles.mappingNotice}>
+            {unmappedColumns.length ? `未映射列：${unmappedColumns.join('、')}` : '所有识别列均已有映射'}
+          </Text>
+          <Text className={styles.sectionTitle}>候选行预览</Text>
+          <View className={styles.candidatePreview}>
+            {candidateProjects.map((candidate, index) => (
+              <View className={styles.candidateRow} key={String(candidate.row_number || index)}>
+                <Text>{textValue(candidate, ['name', 'artist_name'], `候选行 ${index + 1}`)}</Text>
+                <Text className={styles.candidateMeta}>
+                  {[
+                    textValue(candidate, ['city']),
+                    textValue(candidate, ['venue']),
+                  ].filter(Boolean).join(' · ') || '待补充项目字段'}
+                </Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      )}
 
       <View className={styles.section}>
         <View className={styles.sectionHeading}>
@@ -974,7 +1222,7 @@ export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
       )}
 
       <View className={styles.actions}>
-        {loadState === 'error' ? (
+        {loadState === 'error' && screenId !== 'S41' ? (
           <Button className={styles.primaryButton} onClick={() => void fetchRemote()}>
             重新加载
           </Button>
@@ -993,6 +1241,64 @@ export default function BlueprintScreen({ screenId }: BlueprintScreenProps) {
               onClick={() => void runBatchTaskAction('reject')}
             >
               拒绝接单
+            </Button>
+          </View>
+        ) : screenId === 'S41' ? (
+          <View className={styles.pipelineActions}>
+            <Button
+              className={styles.primaryButton}
+              disabled={loadState === 'loading'}
+              onClick={() => void runS41Action('upload')}
+            >
+              登记上传资料
+            </Button>
+            <Button
+              className={styles.secondaryButton}
+              disabled={loadState === 'loading' || !registeredEvidenceId}
+              onClick={() => void runS41Action('parse')}
+            >
+              开始解析资料
+            </Button>
+            <Button
+              className={styles.secondaryButton}
+              disabled={loadState === 'loading' || !registeredEvidenceId}
+              onClick={() => void runS41Action('analysis')}
+            >
+              生成分析结论
+            </Button>
+          </View>
+        ) : screenId === 'S42' ? (
+          <View className={styles.pipelineActions}>
+            <Button
+              className={styles.primaryButton}
+              disabled={loadState === 'loading' || !parseJobId}
+              onClick={() => void confirmS42Mapping()}
+            >
+              确认字段映射
+            </Button>
+            <Button
+              className={styles.secondaryButton}
+              disabled={loadState === 'loading' || !parseJobId || !candidateProjects.length}
+              onClick={() => void confirmS42Projects()}
+            >
+              确认候选项目
+            </Button>
+          </View>
+        ) : screenId === 'S54' ? (
+          <View className={styles.pipelineActions}>
+            <Button
+              className={styles.primaryButton}
+              disabled={loadState === 'loading'}
+              onClick={runPrimaryAction}
+            >
+              {loadState === 'loading' ? '处理中...' : screen.primaryAction}
+            </Button>
+            <Button
+              className={styles.secondaryButton}
+              disabled={loadState === 'loading'}
+              onClick={() => void carryRecommendationToDecision()}
+            >
+              带入负责人确认
             </Button>
           </View>
         ) : screenId === 'S01' ? (

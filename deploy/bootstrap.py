@@ -46,7 +46,7 @@ def initialize_accounts(db, initial_password):
 def generate_environment(template, target):
     content = Path(template).read_text(encoding="utf-8")
     for name in ("MYSQL_ROOT_PASSWORD", "MYSQL_PASSWORD", "REDIS_PASSWORD",
-                 "MINIO_ROOT_PASSWORD", "SECRET_KEY", "INITIAL_ROOT_PASSWORD"):
+                 "SECRET_KEY", "INITIAL_ROOT_PASSWORD"):
         content = re.sub(rf"^{name}=.*$", f"{name}={secrets.token_hex(32)}", content, flags=re.MULTILINE)
     descriptor = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     with os.fdopen(descriptor, "w", encoding="utf-8") as output:

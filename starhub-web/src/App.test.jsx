@@ -13,6 +13,29 @@ vi.mock('./api', () => ({
   getBrandWorkspace: vi.fn().mockResolvedValue({ data: { data: { projects: [] } } }),
   getGovernmentWorkspace: vi.fn().mockResolvedValue({ data: { data: { projects: [], venues: [] } } }),
   getAudienceWorkspace: vi.fn().mockResolvedValue({ data: { data: { shows: [], reservations: [] } } }),
+  listConnectorDefinitions: vi.fn().mockResolvedValue({
+    data: {
+      code: 0,
+      data: [{
+        id: 1,
+        key: 'amap',
+        name: '高德场馆',
+        source_kind: 'api',
+        domain: 'venue',
+        availability: 'available',
+        auth_type: 'api_key',
+        capabilities: ['read'],
+        config_schema: { fields: [] },
+        registration: null,
+      }],
+    },
+  }),
+  createCustomConnectorDefinition: vi.fn(),
+  registerDataSource: vi.fn(),
+  updateDataSourceRegistration: vi.fn(),
+  testDataSourceRegistration: vi.fn(),
+  activateDataSourceRegistration: vi.fn(),
+  disableDataSourceRegistration: vi.fn(),
   getInvestorWorkspace: vi.fn().mockResolvedValue({ data: { data: { projects: [] } } }),
   getArtistWorkspace: vi.fn().mockResolvedValue({ data: { data: { artist: null, projects: [] } } }),
   agentChat: vi.fn(),
@@ -99,7 +122,7 @@ describe('App workbench shell', () => {
     render(<BrowserRouter><App /></BrowserRouter>)
     expect(await screen.findByRole('heading', { name: heading, level: 2 })).toBeInTheDocument()
   })
-  it.each(['/', '/admin/data', '/collaboration', '/preferences', '/artist', '/generate', '/show/1', '/projects/1', '/operations/projects'])('redirects root from %s to account creation without business requests', async path => {
+  it.each(['/', '/collaboration', '/preferences', '/artist', '/generate', '/show/1', '/projects/1', '/operations/projects'])('redirects root from %s to account creation without business requests', async path => {
     window.history.replaceState({}, '', path)
     render(<BrowserRouter><App /></BrowserRouter>)
     expect(await screen.findByRole('heading', { name: '创建角色账号', level: 2 })).toBeInTheDocument()
@@ -204,12 +227,29 @@ describe('App workbench shell', () => {
     )
 
     const sidebarNav = document.querySelector('.sidebar-nav')
-    expect(sidebarNav.querySelectorAll('a')).toHaveLength(1)
+    expect(sidebarNav.querySelectorAll('a')).toHaveLength(2)
     expect(sidebarNav.querySelector('a[href="/users"]')).toHaveTextContent('创建角色账号')
+    expect(sidebarNav.querySelector('a[href="/admin/data"]')).toHaveTextContent('数据接入')
 
     const mobileTabbar = document.querySelector('.mobile-tabbar')
-    expect(mobileTabbar.querySelectorAll('a')).toHaveLength(1)
+    expect(mobileTabbar.querySelectorAll('a')).toHaveLength(2)
     expect(mobileTabbar.querySelector('a[href="/users"]')).toHaveTextContent('创建账号')
+    expect(mobileTabbar.querySelector('a[href="/admin/data"]')).toHaveTextContent('数据接入')
+  })
+
+  it('renders the connector registry independently at /admin/data', async () => {
+    window.history.replaceState({}, '', '/admin/data')
+    render(
+      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <App />
+      </BrowserRouter>,
+    )
+
+    expect(await screen.findByRole('heading', { name: '数据连接器', level: 2 })).toBeInTheDocument()
+    expect(screen.getByText('高德场馆')).toBeInTheDocument()
+    expect(screen.queryByText('数据接入与质量')).not.toBeInTheDocument()
+    const api = await import('./api')
+    expect(api.getAdminWorkspace).not.toHaveBeenCalled()
   })
 
   it('opens project creation from the host shell and shows the current avatar', async () => {
@@ -226,13 +266,11 @@ describe('App workbench shell', () => {
     expect(createButton).toBeInTheDocument()
     expect(document.querySelector('.user-avatar')).toHaveTextContent('B')
 
-    let focused = false
-    const onFocus = () => { focused = true }
-    window.addEventListener('starhub:focus-project-create', onFocus)
     await user.click(createButton)
-    await waitFor(() => expect(focused).toBe(true))
+    await waitFor(() => expect(screen.getByLabelText('项目名称')).toHaveFocus())
     expect(window.location.pathname).toBe('/operations/projects')
-    window.removeEventListener('starhub:focus-project-create', onFocus)
+    await user.click(createButton)
+    expect(screen.getByLabelText('项目名称')).toHaveFocus()
   })
 
   it('uses root permissions instead of stale visitor role cache', async () => {

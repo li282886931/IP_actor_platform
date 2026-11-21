@@ -20,7 +20,6 @@ storage
 role-functional-design-*
 ip_actor_wechat
 starhub-web/node_modules
-starhub-web/dist
 starhub-web/src/**/*.test.*
 **/*.pptx
 **/*.docx

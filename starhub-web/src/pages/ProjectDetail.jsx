@@ -333,6 +333,7 @@ export default function ProjectDetail() {
           <p>集中管理项目版本、事实证据、假设、关卡、风险、任务与报告分享。</p>
         </div>
         <div className="button-row">
+          <Link className="button button-secondary" to={`/operations/decision?project=${projectId}`}>决策风控报告</Link>
           <button className="button button-secondary" type="button" disabled={reportBusy} onClick={handleGenerateFeasibilityReport}>{reportBusy ? '报告生成中…' : '生成可行性报告'}</button>
           <button className="button button-primary" type="button" onClick={handleShareReport}>生成分享链接</button>
         </div>

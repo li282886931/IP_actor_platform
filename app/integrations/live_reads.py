@@ -26,16 +26,24 @@ def origin(url):
 def validate_public_host(url):
     origin(url)
     parsed = urlsplit(url)
-    addresses = socket.getaddrinfo(parsed.hostname, parsed.port or (443 if parsed.scheme == "https" else 80))
+    try:
+        addresses = socket.getaddrinfo(
+            parsed.hostname,
+            parsed.port or (443 if parsed.scheme == "https" else 80),
+        )
+    except OSError as error:
+        raise ValueError("Webpage address could not be resolved") from error
     if not addresses or any(not ipaddress.ip_address(row[4][0]).is_global for row in addresses):
         raise ValueError("Non-public webpage address")
 
 
 def validate_endpoint(url):
+    if urlsplit(url).scheme != "https":
+        raise ValueError("Endpoint must use HTTPS")
     allowed = {origin(value.strip()) for value in os.environ.get("ANALYSIS_ALLOWED_ORIGINS", "").split(",") if value.strip()}
     if origin(url) not in allowed or urlsplit(url).query or urlsplit(url).fragment:
         raise ValueError("Endpoint is not configured in the allowlist")
-    # Local MCP/API services require an explicit operator-controlled allowlist above.
+    validate_public_host(url)
 
 
 def request_json(method, url, **kwargs):
@@ -104,9 +112,13 @@ def read_source(source, project, page_url=None):
     if source.credential_ref and not credential:
         raise ValueError("Credential is not configured")
     headers = {"Authorization": f"Bearer {credential}"} if credential else {}
-    if source.connector_key == "agent_api":
+    if source.connector_key in {"agent_api", "custom_rest_api"}:
         query = {}
-        values = {"project_id": str(project.id), "city": project.city or "", "artist_name": project.artist_name or ""}
+        values = {
+            "project_id": str(project.id) if project else "",
+            "city": (project.city or "") if project else "",
+            "artist_name": (project.artist_name or "") if project else "",
+        }
         for key, value in (config.get("query") or {}).items():
             if re.search(r"token|secret|password|key|authorization", key, re.I):
                 raise ValueError("Secrets must be supplied through credential_ref")
@@ -116,7 +128,7 @@ def read_source(source, project, page_url=None):
             query[key] = text
         payload, _ = request_json("GET", endpoint, headers=headers, params=query)
         return redact(payload, credential), endpoint
-    if source.connector_key != "mcp_web" or not page_url:
+    if source.connector_key not in {"mcp_web", "custom_mcp"} or not page_url:
         raise ValueError("MCP webpage URL is required")
     validate_public_host(page_url)
     headers.update({"Accept": "application/json, text/event-stream", "Content-Type": "application/json"})

@@ -3,6 +3,76 @@
 SET NAMES utf8mb4;
 SET FOREIGN_KEY_CHECKS = 0;
 
+CREATE TABLE city_profiles (
+ id INTEGER NOT NULL AUTO_INCREMENT PRIMARY KEY,
+ tenant_id INTEGER NOT NULL,
+ name VARCHAR(128) NOT NULL,
+ profile JSON NOT NULL,
+ created_by INTEGER NOT NULL,
+ revision INTEGER NOT NULL,
+ CONSTRAINT uq_city_profile_name UNIQUE (tenant_id, name),
+ FOREIGN KEY (tenant_id) REFERENCES tenants (id),
+ FOREIGN KEY (created_by) REFERENCES users (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE decision_rule_versions (
+ id INTEGER NOT NULL AUTO_INCREMENT PRIMARY KEY,
+ tenant_id INTEGER NOT NULL,
+ version_no INTEGER NOT NULL,
+ name VARCHAR(255) NOT NULL,
+ config JSON NOT NULL,
+ source TEXT NOT NULL,
+ status VARCHAR(32) NOT NULL,
+ parent_id INTEGER,
+ created_by INTEGER NOT NULL,
+ created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+ CONSTRAINT uq_decision_rule_version UNIQUE (tenant_id, version_no),
+ FOREIGN KEY (tenant_id) REFERENCES tenants (id),
+ FOREIGN KEY (parent_id) REFERENCES decision_rule_versions (id),
+ FOREIGN KEY (created_by) REFERENCES users (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE decision_reports (
+ id INTEGER NOT NULL AUTO_INCREMENT PRIMARY KEY,
+ tenant_id INTEGER NOT NULL,
+ project_id INTEGER NOT NULL,
+ project_version_id INTEGER,
+ rule_version_id INTEGER NOT NULL,
+ fingerprint VARCHAR(64) NOT NULL,
+ inputs JSON NOT NULL,
+ rule_snapshot JSON NOT NULL,
+ result JSON NOT NULL,
+ verification_status VARCHAR(32) NOT NULL,
+ created_by INTEGER NOT NULL,
+ created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+ CONSTRAINT uq_decision_report_inputs UNIQUE (project_id, fingerprint),
+ FOREIGN KEY (tenant_id) REFERENCES tenants (id),
+ FOREIGN KEY (project_id) REFERENCES projects (id),
+ FOREIGN KEY (project_version_id) REFERENCES project_versions (id),
+ FOREIGN KEY (rule_version_id) REFERENCES decision_rule_versions (id),
+ FOREIGN KEY (created_by) REFERENCES users (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE operating_records (
+ id INTEGER NOT NULL AUTO_INCREMENT PRIMARY KEY,
+ tenant_id INTEGER NOT NULL,
+ owner_id INTEGER NOT NULL,
+ project_id INTEGER,
+ kind VARCHAR(32) NOT NULL,
+ record_key VARCHAR(128) NOT NULL,
+ title VARCHAR(255) NOT NULL,
+ payload JSON NOT NULL,
+ result JSON,
+ status VARCHAR(32) NOT NULL,
+ revision INTEGER NOT NULL,
+ created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+ updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+ CONSTRAINT uq_operating_record_owner UNIQUE (tenant_id, owner_id, kind, record_key),
+ FOREIGN KEY (tenant_id) REFERENCES tenants (id),
+ FOREIGN KEY (owner_id) REFERENCES users (id),
+ FOREIGN KEY (project_id) REFERENCES projects (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE project_grants (
  id INTEGER NOT NULL AUTO_INCREMENT PRIMARY KEY,
  tenant_id INTEGER NOT NULL,
@@ -282,22 +352,53 @@ CREATE TABLE external_data_jobs (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE INDEX ix_external_data_jobs_id ON external_data_jobs (id);
 
+CREATE TABLE connector_definitions (
+	id INTEGER NOT NULL AUTO_INCREMENT,
+	`key` VARCHAR(128) NOT NULL,
+	name VARCHAR(255) NOT NULL,
+	source_kind VARCHAR(32) NOT NULL,
+	domain VARCHAR(64) NOT NULL,
+	description TEXT,
+	builtin INTEGER NOT NULL DEFAULT 0,
+	tenant_id INTEGER,
+	auth_type VARCHAR(32) NOT NULL DEFAULT 'none',
+	config_schema JSON,
+	capabilities JSON,
+	adapter_key VARCHAR(128),
+	availability VARCHAR(32) NOT NULL DEFAULT 'adapter_required',
+	human_verification_required INTEGER NOT NULL DEFAULT 1,
+	version INTEGER NOT NULL DEFAULT 1,
+	enabled INTEGER NOT NULL DEFAULT 1,
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	PRIMARY KEY (id),
+	CONSTRAINT uq_connector_definitions_tenant_key UNIQUE (tenant_id, `key`),
+	FOREIGN KEY(tenant_id) REFERENCES tenants (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE INDEX ix_connector_definitions_id ON connector_definitions (id);
+CREATE INDEX ix_connector_definitions_key ON connector_definitions (`key`);
+
 CREATE TABLE data_sources (
 	id INTEGER NOT NULL AUTO_INCREMENT,
 	tenant_id INTEGER NOT NULL,
 	name VARCHAR(255) NOT NULL,
 	source_kind VARCHAR(64) NOT NULL,
 	connector_key VARCHAR(64) NOT NULL,
+	definition_id INTEGER,
 	status VARCHAR(64),
 	credential_ref VARCHAR(512),
 	schedule_config JSON,
 	scope_config JSON,
+	last_test_at DATETIME,
+	last_test_result JSON,
+	activated_at DATETIME,
 	created_by INTEGER,
 	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 	updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 	PRIMARY KEY (id),
 	CONSTRAINT uq_data_sources_tenant_name UNIQUE (tenant_id, name),
 	FOREIGN KEY(tenant_id) REFERENCES tenants (id),
+	FOREIGN KEY(definition_id) REFERENCES connector_definitions (id),
 	FOREIGN KEY(created_by) REFERENCES users (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE INDEX ix_data_sources_id ON data_sources (id);

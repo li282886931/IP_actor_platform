@@ -1,9 +1,10 @@
 import { expect, it } from 'vitest'
 import { canAccessRoute, navigationByRole, roleFromUser } from './roleConfig'
 
-it('limits root to account creation and rejects business deep links', () => {
-  expect(navigationByRole.Admin.map(i => i.to)).toEqual(['/users'])
-  for (const path of ['/', '/admin/data', '/collaboration', '/preferences', '/artist',
+it('limits root to account creation and data connectors, and rejects business deep links', () => {
+  expect(navigationByRole.Admin.map(i => i.to)).toEqual(['/users', '/admin/data'])
+  expect(canAccessRoute('Admin', '/admin/data')).toBe(true)
+  for (const path of ['/', '/collaboration', '/preferences', '/artist',
     '/generate', '/operations/projects', '/projects/1', '/show/1']) {
     expect(canAccessRoute('Admin', path)).toBe(false)
   }

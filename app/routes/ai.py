@@ -12,6 +12,7 @@ from app.schemas import AIGenerateIn
 from fastapi import APIRouter
 from fastapi import Depends
 from fastapi import Header
+from fastapi import HTTPException
 from app.services.auth import RequestContext, resolve_request_context
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
@@ -44,40 +45,39 @@ def fallback_ai_generate_result(payload: AIGenerateIn, db: Session, context: Req
 def ai_generate(payload: AIGenerateIn, db: Session = Depends(get_db), context: RequestContext = Depends(generation_context)):
     generation_nonce = payload.generation_nonce or uuid.uuid4().hex
     generation_seed = random.randint(1, 2_147_483_647)
-    prompt = llm_integration.build_ai_generation_prompt(payload, generation_nonce)
+    connection = llm_integration.generation_connection(
+        os.environ.get('LLAMA_SERVER_URL', LLAMA_SERVER_URL),
+        os.environ.get('LLAMA_SERVER_MODEL', LLAMA_SERVER_MODEL),
+    )
+    prompt = llm_integration.build_ai_generation_prompt(
+        payload, generation_nonce, allow_thinking=connection.provider == 'siliconflow',
+    )
     cache_key = llm_integration.ai_generation_cache_key(
         payload, generation_nonce, tenant_id=context.tenant.id, user_id=context.user.id,
+        model_namespace=connection.cache_namespace,
     )
     cached_generation = redis_get_json(cache_key)
     if cached_generation and cached_generation.get('status') == 'completed' and cached_generation.get('result'):
         return json_ok({"result": cached_generation.get('result'), "cache_hit": True})
 
     result_text = None
-    llama_server_url = os.environ.get('LLAMA_SERVER_URL', LLAMA_SERVER_URL)
-    llama_server_model = os.environ.get('LLAMA_SERVER_MODEL', LLAMA_SERVER_MODEL)
 
-    if llama_server_url:
+    if connection.url:
         try:
             resp = llm_integration.requests.post(
-                llama_server_url,
-                headers={"Content-Type": "application/json"},
-                json={
-                    "model": llama_server_model,
-                    "messages": [{"role": "user", "content": prompt}],
-                    "temperature": 0.95,
-                    "top_p": 0.92,
-                    "presence_penalty": 0.6,
-                    "frequency_penalty": 0.35,
-                    "seed": generation_seed,
-                    "chat_template_kwargs": {"enable_thinking": False},
-                    "max_tokens": LLAMA_SERVER_MAX_TOKENS,
-                },
+                connection.url,
+                **llm_integration.generation_request(connection, prompt, generation_seed, LLAMA_SERVER_MAX_TOKENS),
                 timeout=LLAMA_SERVER_TIMEOUT_SECONDS,
             )
             resp.raise_for_status()
             result_text = llm_integration.extract_llama_server_text(resp.json())
         except Exception as exc:
+            if connection.provider == 'siliconflow':
+                raise HTTPException(status_code=502, detail='硅基流动生成失败，请检查密钥、模型权限及服务状态后重试') from None
             print('Local llama_server error:', exc)
+
+    if connection.provider == 'siliconflow' and not result_text:
+        raise HTTPException(status_code=502, detail='硅基流动未返回可用内容，请重试')
 
     api_key = os.getenv('DASHSCOPE_API_KEY') or os.getenv('DASHSCOPE_API_TOKEN')
 
@@ -101,7 +101,11 @@ def ai_generate(payload: AIGenerateIn, db: Session = Depends(get_db), context: R
             print('AI API error:', exc)
             result_text = None
 
-    result_text = llm_integration.sanitize_ai_output(result_text or '')
+    result_text = llm_integration.sanitize_ai_output(
+        result_text or '', require_markdown=connection.provider == 'siliconflow',
+    )
+    if connection.provider == 'siliconflow' and not result_text:
+        raise HTTPException(status_code=502, detail='硅基流动未返回正式方案正文，请重试')
     if not result_text:
         if payload.type == 'poster':
             result_text = f"""
@@ -190,46 +194,45 @@ def ai_generate(payload: AIGenerateIn, db: Session = Depends(get_db), context: R
 def ai_generate_stream(payload: AIGenerateIn, db: Session = Depends(get_db), context: RequestContext = Depends(generation_context)):
     generation_nonce = payload.generation_nonce or uuid.uuid4().hex
     generation_seed = random.randint(1, 2_147_483_647)
-    prompt = llm_integration.build_ai_generation_prompt(payload, generation_nonce)
+    connection = llm_integration.generation_connection(
+        os.environ.get('LLAMA_SERVER_URL', LLAMA_SERVER_URL),
+        os.environ.get('LLAMA_SERVER_MODEL', LLAMA_SERVER_MODEL),
+    )
+    prompt = llm_integration.build_ai_generation_prompt(
+        payload, generation_nonce, allow_thinking=connection.provider == 'siliconflow',
+    )
     cache_key = llm_integration.ai_generation_cache_key(
         payload, generation_nonce, tenant_id=context.tenant.id, user_id=context.user.id,
+        model_namespace=connection.cache_namespace,
     )
-    llama_server_url = os.environ.get('LLAMA_SERVER_URL', LLAMA_SERVER_URL)
-    llama_server_model = os.environ.get('LLAMA_SERVER_MODEL', LLAMA_SERVER_MODEL)
 
     def event_stream():
         chunks = []
         preamble_buffer = ''
         final_started = False
+        visible_stream = llm_integration.VisibleContentStream()
         saved_by_fallback = False
+        upstream_done = False
         cached_generation = redis_get_json(cache_key)
         if cached_generation and cached_generation.get('status') == 'completed' and cached_generation.get('result'):
             yield llm_integration.sse_event('progress', {"message": "命中 Redis 生成缓存"})
             yield llm_integration.sse_event('final', {"result": cached_generation.get('result'), "cache_hit": True})
             return
 
-        yield llm_integration.sse_event('progress', {"message": "正在连接本地模型服务"})
-        if not llama_server_url:
+        yield llm_integration.sse_event('progress', {
+            "message": "正在连接硅基流动模型服务" if connection.provider == 'siliconflow' else "正在连接本地模型服务",
+        })
+        if not connection.url:
             fallback = fallback_ai_generate_result(payload, db, context)
             yield llm_integration.sse_event('final', {"result": fallback})
             return
 
         try:
             with llm_integration.requests.post(
-                llama_server_url,
-                headers={"Content-Type": "application/json"},
-                json={
-                    "model": llama_server_model,
-                    "messages": [{"role": "user", "content": prompt}],
-                    "temperature": 0.95,
-                    "top_p": 0.92,
-                    "presence_penalty": 0.6,
-                    "frequency_penalty": 0.35,
-                    "seed": generation_seed,
-                    "chat_template_kwargs": {"enable_thinking": False},
-                    "max_tokens": LLAMA_SERVER_MAX_TOKENS,
-                    "stream": True,
-                },
+                connection.url,
+                **llm_integration.generation_request(
+                    connection, prompt, generation_seed, LLAMA_SERVER_MAX_TOKENS, stream=True,
+                ),
                 timeout=LLAMA_SERVER_TIMEOUT_SECONDS,
                 stream=True,
             ) as resp:
@@ -243,21 +246,26 @@ def ai_generate_stream(payload: AIGenerateIn, db: Session = Depends(get_db), con
                         continue
                     payload_text = text_line.removeprefix('data:').strip()
                     if payload_text == '[DONE]':
+                        upstream_done = True
                         break
                     try:
                         data = json.loads(payload_text)
                     except json.JSONDecodeError:
                         continue
+                    if isinstance(data, dict) and data.get('error'):
+                        raise ValueError('upstream_stream_error')
                     content, _ = llm_integration.extract_stream_delta(data)
                     if content:
-                        visible_content, _ = llm_integration.split_think_content(content)
+                        visible_content = visible_stream.feed(content)
                         if visible_content:
                             if final_started:
                                 chunks.append(visible_content)
                                 yield llm_integration.sse_event('delta', {"content": visible_content})
                             else:
                                 preamble_buffer += visible_content
-                                start_index = llm_integration.find_final_output_start(preamble_buffer)
+                                start_index = llm_integration.find_final_output_start(
+                                    preamble_buffer, require_markdown=connection.provider == 'siliconflow',
+                                )
                                 if start_index >= 0:
                                     final_content = preamble_buffer[start_index:]
                                     if final_content:
@@ -265,14 +273,22 @@ def ai_generate_stream(payload: AIGenerateIn, db: Session = Depends(get_db), con
                                         yield llm_integration.sse_event('delta', {"content": final_content})
                                     preamble_buffer = ''
                                     final_started = True
-                                elif len(preamble_buffer) > 24:
-                                    preamble_buffer = preamble_buffer[-16:]
-                result_text = llm_integration.sanitize_ai_output(''.join(chunks) or preamble_buffer)
+                if connection.provider == 'siliconflow' and not upstream_done:
+                    raise ValueError('incomplete_upstream_stream')
+                result_text = llm_integration.sanitize_ai_output(
+                    ''.join(chunks) or preamble_buffer, require_markdown=connection.provider == 'siliconflow',
+                )
         except Exception as exc:
+            if connection.provider == 'siliconflow':
+                yield llm_integration.sse_event('error', {"message": "硅基流动生成失败，请检查密钥、模型权限及服务状态后重试"})
+                return
             yield llm_integration.sse_event('progress', {"message": f"流式生成不可用，已切换为后端兜底内容：{exc}"})
             result_text = ''
 
         if not result_text:
+            if connection.provider == 'siliconflow':
+                yield llm_integration.sse_event('error', {"message": "硅基流动未返回可用内容，请重试"})
+                return
             result_text = fallback_ai_generate_result(payload, db, context)
             saved_by_fallback = True
         if not saved_by_fallback:

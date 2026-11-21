@@ -34,7 +34,7 @@
   </view>
   <view wx:if="{{isForm}}" class="panel">
     <view class="panel-title">输入与联调</view>
-    <input wx:if="{{screen.id !== 'S25'}}" class="input" value="{{keyword}}" bindinput="onInput" placeholder="{{placeholder}}" />
+    <input wx:if="{{screen.id !== 'S25' && screen.id !== 'S41'}}" class="input" value="{{keyword}}" bindinput="onInput" placeholder="{{placeholder}}" />
     <view wx:if="{{screen.id === 'S25'}}" class="finance-grid">
       <view class="field-label">艺人费用</view><input class="input" data-field="artist_fee" value="{{financeDraft.artist_fee}}" bindinput="onFinanceInput" placeholder="艺人费用 / 元" />
       <view class="field-label">场馆费用</view><input class="input" data-field="venue_cost" value="{{financeDraft.venue_cost}}" bindinput="onFinanceInput" placeholder="场馆费用 / 元" />

@@ -419,6 +419,25 @@
   gap: 24rpx;
 }
 
+.fileSelectButton {
+  @include button-reset;
+  width: 100%;
+  height: 72rpx;
+  color: $color-primary;
+  font-size: $font-size-sm;
+  font-weight: $font-weight-semibold;
+  background: $color-primary-soft;
+  border: 1rpx solid $color-primary-soft-border;
+  border-radius: $radius-button;
+}
+
+.selectedFileName {
+  display: block;
+  color: $color-text-secondary;
+  font-size: $font-size-sm;
+  @include text-ellipsis;
+}
+
 .field {
   display: block;
 }
@@ -656,6 +675,39 @@
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 16rpx;
+}
+
+.pipelineActions,
+.mappingGrid,
+.candidatePreview {
+  display: grid;
+  gap: 16rpx;
+}
+
+.mappingRow {
+  display: grid;
+  grid-template-columns: minmax(160rpx, .8fr) minmax(0, 1.2fr);
+  gap: 16rpx;
+  align-items: center;
+}
+
+.mappingHeader,
+.mappingNotice,
+.candidateMeta {
+  color: $color-text-secondary;
+  font-size: $font-size-sm;
+}
+
+.mappingNotice {
+  display: block;
+  padding: 20rpx 0 28rpx;
+}
+
+.candidateRow {
+  display: grid;
+  gap: 8rpx;
+  padding: 20rpx 0;
+  border-top: 1rpx solid $color-divider;
 }
 
 .rejectButton {

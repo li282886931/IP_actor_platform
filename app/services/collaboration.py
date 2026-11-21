@@ -457,10 +457,17 @@ def show_update(db, ctx, body):
         event = history(db, ctx, "show", show.id, "publish", before, serialize(show))
         db.flush()
         event_id = event.id
+        labels = {"date": "演出时间", "venue": "场馆", "price": "票价说明",
+                  "status": "演出状态", "description": "演出说明"}
+        statuses = {"on_sale": "售票中", "scheduled": "已排期", "cancelled": "已取消", "ended": "已结束"}
+        notice_content = "；".join(
+            f"{labels[key]}：{statuses[value] if key == 'status' else value}"
+            for key, value in changes.items()
+        )
         for order in db.query(Order).filter_by(show_id=show.id, tenant_id=ctx.tenant.id, status="registered").all():
             if order.user_id:
-                notify(db, ctx, order.user_id, f"show:{show.id}:{event_id}", "演出信息已更新",
-                       "；".join(f"{k}：{v}" for k, v in changes.items()))
+                notify(db, ctx, order.user_id, f"show:{show.id}:{event_id}", f"演出信息已更新 · {show.title}",
+                       notice_content)
     return serialize(show)
 
 

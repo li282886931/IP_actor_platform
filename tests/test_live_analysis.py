@@ -30,6 +30,8 @@ def live(monkeypatch):
         db.commit()
         ids = project.id, api.id, mcp.id
     monkeypatch.setenv("ANALYSIS_ALLOWED_ORIGINS", "https://api.example.org,https://mcp.example.org")
+    from app.integrations import live_reads
+    monkeypatch.setattr(live_reads, "validate_public_host", lambda url: None)
     monkeypatch.setenv("DATA_CONNECTOR_SECRET_VENUE", "private-key")
     monkeypatch.setenv("LLAMA_SERVER_URL", "")
     yield client, sessions, headers, ids

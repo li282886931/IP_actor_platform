@@ -1,0 +1,19 @@
+.image-studio-layout { display: grid; grid-template-columns: minmax(260px, .9fr) minmax(0, 1.1fr); gap: 24px; }
+.image-studio > .panel-heading { margin-bottom: 16px; }
+.image-studio-layout > form, .image-studio-preview { min-width: 0; }
+.image-studio textarea { resize: vertical; min-height: 110px; width: 100%; box-sizing: border-box; padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--text); font: inherit; line-height: 1.6; }
+.image-studio textarea::placeholder { color: var(--text-muted); }
+.image-studio :focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
+.image-studio .button:disabled { opacity: .55; cursor: not-allowed; }
+.image-studio-hint, .image-studio-meta small, .image-studio-empty span { color: var(--text-muted, #94a3b8); font-size: 12px; line-height: 1.6; }
+.image-studio-hint { margin: 8px 0 16px; }
+.image-studio-controls { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+.image-studio-controls .field { flex: 1; min-width: 140px; }
+.image-studio-controls .button { margin-bottom: 0; }
+.image-studio-preview img { display: block; width: 100%; max-height: 420px; object-fit: contain; background: rgba(0,0,0,.16); border-radius: 10px; }
+.image-studio-meta { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-top: 8px; font-size: 12px; }
+.image-studio-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; margin-top: 6px; }
+.image-studio-empty { min-height: 220px; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 16px; border: 1px dashed var(--border, #475569); border-radius: 10px; text-align: center; }
+.image-studio-status { min-height: 24px; padding-top: 10px; font-size: 12px; }
+.image-studio-status [role="alert"] { color: var(--red); margin: 0; }
+@media (max-width: 760px) { .image-studio-layout { grid-template-columns: 1fr; gap: 16px; } .image-studio-preview img { max-height: 340px; } }
